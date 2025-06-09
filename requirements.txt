@@ -1,3 +1,4 @@
 requests
 PyYAML
 websocket-client
+Flask>=2.2.0

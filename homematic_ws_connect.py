@@ -8,13 +8,15 @@ import yaml
 import websocket
 import ssl
 from logging.handlers import TimedRotatingFileHandler
+from flask import Flask, request, jsonify, send_file
 from config import load_config
-from messages import send_plugin_state
+from messages import send_plugin_state, send_hmip_set_switch, send_get_system_state
+from utils import save_system_state
+from generate_html import generate_device_overview
 
 # Konfiguration laden (inkl. Token sicherstellen)
 config = load_config()
-
-PLUGIN_ID = config.get("plugin_id", "de.doe.jane.plugin.example")
+PLUGIN_ID = config.get("plugin_id")
 
 # Logging konfigurieren
 log = logging.getLogger("bridge-ws")
@@ -37,7 +39,11 @@ if config.get("log_file"):
     file_handler.setFormatter(formatter)
     log.addHandler(file_handler)
 
+# Globale WebSocket-Verbindung
+conn = None
+
 def ws_loop():
+    global conn
     headers = {
         "authtoken": config["homematic_token"],
         "plugin-id": PLUGIN_ID
@@ -63,27 +69,53 @@ def ws_loop():
     while True:
         try:
             log.info("Verbinde zu WebSocket (Port 9001)...")
-            ws = websocket.create_connection(url, header=headers, sslopt=sslopt)
+            conn = websocket.create_connection(url, header=headers, sslopt=sslopt)
             log.info("WebSocket-Verbindung hergestellt.")
-            send_plugin_state(ws)
+            send_plugin_state(conn)
+            send_get_system_state(conn)
+
             while True:
-                msg = ws.recv()
+                msg = conn.recv()
                 log.info(f"Nachricht empfangen: {msg}")
                 try:
                     msg_data = json.loads(msg)
                     if msg_data.get("type") == "PluginStateRequest":
                         msg_id = msg_data.get("id")
-                        send_plugin_state(ws, msg_id=msg_id)
+                        send_plugin_state(conn, msg_id=msg_id)
+                    elif msg_data.get("type") == "HMIP_SYSTEM_RESPONSE":
+                        save_system_state(msg_data)
                 except Exception as e:
                     log.error(f"Fehler beim Verarbeiten der Nachricht: {e}")
         except Exception as e:
             log.error(f"WebSocket Fehler: {e}")
             time.sleep(5)
 
+# Flask HTTP-Server
+app = Flask(__name__)
+
+@app.route("/devices/html")
+def serve_html_overview():
+    generate_device_overview("system_state.json", "static/device_overview.html")
+    return send_file("static/device_overview.html")
+
+@app.route("/hmipSwitch", methods=["GET"])
+def hmip_switch():
+    global conn
+    if conn is None:
+        return jsonify({"error": "WebSocket nicht verbunden"}), 503
+
+    device_id = request.args.get("device")
+    on_param = request.args.get("on")
+
+    if not device_id or on_param not in ["true", "false"]:
+        return jsonify({"error": "Ungültige Parameter"}), 400
+
+    state = on_param == "true"
+    send_hmip_set_switch(conn, device_id, state)
+    return jsonify({"status": f"Befehl an {device_id} gesendet: {'ON' if state else 'OFF'}"}), 200
+
 if __name__ == '__main__':
+    # Starte WebSocket-Thread
     threading.Thread(target=ws_loop, daemon=True).start()
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        log.info("Beendet durch Benutzer.")
+    log.info("Starte HTTP Server auf Port 8080")
+    app.run(host="0.0.0.0", port=8080)
