@@ -8,12 +8,12 @@ import yaml
 import websocket
 import ssl
 from logging.handlers import TimedRotatingFileHandler
-from request_token import ensure_token
+from config import load_config
+from messages import send_plugin_state
 
 # Konfiguration laden (inkl. Token sicherstellen)
-config = ensure_token()
+config = load_config()
 
-CONFIG_FILE = "config.yaml"
 PLUGIN_ID = config.get("plugin_id", "de.doe.jane.plugin.example")
 
 # Logging konfigurieren
@@ -65,9 +65,17 @@ def ws_loop():
             log.info("Verbinde zu WebSocket (Port 9001)...")
             ws = websocket.create_connection(url, header=headers, sslopt=sslopt)
             log.info("WebSocket-Verbindung hergestellt.")
+            send_plugin_state(ws)
             while True:
                 msg = ws.recv()
                 log.info(f"Nachricht empfangen: {msg}")
+                try:
+                    msg_data = json.loads(msg)
+                    if msg_data.get("type") == "PluginStateRequest":
+                        msg_id = msg_data.get("id")
+                        send_plugin_state(ws, msg_id=msg_id)
+                except Exception as e:
+                    log.error(f"Fehler beim Verarbeiten der Nachricht: {e}")
         except Exception as e:
             log.error(f"WebSocket Fehler: {e}")
             time.sleep(5)

@@ -7,27 +7,16 @@ import os
 import urllib3
 import logging
 from logging.handlers import TimedRotatingFileHandler
+from config import load_config
+
+# Konfiguration laden (inkl. Token sicherstellen)
+config = load_config()
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-CONFIG_FILE = "config.yaml"
-
-# Erst laden
-def load_config():
-    try:
-        with open(CONFIG_FILE, 'r') as f:
-            return yaml.safe_load(f)
-    except Exception as e:
-        print(f"[FEHLER] config.yaml konnte nicht geladen werden: {e}")
-        sys.exit(1)
-
-config = load_config()
-
 PLUGIN_ID = config.get("plugin_id", "de.doe.jane.plugin.example")
-FRIENDLY_NAME = {
-    "en": "Homematic Bridge",
-    "de": "Homematic Bridge"
-}
+FRIENDLY_NAME = config.get("friendly_name")
+CONFIG_FILE = "config.yaml"
 
 HEADERS = {
     "VERSION": "12"
@@ -57,17 +46,6 @@ def setup_logger(config):
         logger.addHandler(fh)
 
     return logger
-
-def load_config():
-    try:
-        with open(CONFIG_FILE, 'r') as f:
-            return yaml.safe_load(f)
-    except FileNotFoundError:
-        print("[FEHLER] config.yaml nicht gefunden.")
-        sys.exit(1)
-    except Exception as e:
-        print(f"[FEHLER] Konfigurationsdatei konnte nicht geladen werden: {e}")
-        sys.exit(1)
 
 def save_token_to_config(config, token, log):
     config['homematic_token'] = token
@@ -132,7 +110,6 @@ def confirm_token(hcu_host, code, token, log, verify):
     return False
 
 def ensure_token():
-    config = load_config()
     log = setup_logger(config)
     verify = get_ssl_verify_options(config, log)
 
