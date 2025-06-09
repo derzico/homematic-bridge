@@ -5,5 +5,5 @@ config.yaml
 .env
 .venv/
 *.crt
-static/device_overview.html
+static/
 system_state.json
