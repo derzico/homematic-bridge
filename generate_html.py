@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-def generate_device_overview(system_state_path: str, output_path: str = "device_overview.html"):
+def generate_device_overview(system_state_path: str, output_path: str = "static/device_overview.html"):
     with open(system_state_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
@@ -16,7 +16,7 @@ def generate_device_overview(system_state_path: str, output_path: str = "device_
     <html lang="de">
     <head>
         <meta charset="UTF-8">
-        <title>Geräteliste</title>
+        <title>HMIP Geräteliste</title>
         <style>
             body {{ font-family: Arial, sans-serif; margin: 40px; }}
             table {{ border-collapse: collapse; width: 100%; }}
@@ -25,7 +25,7 @@ def generate_device_overview(system_state_path: str, output_path: str = "device_
         </style>
     </head>
     <body>
-        <h1>Homematic Geräteübersicht</h1>
+        <h1>Homematic IP Geräteübersicht</h1>
         <table>
             <thead>
                 <tr><th>Device ID</th><th>Label</th><th>Typ</th></tr>
@@ -38,6 +38,10 @@ def generate_device_overview(system_state_path: str, output_path: str = "device_
     </html>
     """
 
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)  # → Ordner anlegen
+
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(html_template)
-    return output_path
+
+    return str(output_path)
