@@ -1,0 +1,10 @@
+bridge_pass: supersecret
+bridge_user: http
+homematic_hcu: hcu1-E461.local
+homematic_token:
+log_file: bridge.log
+log_level: info
+log_rotate: true
+ssl_cert_path:
+ssl_verify: false
+plugin_id:
