@@ -10,11 +10,11 @@ import ssl
 from logging.handlers import TimedRotatingFileHandler
 from request_token import ensure_token
 
-CONFIG_FILE = "config.yaml"
-PLUGIN_ID = "de.schnell.niclas.plugin.example"
-
 # Konfiguration laden (inkl. Token sicherstellen)
 config = ensure_token()
+
+CONFIG_FILE = "config.yaml"
+PLUGIN_ID = config.get("plugin_id", "de.doe.jane.plugin.example")
 
 # Logging konfigurieren
 log = logging.getLogger("bridge-ws")

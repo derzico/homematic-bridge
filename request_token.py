@@ -12,7 +12,18 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 CONFIG_FILE = "config.yaml"
 
-PLUGIN_ID = "de.schnell.niclas.plugin.example"
+# Erst laden
+def load_config():
+    try:
+        with open(CONFIG_FILE, 'r') as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        print(f"[FEHLER] config.yaml konnte nicht geladen werden: {e}")
+        sys.exit(1)
+
+config = load_config()
+
+PLUGIN_ID = config.get("plugin_id", "de.doe.jane.plugin.example")
 FRIENDLY_NAME = {
     "en": "Homematic Bridge",
     "de": "Homematic Bridge"
