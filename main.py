@@ -1,4 +1,4 @@
-# homematic_ws_connect.py
+# main.py
 
 import json
 import threading
@@ -9,18 +9,19 @@ import websocket
 import ssl
 from logging.handlers import TimedRotatingFileHandler
 from flask import Flask, request, jsonify, send_file
-from config import load_config
-from messages import send_plugin_state, send_hmip_set_switch, send_get_system_state
-from utils import save_system_state
-from generate_html import generate_device_overview
+from config.loader import load_config, load_internal_config
+from app.messages import send_plugin_state, send_hmip_set_switch, send_get_system_state
+from app.utils import save_system_state
+from app.generate_html import generate_device_overview
 
 # Konfiguration laden (inkl. Token sicherstellen)
 config = load_config()
+config_internal = load_internal_config()
 PLUGIN_ID = config.get("plugin_id")
 
 # Logging konfigurieren
 log = logging.getLogger("bridge-ws")
-log.setLevel(getattr(logging, config.get("log_level", "INFO").upper(), logging.INFO))
+log.setLevel(getattr(logging, config_internal.get("log_level", "INFO").upper(), logging.INFO))
 formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s')
 
 # Konsole
@@ -29,9 +30,9 @@ console_handler.setFormatter(formatter)
 log.addHandler(console_handler)
 
 # Datei mit Rotation
-if config.get("log_file"):
+if config_internal.get("log_file"):
     file_handler = TimedRotatingFileHandler(
-        filename=config["log_file"],
+        filename=config_internal["log_file"],
         when="midnight",
         backupCount=7,
         encoding='utf-8'
@@ -95,7 +96,7 @@ app = Flask(__name__)
 
 @app.route("/devices/html")
 def serve_html_overview():
-    generate_device_overview("system_state.json", "static/device_overview.html")
+    generate_device_overview(config_internal["system_state_path"], "static/device_overview.html")
     return send_file("static/device_overview.html")
 
 @app.route("/hmipSwitch", methods=["GET"])

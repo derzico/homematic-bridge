@@ -1,9 +1,9 @@
 __pycache__/
-*.log
+logs/
 *.pyc
-config.yaml
+config/config.yaml
 .env
 .venv/
 *.crt
 static/
-system_state.json
+data/

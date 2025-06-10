@@ -3,7 +3,7 @@
 import json
 import logging
 import uuid
-from config import load_config
+from config.loader import load_config, load_internal_config
 
 # Konfiguration laden (inkl. Token sicherstellen)
 config = load_config()

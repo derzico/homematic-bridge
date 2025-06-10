@@ -1,0 +1,5 @@
+system_state_path: data/system_state.json
+device_html_path: static/device_overview.html
+log_file: logs\bridge.log
+log_level: info
+log_rotate: true

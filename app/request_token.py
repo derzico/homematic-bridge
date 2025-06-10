@@ -7,10 +7,11 @@ import os
 import urllib3
 import logging
 from logging.handlers import TimedRotatingFileHandler
-from config import load_config
+from config.loader import load_config, load_internal_config
 
 # Konfiguration laden (inkl. Token sicherstellen)
 config = load_config()
+config_internal = load_internal_config()
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -23,9 +24,9 @@ HEADERS = {
 }
 
 # Logging einrichten
-def setup_logger(config):
+def setup_logger(config_internal):
     logger = logging.getLogger("request_token")
-    log_level = getattr(logging, config.get("log_level", "INFO").upper(), logging.INFO)
+    log_level = getattr(logging, config_internal.get("log_level", "INFO").upper(), logging.INFO)
     logger.setLevel(log_level)
     formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s')
 
@@ -35,9 +36,9 @@ def setup_logger(config):
     logger.addHandler(ch)
 
     # Datei
-    log_file = config.get("log_file")
+    log_file = config_internal.get("log_file")
     if log_file:
-        rotate = config.get("log_rotate", False)
+        rotate = config_internal.get("log_rotate", False)
         if rotate:
             fh = TimedRotatingFileHandler(log_file, when="midnight", backupCount=7, encoding="utf-8")
         else:
@@ -110,7 +111,7 @@ def confirm_token(hcu_host, code, token, log, verify):
     return False
 
 def ensure_token():
-    log = setup_logger(config)
+    log = setup_logger(config_internal)
     verify = get_ssl_verify_options(config, log)
 
     if config.get("homematic_token"):
