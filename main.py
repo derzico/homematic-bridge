@@ -47,7 +47,8 @@ def ws_loop():
     global conn
     headers = {
         "authtoken": config["homematic_token"],
-        "plugin-id": PLUGIN_ID
+        "plugin-id": PLUGIN_ID,
+        "hmip-system-events": "true"
     }
     url = f"wss://{config['homematic_hcu']}:9001"
 
@@ -85,6 +86,7 @@ def ws_loop():
                         send_plugin_state(conn, msg_id=msg_id)
                     elif msg_data.get("type") == "HMIP_SYSTEM_RESPONSE":
                         save_system_state(msg_data)
+                    #elif msg_data.get("type") == "HMIP_SYSTEM_EVENT":                      
                 except Exception as e:
                     log.error(f"Fehler beim Verarbeiten der Nachricht: {e}")
         except Exception as e:
