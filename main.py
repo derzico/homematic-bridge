@@ -10,6 +10,8 @@ import ssl
 import os
 import random
 import certifi
+import secrets
+from functools import wraps
 from typing import Optional, Dict, Any
 from logging.handlers import TimedRotatingFileHandler
 from flask import Flask, request, jsonify, send_file, Response
@@ -27,6 +29,52 @@ PLUGIN_ID = config.get("plugin_id")
 # Health-/Pending-Konfiguration
 STALE_SEC = float(config_internal.get("health_stale_seconds", 60.0))       # Snapshot gilt nach X Sekunden als alt
 PENDING_TTL = float(config_internal.get("pending_ttl_seconds", 60.0))      # wie lange wir auf ACKs warten
+
+# --- API-Key laden / generieren ---
+API_KEY = os.getenv("BRIDGE_API_KEY") or config_internal.get("api_key") or config.get("api_key")
+REQUIRE_API_KEY = bool(config_internal.get("require_api_key", config.get("require_api_key", True)))
+API_KEY_FILE = config_internal.get("api_key_file", "data/api_key.txt")
+
+def _ensure_api_key():
+    """Sorgt dafür, dass ein API-Key vorhanden ist.
+       Reihenfolge: ENV -> config -> api_key_file -> automatisch generieren (falls Pflicht)."""
+    global API_KEY
+    if API_KEY:
+        return
+    # 1) Aus Datei laden
+    try:
+        with open(API_KEY_FILE, "r", encoding="utf-8") as f:
+            API_KEY = f.read().strip()
+    except FileNotFoundError:
+        API_KEY = None
+    # 2) Generieren, wenn Pflicht und noch None
+    if REQUIRE_API_KEY and not API_KEY:
+        try:
+            os.makedirs(os.path.dirname(API_KEY_FILE) or ".", exist_ok=True)
+            API_KEY = secrets.token_urlsafe(32)
+            with open(API_KEY_FILE, "w", encoding="utf-8") as f:
+                f.write(API_KEY)
+            try:
+                os.chmod(API_KEY_FILE, 0o600)  # unter Windows harmless
+            except Exception:
+                pass
+            logging.getLogger("bridge-ws").info("Neuen API-Key generiert und gespeichert (%s).", API_KEY_FILE)
+        except Exception as e:
+            logging.getLogger("bridge-ws").error("API-Key konnte nicht gespeichert werden: %s", e)
+
+_ensure_api_key()
+
+def require_api_key(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not REQUIRE_API_KEY:
+            return f(*args, **kwargs)
+        if not API_KEY:
+            return jsonify({"error": "server_misconfigured: API key required but not set"}), 503
+        if request.headers.get("X-API-Key") != API_KEY:
+            return jsonify({"error": "unauthorized"}), 401
+        return f(*args, **kwargs)
+    return wrapper
 
 # Logging konfigurieren
 log = logging.getLogger("bridge-ws")
@@ -140,9 +188,9 @@ def ws_loop():
 
     if ssl_verify and cert_path:
         sslopt = {
-            "cert_reqs": ssl.CERT_REQUIRED,
-            "ca_certs": cert_path
+            "cert_reqs": ssl.SSLContext.verify_mode,  # placeholder to silence linters; replaced below
         }
+        sslopt = {"cert_reqs": ssl.CERT_REQUIRED, "ca_certs": cert_path}
         log.info("[SSL] Zertifikatspfad verwendet: %s", cert_path)
     elif ssl_verify:
         sslopt = {
@@ -246,28 +294,55 @@ def serve_device_detail(device_id):
     html_str = generate_device_detail_html(config_internal["system_state_path"], device_id)
     return Response(html_str, mimetype="text/html; charset=utf-8")
 
-@app.route("/hmipSwitch", methods=["GET"])
-def hmip_switch():
+# --- Sichere POST-Route mit API-Key ---
+@app.post("/hmipSwitch")
+@require_api_key
+def hmip_switch_post():
+    global conn
+    if conn is None:
+        return jsonify({"error": "WebSocket nicht verbunden"}), 503
+
+    data = request.get_json(silent=True) or {}
+    device_id = data.get("device")
+    state = data.get("on")
+    channel_index = data.get("channelIndex", 0)
+
+    if not device_id or not isinstance(state, bool):
+        return jsonify({"error": "Ungültige Parameter: device (str), on (bool), optional channelIndex (int)"}), 400
+
+    with send_lock:
+        rid = send_hmip_set_switch(conn, device_id, state, channel_index)
+    _register_pending(rid, "/hmip/device/control/setSwitchState")
+
+    return jsonify({"status": f"{device_id}: {'ON' if state else 'OFF'}", "request_id": rid}), 200
+
+# --- Lokale GET-Route (Komfort) ---
+@app.get("/hmipSwitch")
+def hmip_switch_get():
+    # nur lokale Aufrufe erlauben
+    if request.remote_addr not in {"127.0.0.1", "::1"}:
+        return jsonify({"error": "Nur lokal erlaubt. Nutze POST mit X-API-Key."}), 403
+
     global conn
     if conn is None:
         return jsonify({"error": "WebSocket nicht verbunden"}), 503
 
     device_id = request.args.get("device")
     on_param = request.args.get("on")
+    try:
+        channel_index = int(request.args.get("channelIndex", "0"))
+    except ValueError:
+        return jsonify({"error": "channelIndex muss eine Zahl sein"}), 400
 
-    if not device_id or on_param not in ["true", "false"]:
+    if not device_id or on_param not in {"true", "false"}:
         return jsonify({"error": "Ungültige Parameter"}), 400
 
-    state = on_param == "true"
-    # Thread-sicher senden + Pending registrieren
+    state = (on_param == "true")
     with send_lock:
-        rid = send_hmip_set_switch(conn, device_id, state)
+        rid = send_hmip_set_switch(conn, device_id, state, channel_index)
     _register_pending(rid, "/hmip/device/control/setSwitchState")
 
-    return jsonify({
-        "status": f"Befehl an {device_id} gesendet: {'ON' if state else 'OFF'}",
-        "request_id": rid
-    }), 200
+    return jsonify({"status": f"{device_id}: {'ON' if state else 'OFF'}", "request_id": rid}), 200
 
 @app.route("/healthz", methods=["GET"])
 def healthz():

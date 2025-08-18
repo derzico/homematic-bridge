@@ -6,3 +6,8 @@ plugin_id:
 friendly_name:
   en: "Homematic HTTP Bridge"
   de: "Homematic HTTP Bridge"
+
+# HTTP-API Auth:
+api_key: # optional: Key hier eintragen (oder leer lassen)
+require_api_key: true
+api_key_file: data/api_key.txt # Fallback-Datei; wird bei Bedarf automatisch erzeugt
