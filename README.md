@@ -75,7 +75,7 @@ Diese Bridge verbindet sich per **WebSocket** auf die HCU (Port `9001`), sendet 
 
 ```bash
 # 1) Repository klonen
-git clone https://github.com/<dein-account>/homematic-bridge.git
+git clone https://github.com/derzico/homematic-bridge.git
 cd homematic-bridge
 
 # 2) Virtuelle Umgebung (optional, empfohlen)
@@ -131,8 +131,6 @@ pending_ttl_seconds: 60
 # Dev-Start (Fallback auf Flask-Server):
 python main.py
 
-# oder: explizit Waitress
-waitress-serve --host=0.0.0.0 --port=8080 main:app
 ```
 
 **Linux/macOS:**
