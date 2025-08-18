@@ -1,0 +1,4 @@
+homematic http bridge Copyright (c) 2025 Niclas Zico Schnell Licensed under the
+Apache License, Version 2.0. See the LICENSE file for details. This product may
+include software developed by the Flask, Requests, websocket-client, PyYAML,
+certifi, and Waitress projects and their contributors.
