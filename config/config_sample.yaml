@@ -1,5 +1,3 @@
-bridge_pass: supersecret
-bridge_user: http
 homematic_hcu: hcu1-E461.local
 homematic_token:
 ssl_cert_path:

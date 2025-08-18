@@ -24,8 +24,9 @@ config = load_config()
 config_internal = load_internal_config()
 PLUGIN_ID = config.get("plugin_id")
 
-# Health-Konfiguration
-STALE_SEC = float(config_internal.get("health_stale_seconds", 60.0))  # Snapshot gilt nach X Sekunden als alt
+# Health-/Pending-Konfiguration
+STALE_SEC = float(config_internal.get("health_stale_seconds", 60.0))       # Snapshot gilt nach X Sekunden als alt
+PENDING_TTL = float(config_internal.get("pending_ttl_seconds", 60.0))      # wie lange wir auf ACKs warten
 
 # Logging konfigurieren
 log = logging.getLogger("bridge-ws")
@@ -54,10 +55,38 @@ if config_internal.get("log_file"):
     file_handler.setFormatter(formatter)
     log.addHandler(file_handler)
 
-# Globale WebSocket-Verbindung + Sende-Lock
+# Globale WebSocket-Verbindung + Locks
 conn = None
 send_lock = Lock()
 
+# Pending-Registry: id -> {"path": str, "ts": float}
+pending_lock = Lock()
+pending: Dict[str, Dict[str, Any]] = {}
+
+def _register_pending(req_id: str, path: str) -> None:
+    if not req_id:
+        return
+    with pending_lock:
+        pending[req_id] = {"path": path, "ts": time.time()}
+
+def _resolve_pending(req_id: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not req_id:
+        return None
+    with pending_lock:
+        return pending.pop(req_id, None)
+
+def _cleanup_pending() -> None:
+    now = time.time()
+    removed = 0
+    with pending_lock:
+        to_del = [rid for rid, meta in pending.items() if now - meta.get("ts", 0) > PENDING_TTL]
+        for rid in to_del:
+            pending.pop(rid, None)
+            removed += 1
+    if removed:
+        log.debug("Pending-Requests bereinigt: %d", removed)
+
+# Snapshot/Health Helpers
 def _load_snapshot() -> Optional[Dict[str, Any]]:
     try:
         with open(config_internal["system_state_path"], "r", encoding="utf-8") as f:
@@ -76,7 +105,6 @@ def _get_nested(d, keys):
 def _devices_count_from_snapshot(snap: Optional[Dict[str, Any]]) -> int:
     if not isinstance(snap, dict):
         return 0
-    # alle gängigen Pfade prüfen (Dict oder Liste)
     candidates = [
         ("body", "devices"),
         ("body", "home", "devices"),
@@ -88,7 +116,6 @@ def _devices_count_from_snapshot(snap: Optional[Dict[str, Any]]) -> int:
         if isinstance(devs, dict):
             return len(devs)
         if isinstance(devs, list):
-            # nur valide Device-Dicts zählen
             return sum(1 for x in devs if isinstance(x, dict))
     return 0
 
@@ -117,7 +144,6 @@ def ws_loop():
             "ca_certs": cert_path
         }
         log.info("[SSL] Zertifikatspfad verwendet: %s", cert_path)
-    # im ws_loop() bei ssl_verify==True und ohne cert_path:
     elif ssl_verify:
         sslopt = {
             "cert_reqs": ssl.CERT_REQUIRED,
@@ -136,14 +162,14 @@ def ws_loop():
             log.info("WebSocket-Verbindung hergestellt.")
             backoff = 1.0  # Backoff bei Erfolg zurücksetzen
 
-            # Initialen Zustand anfordern (PluginState + Vollsnapshot)
+            # Initialen Zustand anfordern (PluginState + Vollsnapshot) UND registrieren
             with send_lock:
                 send_plugin_state(conn)
-                send_get_system_state(conn)
+                rid = send_get_system_state(conn)
+            _register_pending(rid, "/hmip/home/getSystemState")
 
             while True:
                 msg = conn.recv()
-                # Eingehende Payload nur auf DEBUG loggen (kann sensible Daten enthalten)
                 log.debug(f"Nachricht empfangen: {msg}")
                 try:
                     msg_data = json.loads(msg)
@@ -155,8 +181,28 @@ def ws_loop():
                             send_plugin_state(conn, msg_id=msg_id)
 
                     elif msg_type == "HMIP_SYSTEM_RESPONSE":
-                        # Vollzustand -> direkt speichern (komplette JSON)
-                        save_system_state(msg_data)
+                        # Response korrelieren und gezielt handeln
+                        rid = msg_data.get("id")
+                        meta = _resolve_pending(rid)
+                        code = (msg_data.get("body") or {}).get("code")
+
+                        if meta:
+                            path = meta.get("path")
+                            if path == "/hmip/home/getSystemState":
+                                # Vollsnapshot -> speichern
+                                save_system_state(msg_data)
+                                log.info("getSystemState → Snapshot gespeichert (code=%s)", code)
+                            else:
+                                # ACK zu Steuerbefehlen
+                                if code == 200:
+                                    log.info("ACK %s OK (id=%s)", path, rid)
+                                else:
+                                    log.warning("ACK %s Fehler (code=%s, id=%s)", path, code, rid)
+                        else:
+                            # Unkorrelierte Response: zur Sicherheit nur loggen
+                            log.debug("Unkorrelierte HMIP_SYSTEM_RESPONSE (id=%s, code=%s) ignoriert.", rid, code)
+
+                        _cleanup_pending()
 
                     elif msg_type == "HMIP_SYSTEM_EVENT":
                         # Delta-Event -> in bestehenden Snapshot mergen
@@ -178,6 +224,9 @@ def ws_loop():
                 pass
             finally:
                 conn = None
+            # Pending leeren (neue Session, alte IDs sind wertlos)
+            with pending_lock:
+                pending.clear()
             # Exponentielles Backoff + Jitter
             sleep_for = backoff + random.uniform(0, 0.3 * backoff)
             log.info("Reconnect in %.1fs (Backoff: %.1fs)", sleep_for, backoff)
@@ -210,11 +259,15 @@ def hmip_switch():
         return jsonify({"error": "Ungültige Parameter"}), 400
 
     state = on_param == "true"
-    # Thread-sicher senden
+    # Thread-sicher senden + Pending registrieren
     with send_lock:
-        send_hmip_set_switch(conn, device_id, state)
+        rid = send_hmip_set_switch(conn, device_id, state)
+    _register_pending(rid, "/hmip/device/control/setSwitchState")
 
-    return jsonify({"status": f"Befehl an {device_id} gesendet: {'ON' if state else 'OFF'}"}), 200
+    return jsonify({
+        "status": f"Befehl an {device_id} gesendet: {'ON' if state else 'OFF'}",
+        "request_id": rid
+    }), 200
 
 @app.route("/healthz", methods=["GET"])
 def healthz():
@@ -223,6 +276,7 @@ def healthz():
     - ws_connected: True/False
     - snapshot_age_ms: Alter der gespeicherten system_state.json (mtime)
     - devices_count: Anzahl erkannter Geräte im Snapshot
+    - pending_requests: Anzahl offener Requests ohne Response
     - status: ok | degraded | unhealthy
     """
     ws_connected = conn is not None
@@ -230,6 +284,8 @@ def healthz():
     age_ms = _snapshot_age_ms(path)
     snap = _load_snapshot()
     devices_count = _devices_count_from_snapshot(snap)
+    with pending_lock:
+        pending_count = len(pending)
 
     status = "ok"
     if not ws_connected:
@@ -243,6 +299,7 @@ def healthz():
         "ws_connected": ws_connected,
         "snapshot_age_ms": age_ms,
         "devices_count": devices_count,
+        "pending_requests": pending_count,
         "status": status
     }), 200
 

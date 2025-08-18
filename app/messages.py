@@ -7,7 +7,6 @@ from config.loader import load_config, load_internal_config
 
 # Konfiguration laden (inkl. Token sicherstellen)
 config = load_config()
-
 log = logging.getLogger("bridge-ws")
 
 PLUGIN_ID = config.get("plugin_id")
@@ -30,40 +29,40 @@ def send_plugin_state(ws, msg_id=None):
     except Exception as e:
         log.error(f"Fehler beim Senden von PLUGIN_STATE_RESPONSE: {e}")
 
-def send_get_system_state(ws):
+def _build_hmip_request(path: str, body: dict | None = None) -> tuple[str, dict]:
+    rid = str(uuid.uuid4())
     payload = {
         "pluginId": PLUGIN_ID,
-        "id": str(uuid.uuid4()),
+        "id": rid,
         "type": "HMIP_SYSTEM_REQUEST",
         "body": {
-            "path": "/hmip/home/getSystemState",
-            "body": {}
+            "path": path,
+            "body": body or {}
         }
     }
+    return rid, payload
 
+def send_get_system_state(ws) -> str:
+    rid, payload = _build_hmip_request("/hmip/home/getSystemState", {})
     try:
         ws.send(json.dumps(payload))
         log.info("HMIP_SYSTEM_REQUEST → getSystemState gesendet.")
+        return rid
     except Exception as e:
         log.error(f"Fehler beim Senden von getSystemState: {e}")
+        return rid  # trotzdem zurückgeben, damit caller ggf. aufräumt
 
-def send_hmip_set_switch(ws, device_id: str, state: bool, channel_index: int = 0):
-    payload = {
-        "pluginId": PLUGIN_ID,
-        "id": str(uuid.uuid4()),
-        "type": "HMIP_SYSTEM_REQUEST",
-        "body": {
-            "path": "/hmip/device/control/setSwitchState",
-            "body": {
-                "on": state,
-                "channelIndex": channel_index,
-                "deviceId": device_id
-            }
-        }
+def send_hmip_set_switch(ws, device_id: str, state: bool, channel_index: int = 0) -> str:
+    body = {
+        "on": state,
+        "channelIndex": channel_index,
+        "deviceId": device_id
     }
-
+    rid, payload = _build_hmip_request("/hmip/device/control/setSwitchState", body)
     try:
         ws.send(json.dumps(payload))
-        log.info(f"HMIP_SYSTEM_REQUEST gesendet für device {device_id} → {'ON' if state else 'OFF'}")
+        log.info(f"HMIP_SYSTEM_REQUEST gesendet für device {device_id} → {'ON' if state else 'OFF'} (id={rid})")
+        return rid
     except Exception as e:
         log.error(f"Fehler beim Senden von HMIP_SYSTEM_REQUEST: {e}")
+        return rid
