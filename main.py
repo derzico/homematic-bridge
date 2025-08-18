@@ -9,6 +9,7 @@ import websocket
 import ssl
 import os
 import random
+import certifi
 from typing import Optional, Dict, Any
 from logging.handlers import TimedRotatingFileHandler
 from flask import Flask, request, jsonify, send_file, Response
@@ -116,9 +117,13 @@ def ws_loop():
             "ca_certs": cert_path
         }
         log.info("[SSL] Zertifikatspfad verwendet: %s", cert_path)
+    # im ws_loop() bei ssl_verify==True und ohne cert_path:
     elif ssl_verify:
-        sslopt = {"cert_reqs": ssl.CERT_REQUIRED}
-        log.info("[SSL] Systemweit vertrauenswürdige Zertifikate werden verwendet.")
+        sslopt = {
+            "cert_reqs": ssl.CERT_REQUIRED,
+            "ca_certs": certifi.where()
+        }
+        log.info("[SSL] Certifi CA-Bundle wird verwendet.")
     else:
         sslopt = {"cert_reqs": ssl.CERT_NONE}
         log.warning("[SSL] Verbindung ohne Zertifikatsprüfung (unsicher)")
@@ -242,7 +247,12 @@ def healthz():
     }), 200
 
 if __name__ == '__main__':
-    # Starte WebSocket-Thread
     threading.Thread(target=ws_loop, daemon=True).start()
-    log.info("Starte HTTP Server auf Port 8080")
-    app.run(host="0.0.0.0", port=8080)
+    host, port = "0.0.0.0", 8080
+    try:
+        from waitress import serve
+        log.info("Starte HTTP Server mit Waitress auf Port %s", port)
+        serve(app, host=host, port=port, threads=8)  # threads anpassen (z. B. 8–16)
+    except ImportError:
+        log.info("Waitress nicht installiert – nutze Flask-Dev-Server")
+        app.run(host=host, port=port)
