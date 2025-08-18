@@ -11,11 +11,11 @@ import os
 import random
 from typing import Optional, Dict, Any
 from logging.handlers import TimedRotatingFileHandler
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, Response
 from config.loader import load_config, load_internal_config
 from app.messages import send_plugin_state, send_hmip_set_switch, send_get_system_state
 from app.utils import save_system_state
-from app.generate_html import generate_device_overview
+from app.generate_html import generate_device_overview, generate_device_detail_html
 from threading import Lock
 
 # Konfiguration laden (inkl. Token sicherstellen)
@@ -186,6 +186,11 @@ app = Flask(__name__)
 def serve_html_overview():
     generate_device_overview(config_internal["system_state_path"], "static/device_overview.html")
     return send_file("static/device_overview.html")
+
+@app.route("/devices/<device_id>", methods=["GET"])
+def serve_device_detail(device_id):
+    html_str = generate_device_detail_html(config_internal["system_state_path"], device_id)
+    return Response(html_str, mimetype="text/html; charset=utf-8")
 
 @app.route("/hmipSwitch", methods=["GET"])
 def hmip_switch():
