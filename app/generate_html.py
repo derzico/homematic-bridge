@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 # app/generate_html.py
 import json
 from pathlib import Path
