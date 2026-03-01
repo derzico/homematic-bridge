@@ -1,0 +1,10 @@
+.venv/
+.claude/
+__pycache__/
+*.pyc
+.env
+config/config.yaml
+data/
+logs/
+static/
+*.crt
