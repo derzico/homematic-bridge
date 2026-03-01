@@ -2,10 +2,12 @@
 
 # request_token.py
 
-import requests
-import yaml
 import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import requests
+import yaml
 import urllib3
 import logging
 from logging.handlers import TimedRotatingFileHandler
