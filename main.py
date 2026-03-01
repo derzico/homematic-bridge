@@ -2,6 +2,7 @@
 # main.py
 
 import json
+import sys
 import threading
 import time
 import logging
@@ -64,6 +65,13 @@ def _ensure_api_key():
             logging.getLogger("bridge-ws").error("API-Key konnte nicht gespeichert werden: %s", e)
 
 _ensure_api_key()
+
+if not config.get("homematic_token"):
+    logging.getLogger("bridge-ws").error(
+        "Kein homematic_token in config.yaml! "
+        "Bitte zuerst 'python app/request_token.py' ausführen um einen Token zu generieren."
+    )
+    sys.exit(1)
 
 def require_api_key(f):
     @wraps(f)
