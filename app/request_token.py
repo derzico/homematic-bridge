@@ -20,8 +20,9 @@ config_internal = load_internal_config()
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 PLUGIN_ID = config.get("plugin_id", "de.doe.jane.plugin.example")
-FRIENDLY_NAME = config.get("friendly_name")
-CONFIG_FILE = "config.yaml"
+_fn = config.get("friendly_name", "Homematic Bridge")
+FRIENDLY_NAME = _fn.get("en") or next(iter(_fn.values()), "Homematic Bridge") if isinstance(_fn, dict) else _fn
+CONFIG_FILE = "config/config.yaml"
 
 HEADERS = {
     "VERSION": "12"
