@@ -20,6 +20,8 @@
 - [Architektur](#architektur)
 - [Voraussetzungen](#voraussetzungen)
 - [Quickstart mit Docker](#quickstart-mit-docker)
+  - [Token generieren](#1-token-generieren)
+  - [Starten](#2-starten)
 - [Manuelle Installation](#manuelle-installation)
 - [Konfiguration](#konfiguration)
   - [config.yaml](#configyaml)
@@ -27,6 +29,7 @@
 - [HTTP-Endpoints](#http-endpoints)
 - [HTML-Ansichten](#html-ansichten)
 - [Sicherheit](#sicherheit)
+- [Update](#update)
 - [Troubleshooting](#troubleshooting)
 - [Entwicklung & Logs](#entwicklung--logs)
 - [Lizenz](#lizenz)
@@ -52,7 +55,7 @@ Diese Bridge verbindet sich per **WebSocket** auf die HCU (Port `9001`), sendet 
 - ✅ Atomare Writes (keine halb geschriebenen JSONs)
 - ✅ Pending-Registry (Request–Response-Korrelation über `id`)
 - ✅ API-Key Auth (automatisch generiert, konfigurierbar)
-- ✅ Docker-Support
+- ✅ Docker-Support (Waitress als Prod-WSGI auf Windows & Linux)
 
 ## Architektur
 
@@ -60,25 +63,44 @@ Diese Bridge verbindet sich per **WebSocket** auf die HCU (Port `9001`), sendet 
 - **`app/messages.py`** – Baut **HMIP_SYSTEM_REQUEST**-Messages (u. a. `getSystemState`, `setSwitchState`) und liefert **Request-IDs** zurück.
 - **`app/utils.py`** – `save_system_state(msg)`: Speichert **Vollzustand** oder merged **Events** in `system_state.json`. Atomare Writes.
 - **`app/generate_html.py`** – Baut **Übersichts-HTML** und **Geräte-Detail-HTML** (zeigt auch `functionalChannels`).
+- **`app/request_token.py`** – Einmaliges Token-Generierungs-Script (Aktivierungsschlüssel → authToken).
 - **`config/loader.py`** – Lädt `config.yaml` / `internal_config.yaml`.
 
 ## Voraussetzungen
 
-- Netzwerkzugriff zur **HCU** (Port `9001`)
+- Netzwerkzugriff zur **HCU** (Port `9001` für WebSocket, Port `6969` für Token-Generierung)
 - **Docker** (empfohlen) **oder** Python 3.11+
 
 ## Quickstart mit Docker
 
+### 1. Token generieren
+
+Vor dem ersten Start muss einmalig ein **Homematic-Token** generiert werden:
+
+**a) In der HCU-Weboberfläche:**
+1. HCU-Weboberfläche öffnen → Einstellungen → Developer Mode aktivieren
+2. Einen **Activation Key** (kurzer Code, z. B. `697CC4`) generieren
+
+**b) Token anfordern:**
 ```bash
-# 1. Repository klonen
+# Repository klonen
 git clone https://github.com/derzico/homematic-bridge.git
 cd homematic-bridge
 
-# 2. Config anlegen und befüllen
+# Config anlegen
 cp config/config_sample.yaml config/config.yaml
-# → homematic_hcu, homematic_token, plugin_id eintragen
+# → homematic_hcu und plugin_id in config.yaml eintragen
 
-# 3. Starten
+# Token generieren (interaktiv, fragt nach dem Activation Key)
+docker compose run --rm homematic-bridge python app/request_token.py
+```
+
+Der generierte Token wird automatisch in `config/config.yaml` gespeichert.
+
+### 2. Starten
+
+```bash
+# Im Hintergrund starten
 docker compose up -d
 
 # Logs verfolgen
@@ -88,7 +110,7 @@ docker compose logs -f
 docker compose down
 ```
 
-Der API-Key wird beim ersten Start automatisch generiert und in `data/api_key.txt` gespeichert.
+Der API-Key für die HTTP-API wird beim ersten Start automatisch generiert und in `data/api_key.txt` gespeichert.
 
 ## Manuelle Installation
 
@@ -104,10 +126,13 @@ source .venv/bin/activate    # Windows: .venv\Scripts\activate
 # 3. Abhängigkeiten installieren
 pip install -r requirements.txt
 
-# 4. Config anlegen und befüllen
+# 4. Config anlegen
 cp config/config_sample.yaml config/config.yaml
 
-# 5. Starten
+# 5. Token generieren (einmalig)
+python app/request_token.py
+
+# 6. Starten
 python main.py
 ```
 
@@ -130,8 +155,6 @@ api_key:          # optional: Key hier eintragen, sonst wird automatisch generie
 require_api_key: true
 api_key_file: data/api_key.txt
 ```
-
-> **Token generieren:** HCU-Weboberfläche → Developer Mode → Activation Key generieren, dann `python app/request_token.py` ausführen.
 
 > **API-Key:** Wird beim ersten Start automatisch generiert und in `data/api_key.txt` gespeichert. Alternativ über die Umgebungsvariable `BRIDGE_API_KEY` vorgeben.
 
@@ -213,8 +236,42 @@ Die Übersicht verlinkt direkt auf die Detailseiten.
 - **TLS zum HCU-WebSocket** aktivieren: `ssl_verify: true` + `ssl_cert_path` oder `certifi`-Bundle.
 - Empfehlung: Bridge hinter einem **Reverse Proxy** (z. B. Caddy, nginx) mit TLS betreiben.
 
+## Update
+
+### Mit Docker
+
+```bash
+# 1. Neuen Code holen
+git pull
+
+# 2. Image neu bauen und Container ersetzen
+docker compose up -d --build
+
+# 3. Prüfen ob alles läuft
+docker compose logs -f
+```
+
+`config/config.yaml`, `data/` und `logs/` bleiben durch die Volumes erhalten – kein Datenverlust.
+
+> Der Homematic-Token muss **nicht** neu generiert werden. Er bleibt in `config/config.yaml` gespeichert.
+
+### Manuell (ohne Docker)
+
+```bash
+# 1. Neuen Code holen
+git pull
+
+# 2. Abhängigkeiten aktualisieren
+source .venv/bin/activate    # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+
+# 3. Neu starten
+python main.py
+```
+
 ## Troubleshooting
 
+- **`"Kein homematic_token konfiguriert"`** → Token noch nicht generiert. Zuerst `python app/request_token.py` (manuell) oder `docker compose run --rm homematic-bridge python app/request_token.py` (Docker) ausführen.
 - **`devices_count: 0` in `/healthz`** → Prüfe ob `system_state.json` einen Vollzustand enthält. Bridge neustarten triggert erneut `getSystemState`.
 - **WebSocket verbindet nicht** → Hostname/Port zur HCU prüfen; Firewall; bei Zertifikatfehlern `ssl_verify: false` (nur Test!) oder korrekte CA angeben.
 - **HTML zeigt „Keine Geräte"** → Prüfe `system_state.json`; die Bridge unterstützt Dict- und Listen-Layouts unter `body` / `body.body`.
