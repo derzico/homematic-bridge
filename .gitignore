@@ -7,3 +7,4 @@ config/config.yaml
 static/
 data/
 logs/
+.claude/

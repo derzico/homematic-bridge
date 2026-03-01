@@ -103,7 +103,6 @@ def _merge_device(current: Dict[str, Any], incoming: Dict[str, Any]) -> Dict[str
         )
 
     # Optional: Zeitpunkt des letzten Merges
-    merged["_lastMerged"] = True  # Marker; bei Bedarf entfernen
     return merged
 
 # --------- Public: Save + Merge ---------

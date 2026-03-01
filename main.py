@@ -86,6 +86,7 @@ formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s')
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(formatter)
 log.addHandler(console_handler)
+log.propagate = False
 
 # Datei mit Rotation (+ Ordner automatisch anlegen)
 if config_internal.get("log_file"):
@@ -188,9 +189,6 @@ def ws_loop():
     cert_path = config.get("ssl_cert_path")
 
     if ssl_verify and cert_path:
-        sslopt = {
-            "cert_reqs": ssl.SSLContext.verify_mode,  # placeholder to silence linters; replaced below
-        }
         sslopt = {"cert_reqs": ssl.CERT_REQUIRED, "ca_certs": cert_path}
         log.info("[SSL] Zertifikatspfad verwendet: %s", cert_path)
     elif ssl_verify:
@@ -208,6 +206,7 @@ def ws_loop():
         try:
             log.info("Verbinde zu WebSocket (Port 9001)...")
             conn = websocket.create_connection(url, header=headers, sslopt=sslopt, timeout=10)
+            conn.settimeout(30)  # recv-Timeout: 30s, danach Keepalive-Ping
             log.info("WebSocket-Verbindung hergestellt.")
             backoff = 1.0  # Backoff bei Erfolg zurücksetzen
 
@@ -218,7 +217,18 @@ def ws_loop():
             _register_pending(rid, "/hmip/home/getSystemState")
 
             while True:
-                msg = conn.recv()
+                try:
+                    msg = conn.recv()
+                except websocket.WebSocketTimeoutException:
+                    # Keine Daten für 30s → Ping senden um Verbindung zu prüfen
+                    try:
+                        with send_lock:
+                            conn.ping()
+                        log.debug("Keepalive-Ping gesendet.")
+                    except Exception as ping_err:
+                        log.warning("Keepalive-Ping fehlgeschlagen: %s", ping_err)
+                        raise
+                    continue
                 log.debug(f"Nachricht empfangen: {msg}")
                 try:
                     msg_data = json.loads(msg)
