@@ -327,12 +327,15 @@ def hmip_switch_post():
 
     return jsonify({"status": f"{device_id}: {'ON' if state else 'OFF'}", "request_id": rid}), 200
 
-# --- Lokale GET-Route (Komfort) ---
+# --- GET-Route: lokal ohne Key, extern mit X-API-Key (z.B. Loxone) ---
 @app.get("/hmipSwitch")
 def hmip_switch_get():
-    # nur lokale Aufrufe erlauben
-    if request.remote_addr not in {"127.0.0.1", "::1"}:
-        return jsonify({"error": "Nur lokal erlaubt. Nutze POST mit X-API-Key."}), 403
+    local = request.remote_addr in {"127.0.0.1", "::1"}
+    if not local:
+        if not REQUIRE_API_KEY or not API_KEY:
+            return jsonify({"error": "Nur lokal erlaubt oder X-API-Key erforderlich"}), 403
+        if request.headers.get("X-API-Key") != API_KEY:
+            return jsonify({"error": "unauthorized"}), 401
 
     global conn
     if conn is None:
