@@ -78,9 +78,9 @@ def request_token(hcu_host, code, log, verify):
         "pluginId": PLUGIN_ID,
         "friendlyName": FRIENDLY_NAME
     }
-    log.info(f"[DEBUG] URL: {url}")
-    log.info(f"[DEBUG] Headers: {HEADERS}")
-    log.info(f"[DEBUG] Payload: {payload}")
+    print(f"[DEBUG] URL: {url}")
+    print(f"[DEBUG] Headers: {HEADERS}")
+    print(f"[DEBUG] Payload: {payload}")
     try:
         response = requests.post(url, headers=HEADERS, json=payload, verify=verify, timeout=10)
         if response.status_code == 200:
