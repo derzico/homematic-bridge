@@ -9,5 +9,6 @@ services:
       - TZ=Europe/Vienna
     volumes:
       - ./config/config.yaml:/app/config/config.yaml
+      - ./config/internal_config.yaml:/app/config/internal_config.yaml
       - ./data:/app/data
       - ./logs:/app/logs
