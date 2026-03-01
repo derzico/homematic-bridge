@@ -85,6 +85,21 @@ def require_api_key(f):
         return f(*args, **kwargs)
     return wrapper
 
+def require_web_auth(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not REQUIRE_API_KEY:
+            return f(*args, **kwargs)
+        auth = request.authorization
+        if not auth or auth.password != API_KEY:
+            return Response(
+                "Authentifizierung erforderlich.",
+                401,
+                {"WWW-Authenticate": 'Basic realm="Homematic Bridge"'}
+            )
+        return f(*args, **kwargs)
+    return wrapper
+
 # Logging konfigurieren
 log = logging.getLogger("bridge-ws")
 log.setLevel(getattr(logging, config_internal.get("log_level", "INFO").upper(), logging.INFO))
@@ -304,11 +319,13 @@ def ws_loop():
 app = Flask(__name__)
 
 @app.route("/devices/html")
+@require_web_auth
 def serve_html_overview():
     generate_device_overview(config_internal["system_state_path"], "static/device_overview.html")
     return send_file("static/device_overview.html")
 
 @app.route("/devices/<device_id>", methods=["GET"])
+@require_web_auth
 def serve_device_detail(device_id):
     html_str = generate_device_detail_html(config_internal["system_state_path"], device_id)
     return Response(html_str, mimetype="text/html; charset=utf-8")
