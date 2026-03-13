@@ -27,6 +27,7 @@
   - [config.yaml](#configyaml)
   - [internal_config.yaml](#internal_configyaml)
 - [HTTP-Endpoints](#http-endpoints)
+- [Loxone-Integration](#loxone-integration)
 - [HTML-Ansichten](#html-ansichten)
 - [Sicherheit](#sicherheit)
 - [Update](#update)
@@ -221,6 +222,62 @@ Zustand der Bridge:
   "status": "ok|degraded|unhealthy"
 }
 ```
+
+## Loxone-Integration
+
+Die Bridge lässt sich einfach über **Virtuelle HTTP-Ausgänge** in Loxone Config einbinden.
+
+### Voraussetzungen
+
+- API-Key aus `data/api_key.txt` bereithalten
+- Device-ID des Geräts (z. B. aus `/devices/html` oder dem `system_state.json`)
+- Bridge im selben Netzwerk wie der Loxone Miniserver erreichbar
+
+### Virtuellen HTTP-Ausgang anlegen
+
+In **Loxone Config** → Peripherie → Virtuell → Virtuellen HTTP-Ausgang hinzufügen:
+
+| Feld | Wert |
+|------|------|
+| **Name** | z. B. `Homematic Bridge` |
+| **Adresse** | `http://<bridge-ip>:8080` |
+
+### Virtuellen Ausgangsbefehl anlegen
+
+Unter dem HTTP-Ausgang einen **Virtuellen Ausgangsbefehl** hinzufügen:
+
+| Feld | Wert |
+|------|------|
+| **Name** | z. B. `Stehlampe EIN/AUS` |
+| **Befehl bei EIN** | `/hmipSwitch` |
+| **HTTP-Post-Body bei EIN** | `{"device":"<DEVICE_ID>","on":true,"channelIndex":1}` |
+| **HTTP-Header bei EIN** | `X-API-Key: <key>\r\nContent-Type: application/json` |
+| **Befehl bei AUS** | `/hmipSwitch` |
+| **HTTP-Post-Body bei AUS** | `{"device":"<DEVICE_ID>","on":false,"channelIndex":1}` |
+| **HTTP-Header bei AUS** | `X-API-Key: <key>\r\nContent-Type: application/json` |
+
+> **Hinweis:** Den Body-Inhalt ohne Anführungszeichen und ohne `-d` eintragen — nur den reinen JSON-String. Headers mehrerer Felder mit `\r\n` trennen.
+
+### Konkrete Beispielkonfiguration (Stehlampe)
+
+```
+Adresse:              http://192.168.2.108:8080
+Befehl bei EIN:       /hmipSwitch
+Body bei EIN:         {"device":"3014F711A0000DE2699BC616","on":true,"channelIndex":1}
+Header bei EIN:       X-API-Key: ZfAWvv_...\r\nContent-Type: application/json
+
+Befehl bei AUS:       /hmipSwitch
+Body bei AUS:         {"device":"3014F711A0000DE2699BC616","on":false,"channelIndex":1}
+Header bei AUS:       X-API-Key: ZfAWvv_...\r\nContent-Type: application/json
+```
+
+### channelIndex ermitteln
+
+Den richtigen `channelIndex` findest du in der Gerätedetailseite (`/devices/<DEVICE_ID>`):
+- Channel `0` = Basiskanal (Gerätestatus, nicht steuerbar)
+- Channel `1` = erster Funktionskanal (z. B. `DIMMER_CHANNEL`, `SWITCH_CHANNEL`)
+
+---
 
 ## HTML-Ansichten
 
