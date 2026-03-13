@@ -257,7 +257,7 @@ def ws_loop():
                     msg_data = json.loads(msg)
                     msg_type = msg_data.get("type")
 
-                    if msg_type == "PluginStateRequest":
+                    if msg_type == "PLUGIN_STATE_REQUEST":
                         msg_id = msg_data.get("id")
                         with send_lock:
                             send_plugin_state(conn, msg_id=msg_id)
