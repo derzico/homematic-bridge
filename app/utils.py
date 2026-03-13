@@ -168,7 +168,7 @@ def save_system_state(msg: Dict[str, Any]) -> None:
                     return
 
             _write_snapshot(snapshot)
-            log.info("Systemzustand (Delta-Event) in Snapshot gemerged.")
+            log.debug("Systemzustand (Delta-Event) in Snapshot gemerged.")
             return
 
         # Andere Typen ignorieren wir still (oder debug-loggen)
