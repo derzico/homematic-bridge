@@ -54,6 +54,61 @@ def send_get_system_state(ws) -> str:
         log.error(f"Fehler beim Senden von getSystemState: {e}")
         return rid  # trotzdem zurückgeben, damit caller ggf. aufräumt
 
+def send_config_template_response(ws, msg_id: str, current_log_level: str, recent_logs: str = "") -> None:
+    response = {
+        "pluginId": PLUGIN_ID,
+        "id": msg_id or str(uuid.uuid4()),
+        "type": "CONFIG_TEMPLATE_RESPONSE",
+        "body": {
+            "groups": {
+                "settings": {"friendlyName": "Einstellungen", "order": 1},
+                "status":   {"friendlyName": "Status / Logs",  "order": 2},
+            },
+            "properties": {
+                "log_level": {
+                    "dataType":     "ENUM",
+                    "friendlyName": "Log-Level",
+                    "description":  "Detailgrad der Protokollierung (debug / info / warning / error)",
+                    "currentValue": current_log_level,
+                    "values":       ["debug", "info", "warning", "error"],
+                    "groupId":      "settings",
+                    "required":     True,
+                    "order":        1,
+                },
+                "recent_logs": {
+                    "dataType":     "READONLY",
+                    "friendlyName": "Letzte Log-Einträge",
+                    "currentValue": recent_logs,
+                    "groupId":      "status",
+                    "order":        1,
+                },
+            },
+        },
+    }
+    try:
+        ws.send(json.dumps(response))
+        log.info("CONFIG_TEMPLATE_RESPONSE gesendet.")
+    except Exception as e:
+        log.error(f"Fehler beim Senden von CONFIG_TEMPLATE_RESPONSE: {e}")
+
+
+def send_config_update_response(ws, msg_id: str, status: str = "APPLIED", message: str = None) -> None:
+    body = {"status": status}
+    if message:
+        body["message"] = message
+    response = {
+        "pluginId": PLUGIN_ID,
+        "id": msg_id,
+        "type": "CONFIG_UPDATE_RESPONSE",
+        "body": body,
+    }
+    try:
+        ws.send(json.dumps(response))
+        log.info(f"CONFIG_UPDATE_RESPONSE gesendet (status={status}).")
+    except Exception as e:
+        log.error(f"Fehler beim Senden von CONFIG_UPDATE_RESPONSE: {e}")
+
+
 def send_hmip_set_switch(ws, device_id: str, state: bool, channel_index: int = 0) -> str:
     body = {
         "on": state,

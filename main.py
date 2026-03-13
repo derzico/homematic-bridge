@@ -18,7 +18,8 @@ from typing import Optional, Dict, Any
 from logging.handlers import TimedRotatingFileHandler
 from flask import Flask, request, jsonify, send_file, Response
 from config.loader import load_config, load_internal_config
-from app.messages import send_plugin_state, send_hmip_set_switch, send_get_system_state
+from app.messages import (send_plugin_state, send_hmip_set_switch, send_get_system_state,
+                          send_config_template_response, send_config_update_response)
 from app.utils import save_system_state
 from app.generate_html import generate_device_overview, generate_device_detail_html
 from threading import Lock
@@ -127,6 +128,38 @@ if config_internal.get("log_file"):
     )
     file_handler.setFormatter(formatter)
     log.addHandler(file_handler)
+
+def _get_recent_logs(n: int = 25) -> str:
+    log_file = config_internal.get("log_file")
+    if not log_file or not os.path.exists(log_file):
+        return "(keine Log-Datei gefunden)"
+    try:
+        with open(log_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        return "".join(lines[-n:]).strip() or "(Log leer)"
+    except Exception as e:
+        return f"(Fehler beim Lesen: {e})"
+
+
+def _apply_log_level(new_level: str) -> bool:
+    level = getattr(logging, new_level.upper(), None)
+    if level is None:
+        return False
+    log.setLevel(level)
+    config_internal["log_level"] = new_level.lower()
+    cfg_path = "config/internal_config.yaml"
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            ic = yaml.safe_load(f) or {}
+        ic["log_level"] = new_level.lower()
+        tmp = cfg_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            yaml.dump(ic, f)
+        os.replace(tmp, cfg_path)
+    except Exception as e:
+        log.error("log_level konnte nicht in internal_config.yaml gespeichert werden: %s", e)
+    return True
+
 
 # Globale WebSocket-Verbindung + Locks
 conn = None
@@ -285,6 +318,28 @@ def ws_loop():
                             log.debug("Unkorrelierte HMIP_SYSTEM_RESPONSE (id=%s, code=%s) ignoriert.", rid, code)
 
                         _cleanup_pending()
+
+                    elif msg_type == "CONFIG_TEMPLATE_REQUEST":
+                        msg_id = msg_data.get("id")
+                        with send_lock:
+                            send_config_template_response(
+                                conn, msg_id,
+                                config_internal.get("log_level", "info"),
+                                _get_recent_logs(25),
+                            )
+
+                    elif msg_type == "CONFIG_UPDATE_REQUEST":
+                        msg_id = msg_data.get("id")
+                        props = (msg_data.get("body") or {}).get("properties") or {}
+                        new_level = props.get("log_level")
+                        if new_level and new_level in ("debug", "info", "warning", "error"):
+                            _apply_log_level(new_level)
+                            feedback = f"Log-Level auf '{new_level}' gesetzt."
+                            log.info(feedback)
+                        else:
+                            feedback = None
+                        with send_lock:
+                            send_config_update_response(conn, msg_id, "APPLIED", feedback)
 
                     elif msg_type == "HMIP_SYSTEM_EVENT":
                         # Delta-Event -> in bestehenden Snapshot mergen
