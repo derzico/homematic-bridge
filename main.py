@@ -338,7 +338,7 @@ def hmip_switch_post():
     if conn is None:
         return jsonify({"error": "WebSocket nicht verbunden"}), 503
 
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True, force=True) or {}
     device_id = data.get("device")
     state = data.get("on")
     channel_index = data.get("channelIndex", 0)
