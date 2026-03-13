@@ -129,16 +129,17 @@ if config_internal.get("log_file"):
     file_handler.setFormatter(formatter)
     log.addHandler(file_handler)
 
-def _get_recent_logs(n: int = 25) -> str:
+def _get_recent_logs(n: int = 10) -> list:
     log_file = config_internal.get("log_file")
     if not log_file or not os.path.exists(log_file):
-        return "(keine Log-Datei gefunden)"
+        return ["(keine Log-Datei gefunden)"]
     try:
         with open(log_file, "r", encoding="utf-8") as f:
             lines = f.readlines()
-        return "".join(lines[-n:]).strip() or "(Log leer)"
+        result = [l.rstrip() for l in lines[-n:] if l.strip()]
+        return result or ["(Log leer)"]
     except Exception as e:
-        return f"(Fehler beim Lesen: {e})"
+        return [f"(Fehler beim Lesen: {e})"]
 
 
 def _apply_log_level(new_level: str) -> bool:
