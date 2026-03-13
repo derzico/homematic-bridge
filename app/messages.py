@@ -54,37 +54,23 @@ def send_get_system_state(ws) -> str:
         log.error(f"Fehler beim Senden von getSystemState: {e}")
         return rid  # trotzdem zurückgeben, damit caller ggf. aufräumt
 
-def send_config_template_response(ws, msg_id: str, current_log_level: str, recent_log_lines: list = None) -> None:
-    properties = {
-        "log_level": {
-            "dataType":     "ENUM",
-            "friendlyName": "Log-Level",
-            "description":  "Detailgrad der Protokollierung (debug / info / warning / error)",
-            "currentValue": current_log_level,
-            "values":       ["debug", "info", "warning", "error"],
-            "groupId":      "settings",
-            "required":     True,
-            "order":        1,
-        },
-    }
-    for i, line in enumerate(recent_log_lines or []):
-        properties[f"log_{i}"] = {
-            "dataType":     "READONLY",
-            "friendlyName": f"Log {i + 1}",
-            "currentValue": line,
-            "groupId":      "status",
-            "order":        i + 1,
-        }
+def send_config_template_response(ws, msg_id: str, current_log_level: str) -> None:
     response = {
         "pluginId": PLUGIN_ID,
         "id": msg_id or str(uuid.uuid4()),
         "type": "CONFIG_TEMPLATE_RESPONSE",
         "body": {
-            "groups": {
-                "settings": {"friendlyName": "Einstellungen", "order": 1},
-                "status":   {"friendlyName": "Status / Logs",  "order": 2},
+            "properties": {
+                "log_level": {
+                    "dataType":     "ENUM",
+                    "friendlyName": "Log-Level",
+                    "description":  "Detailgrad der Protokollierung (debug / info / warning / error)",
+                    "currentValue": current_log_level,
+                    "values":       ["debug", "info", "warning", "error"],
+                    "required":     True,
+                    "order":        1,
+                },
             },
-            "properties": properties,
         },
     }
     try:

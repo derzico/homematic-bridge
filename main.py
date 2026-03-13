@@ -129,18 +129,6 @@ if config_internal.get("log_file"):
     file_handler.setFormatter(formatter)
     log.addHandler(file_handler)
 
-def _get_recent_logs(n: int = 10) -> list:
-    log_file = config_internal.get("log_file")
-    if not log_file or not os.path.exists(log_file):
-        return ["(keine Log-Datei gefunden)"]
-    try:
-        with open(log_file, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-        result = [l.rstrip() for l in lines[-n:] if l.strip()]
-        return result or ["(Log leer)"]
-    except Exception as e:
-        return [f"(Fehler beim Lesen: {e})"]
-
 
 def _apply_log_level(new_level: str) -> bool:
     level = getattr(logging, new_level.upper(), None)
@@ -326,7 +314,6 @@ def ws_loop():
                             send_config_template_response(
                                 conn, msg_id,
                                 config_internal.get("log_level", "info"),
-                                _get_recent_logs(25),
                             )
 
                     elif msg_type == "CONFIG_UPDATE_REQUEST":
