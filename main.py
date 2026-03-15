@@ -18,7 +18,8 @@ from typing import Optional, Dict, Any
 from logging.handlers import TimedRotatingFileHandler
 from flask import Flask, request, jsonify, send_file, Response
 from config.loader import load_config, load_internal_config
-from app.messages import (send_plugin_state, send_hmip_set_switch, send_get_system_state,
+from app.messages import (send_plugin_state, send_hmip_set_switch, send_hmip_set_dim_level,
+                          send_get_system_state,
                           send_config_template_response, send_config_update_response)
 from app.utils import save_system_state
 from app.generate_html import generate_device_overview, generate_device_detail_html
@@ -394,6 +395,39 @@ def hmip_switch_post():
     _register_pending(rid, "/hmip/device/control/setSwitchState")
 
     return jsonify({"status": f"{device_id}: {'ON' if state else 'OFF'}", "request_id": rid}), 200
+
+# --- POST-Route für Dimmer (z.B. Loxone Lichtsteuerungsbaustein) ---
+@app.post("/hmipDimmer")
+@require_api_key
+def hmip_dimmer_post():
+    global conn
+    if conn is None:
+        return jsonify({"error": "WebSocket nicht verbunden"}), 503
+
+    data = request.get_json(silent=True, force=True) or {}
+    device_id = data.get("device")
+    dim_level = data.get("dimLevel")
+    channel_index = data.get("channelIndex", 1)
+
+    if not device_id or dim_level is None:
+        return jsonify({"error": "Ungültige Parameter: device (str), dimLevel (0-100), optional channelIndex (int, default 1)"}), 400
+
+    try:
+        dim_level = float(dim_level)
+    except (TypeError, ValueError):
+        return jsonify({"error": "dimLevel muss eine Zahl sein"}), 400
+
+    if not 0 <= dim_level <= 100:
+        return jsonify({"error": "dimLevel muss zwischen 0 und 100 liegen"}), 400
+
+    # Loxone sendet 0-100%, HmIP erwartet 0.0-1.0
+    hmip_dim_level = round(dim_level / 100.0, 2)
+
+    with send_lock:
+        rid = send_hmip_set_dim_level(conn, device_id, hmip_dim_level, channel_index)
+    _register_pending(rid, "/hmip/device/control/setDimLevel")
+
+    return jsonify({"status": f"{device_id}: dimLevel={dim_level}%", "request_id": rid}), 200
 
 # --- GET-Route: lokal ohne Key, extern mit X-API-Key (z.B. Loxone) ---
 @app.get("/hmipSwitch")
