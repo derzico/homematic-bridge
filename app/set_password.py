@@ -38,10 +38,8 @@ def main():
     config.pop("web_password", None)        # Klartext-Eintrag entfernen falls vorhanden
     config["web_password_hash"] = pw_hash
 
-    tmp = CONFIG_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         yaml.dump(config, f, allow_unicode=True)
-    os.replace(tmp, CONFIG_FILE)
 
     print(f"Passwort gesetzt und als Hash in {CONFIG_FILE} gespeichert.")
     print("Container-Neustart: docker compose restart")
