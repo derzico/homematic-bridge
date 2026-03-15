@@ -10,5 +10,6 @@ services:
     volumes:
       - ./config/config.yaml:/app/config/config.yaml
       - ./config/internal_config.yaml:/app/config/internal_config.yaml
+      - ./config/hcu.crt:/app/config/hcu.crt:ro
       - ./data:/app/data
       - ./logs:/app/logs
