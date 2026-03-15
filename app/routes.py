@@ -8,7 +8,7 @@ import os
 import time
 from typing import Any, Dict, Optional
 
-from flask import Blueprint, Response, jsonify, redirect, request, send_file, session
+from flask import Blueprint, Response, jsonify, redirect, request, session
 from werkzeug.security import check_password_hash
 
 import app.state as state
@@ -114,8 +114,7 @@ def serve_heating():
 @bp.route("/devices/html")
 @require_web_auth
 def serve_html_overview():
-    generate_device_overview(state.config_internal["system_state_path"], "static/device_overview.html")
-    return send_file("static/device_overview.html")
+    return _html(generate_device_overview(state.config_internal["system_state_path"]))
 
 
 @bp.route("/devices/status")

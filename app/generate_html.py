@@ -2,7 +2,6 @@
 
 # app/generate_html.py
 import json
-from pathlib import Path
 from typing import Any, Dict, Iterable, Tuple, Optional
 import html
 
@@ -287,7 +286,7 @@ def _val_html(v: Any) -> str:
     return html.escape(str(v))
 
 # ── Overview page ─────────────────────────────────────────────────────────────
-def generate_device_overview(system_state_path: str, output_path: str = "static/device_overview.html") -> str:
+def generate_device_overview(system_state_path: str) -> str:
     with open(system_state_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
@@ -327,17 +326,7 @@ def generate_device_overview(system_state_path: str, output_path: str = "static/
         '</table>'
     )
 
-    result = _page(
-        "HmIP Geräteübersicht",
-        _nav("devices", count),
-        body,
-        _JS_SEARCH,
-    )
-
-    outp = Path(output_path)
-    outp.parent.mkdir(parents=True, exist_ok=True)
-    outp.write_text(result, encoding="utf-8")
-    return str(outp)
+    return _page("HmIP Geräteübersicht", _nav("devices", count), body, _JS_SEARCH)
 
 
 # ── Detail page ───────────────────────────────────────────────────────────────
