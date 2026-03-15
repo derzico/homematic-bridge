@@ -4,5 +4,5 @@ log_file: logs/bridge.log
 log_level: error
 log_rotate: true
 health_stale_seconds: 60
-# Eigenes Passwort für das Webinterface (optional, Fallback: API-Key)
-# web_password: MeinPasswort
+# Passwort-Hash für das Webinterface (setzen mit: python app/set_password.py)
+# web_password_hash: pbkdf2:sha256:...

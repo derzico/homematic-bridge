@@ -9,6 +9,7 @@ import time
 from typing import Any, Dict, Optional
 
 from flask import Blueprint, Response, jsonify, redirect, request, send_file, session
+from werkzeug.security import check_password_hash
 
 import app.state as state
 from app.auth import require_api_key, require_web_auth
@@ -76,8 +77,14 @@ def login():
     next_url = request.args.get("next") or "/"
     if request.method == "POST":
         password = request.form.get("password", "")
-        expected = state.config_internal.get("web_password") or state.API_KEY
-        if expected and password == expected:
+        pw_hash = state.config_internal.get("web_password_hash")
+        if pw_hash:
+            ok = check_password_hash(pw_hash, password)
+        else:
+            # Fallback: Klartext-Passwort oder API-Key
+            expected = state.config_internal.get("web_password") or state.API_KEY
+            ok = bool(expected and password == expected)
+        if ok:
             session["authenticated"] = True
             return redirect(next_url)
         return _html(generate_login_html(error=True, next_url=next_url))
