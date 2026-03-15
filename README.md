@@ -4,9 +4,10 @@
 
 - **Live-Import** des Systemzustands (Voll-Snapshot) + **inkrementelle Events** (Merge in `system_state.json`).
 - **Steuerbefehle** (z. B. `setSwitchState`) als einfache HTTP-API.
-- **HTML-Übersicht** aller Geräte + **Detailansicht** pro Device.
+- **Weboberfläche** mit Dashboard, Heizung, Geräteübersicht, Gerätestatus und Detailansicht.
+- **UDP-Push** an Loxone Miniserver bei Gerätezustandsänderungen.
 - **Healthcheck** für Monitoring.
-- **Robust**: WebSocket-Keepalive, exponentielles Reconnect, atomare Writes, Request–Response-Korrelation (ID-Mapping).
+- **Robust**: WebSocket-Keepalive, exponentielles Reconnect, atomare Writes, Request–Response-Korrelation.
 - **Docker-Support**: Einfaches Deployment mit `docker compose up -d`.
 
 > ⚠️ Nicht offiziell von eQ-3/Homematic. Marken gehören ihren jeweiligen Inhabern.
@@ -15,58 +16,64 @@
 
 ## Inhalt
 
-- [Überblick](#überblick)
 - [Features](#features)
 - [Architektur](#architektur)
 - [Voraussetzungen](#voraussetzungen)
 - [Quickstart mit Docker](#quickstart-mit-docker)
-  - [Token generieren](#1-token-generieren)
-  - [Starten](#2-starten)
 - [Manuelle Installation](#manuelle-installation)
 - [Konfiguration](#konfiguration)
-  - [config.yaml](#configyaml)
-  - [internal_config.yaml](#internal_configyaml)
-- [HTTP-Endpoints](#http-endpoints)
-- [Loxone-Integration](#loxone-integration)
-- [HTML-Ansichten](#html-ansichten)
 - [Sicherheit](#sicherheit)
+  - [Webinterface-Login](#webinterface-login)
+  - [Webinterface-Passwort setzen](#webinterface-passwort-setzen)
+  - [SSL/TLS – HCU-Zertifikat einrichten](#ssltls--hcu-zertifikat-einrichten)
+- [HTTP-Endpoints](#http-endpoints)
+- [Weboberfläche](#weboberfläche)
+- [Loxone-Integration](#loxone-integration)
 - [Update](#update)
 - [Troubleshooting](#troubleshooting)
 - [Entwicklung & Logs](#entwicklung--logs)
 - [Lizenz](#lizenz)
-- [Hinweise / Danksagung](#hinweise--danksagung)
 
 ---
 
-## Überblick
-
-Diese Bridge verbindet sich per **WebSocket** auf die HCU (Port `9001`), sendet initial `getSystemState` (Vollzustand) und verarbeitet danach **Systemevents** (`HMIP_SYSTEM_EVENT`).
-
-- Vollzustand wird in `data/system_state.json` gespeichert.
-- Events werden **in diese Datei gemerged** (geräteweise, inklusive `functionalChannels`).
-- Eine kleine **HTTP-API** bietet Bedienfunktionen (z. B. Schalter an/aus) und **HTML-Seiten** zur Übersicht/Inspektion.
-
 ## Features
 
-- ✅ Voll-Snapshot + Event-Merge
+- ✅ Voll-Snapshot + inkrementeller Event-Merge (Devices **und** Groups)
 - ✅ WebSocket-Keepalive (Ping bei Inaktivität, automatischer Reconnect mit exponentiellem Backoff)
 - ✅ Steuerung via HTTP (`/hmipSwitch`, `/hmipDimmer`, `/hmipRGB`) – GET und POST
 - ✅ Status-Abfrage via HTTP (`/hmipState`) – Gerätezustand aus Snapshot
-- ✅ HTML-Übersicht (`/devices/html`) & Gerätedetail (`/devices/<id>`)
+- ✅ Weboberfläche: Dashboard, Heizung, Geräteübersicht, Gerätestatus, Detailseite
+- ✅ Session-basierter Login (kein Basic Auth-Popup)
+- ✅ UDP-Push an Loxone Miniserver (Echtzeit-Statusübertragung)
 - ✅ Healthcheck (`/healthz`)
 - ✅ Atomare Writes (keine halb geschriebenen JSONs)
-- ✅ Pending-Registry (Request–Response-Korrelation über `id`)
 - ✅ API-Key Auth (automatisch generiert, konfigurierbar)
-- ✅ Docker-Support (Waitress als Prod-WSGI auf Windows & Linux)
+- ✅ SSL/TLS mit HCU-Zertifikat (Hostname-unabhängige Verifikation)
+- ✅ Docker-Support (Waitress als Prod-WSGI)
 
 ## Architektur
 
-- **`main.py`** – Verbindet WebSocket, startet HTTP-Server, Healthcheck, Pending-Registry, Routen.
-- **`app/messages.py`** – Baut **HMIP_SYSTEM_REQUEST**-Messages (u. a. `getSystemState`, `setSwitchState`) und liefert **Request-IDs** zurück.
-- **`app/utils.py`** – `save_system_state(msg)`: Speichert **Vollzustand** oder merged **Events** in `system_state.json`. Atomare Writes.
-- **`app/generate_html.py`** – Baut **Übersichts-HTML** und **Geräte-Detail-HTML** (zeigt auch `functionalChannels`).
-- **`app/request_token.py`** – Einmaliges Token-Generierungs-Script (Aktivierungsschlüssel → authToken).
-- **`config/loader.py`** – Lädt `config.yaml` / `internal_config.yaml`.
+```
+main.py                    # Einstiegspunkt: Config, Logging, Flask-App, WS-Thread
+app/
+  state.py                 # Geteilter Laufzeitzustand (conn, locks, config)
+  auth.py                  # API-Key-Verwaltung, Login-Decorators
+  websocket_handler.py     # WS-Loop, Pending-Registry, Log-Level-Update
+  routes.py                # Flask-Blueprint mit allen HTTP-Routen
+  messages.py              # HmIP-Nachrichten bauen (setSwitchState, etc.)
+  utils.py                 # Snapshot speichern + Delta-Merge (Devices & Groups)
+  generate_html.py         # HTML-Seiten generieren (Dashboard, Heizung, etc.)
+  loxone_udp.py            # UDP-Push an Loxone Miniserver
+  request_token.py         # Einmaliges Token-Generierungs-Script
+  set_password.py          # Webinterface-Passwort setzen (bcrypt-Hash)
+config/
+  loader.py                # config.yaml / internal_config.yaml laden
+  config.yaml              # HCU-Verbindung, Token, Plugin-ID (nicht im Git)
+  config_sample.yaml       # Vorlage für config.yaml
+  internal_config.yaml     # Laufzeit-Konfiguration (Logging, Pfade, Passwort-Hash)
+data/                      # Laufzeitdaten (api_key.txt, system_state.json) – nicht im Git
+logs/                      # Log-Dateien – nicht im Git
+```
 
 ## Voraussetzungen
 
@@ -102,170 +109,202 @@ Der generierte Token wird automatisch in `config/config.yaml` gespeichert.
 ### 2. Starten
 
 ```bash
-# Im Hintergrund starten
 docker compose up -d
-
-# Logs verfolgen
 docker compose logs -f
-
-# Stoppen
-docker compose down
 ```
 
 Der API-Key für die HTTP-API wird beim ersten Start automatisch generiert und in `data/api_key.txt` gespeichert.
 
+### 3. Weboberfläche aufrufen
+
+```
+http://<bridge-ip>:8080
+```
+
+Login mit dem API-Key aus `data/api_key.txt` als Passwort (oder einem eigenen Passwort, siehe [Webinterface-Passwort setzen](#webinterface-passwort-setzen)).
+
 ## Manuelle Installation
 
 ```bash
-# 1. Repository klonen
 git clone https://github.com/derzico/homematic-bridge.git
 cd homematic-bridge
 
-# 2. Virtuelle Umgebung anlegen
 python -m venv .venv
 source .venv/bin/activate    # Windows: .venv\Scripts\activate
 
-# 3. Abhängigkeiten installieren
 pip install -r requirements.txt
 
-# 4. Config anlegen
 cp config/config_sample.yaml config/config.yaml
+# → config.yaml anpassen
 
-# 5. Token generieren (einmalig)
-python app/request_token.py
+python app/request_token.py  # einmalig
 
-# 6. Starten
 python main.py
 ```
 
 ## Konfiguration
 
-### `config.yaml`
+### `config/config.yaml`
 
 ```yaml
 homematic_hcu: hcu1-XXXX.local   # mDNS-Name oder IP der HCU
 homematic_token: "<DEIN_TOKEN>"  # einmalig über request_token.py generieren
-ssl_cert_path:                   # optional: Pfad zum CA-Zertifikat
-ssl_verify: false                # true = Zertifikate prüfen (empfohlen in Prod)
+ssl_verify: false                # true = Zertifikat prüfen (siehe SSL-Abschnitt)
+ssl_cert_path: config/hcu.crt   # Pfad zum HCU-Zertifikat (bei ssl_verify: true)
 plugin_id: de.example.bridge     # eindeutige Plugin-ID (Reverse-Domain-Notation)
 friendly_name:
   en: "Homematic HTTP Bridge"
   de: "Homematic HTTP Bridge"
 
+# Loxone UDP-Push (optional)
+loxone:
+  miniserver_ip: 192.168.1.100
+  udp_port: 7777
+
 # HTTP-API Auth
-api_key:          # optional: Key hier eintragen, sonst wird automatisch generiert
 require_api_key: true
 api_key_file: data/api_key.txt
 ```
 
-> **API-Key:** Wird beim ersten Start automatisch generiert und in `data/api_key.txt` gespeichert. Alternativ über die Umgebungsvariable `BRIDGE_API_KEY` vorgeben.
-
-### `internal_config.yaml`
+### `config/internal_config.yaml`
 
 ```yaml
 system_state_path: data/system_state.json
-device_html_path: static/device_overview.html
 log_file: logs/bridge.log
-log_level: info       # debug / info / warning / error
+log_level: info          # debug / info / warning / error
 log_rotate: true
 health_stale_seconds: 60
 pending_ttl_seconds: 60
+
+# Passwort-Hash für das Webinterface (setzen mit: python app/set_password.py)
+# web_password_hash: pbkdf2:sha256:...
 ```
+
+---
+
+## Sicherheit
+
+### Webinterface-Login
+
+Das Webinterface ist durch einen **Session-basierten Login** geschützt. Nach dem Einloggen wird ein signiertes Session-Cookie gesetzt — kein HTTP-Basic-Auth-Popup.
+
+- **Standard-Passwort:** API-Key aus `data/api_key.txt`
+- **Eigenes Passwort:** Über `app/set_password.py` setzen (wird als bcrypt-Hash gespeichert)
+- **API-Endpoints** (`/hmipSwitch`, `/hmipState`, etc.) verwenden weiterhin den `X-API-Key`-Header
+
+### Webinterface-Passwort setzen
+
+Das Passwort wird als **bcrypt-Hash** in `internal_config.yaml` gespeichert — niemals im Klartext.
+
+```bash
+# Docker
+docker compose exec homematic-bridge python app/set_password.py
+
+# Manuell
+python app/set_password.py
+```
+
+Das Script fragt interaktiv nach dem neuen Passwort und schreibt den Hash in `internal_config.yaml`:
+
+```yaml
+web_password_hash: pbkdf2:sha256:260000$abc123...
+```
+
+Danach Bridge neu starten:
+```bash
+docker compose restart
+```
+
+> **Hinweis:** Da `internal_config.yaml` als Volume gemountet ist, ist kein `docker compose build` nötig.
+
+### SSL/TLS – HCU-Zertifikat einrichten
+
+Die HCU verwendet ein **selbstsigniertes Zertifikat**. Standardmäßig ist die Zertifikatsprüfung deaktiviert (`ssl_verify: false`), was für ein lokales Heimnetz ausreichend ist.
+
+Für eine verifizierte Verbindung (stellt sicher, dass es wirklich die eigene HCU ist):
+
+**Schritt 1: Zertifikat von der HCU herunterladen**
+
+```bash
+# Auf dem Host/Server (nicht im Container)
+openssl s_client -connect <HCU-IP>:9001 -showcerts </dev/null 2>/dev/null \
+  | openssl x509 -outform PEM > config/hcu.crt
+
+# Prüfen
+openssl x509 -in config/hcu.crt -noout -subject -dates
+```
+
+**Schritt 2: `config/config.yaml` anpassen**
+
+```yaml
+ssl_verify: true
+ssl_cert_path: config/hcu.crt
+```
+
+**Schritt 3: Bridge neu starten**
+
+```bash
+docker compose restart
+```
+
+> **Hinweis:** Das HCU-Zertifikat ist auf den internen CN ausgestellt (z. B. `HCU1-3014F711A00045E26991E461`), nicht auf den mDNS-Hostname. Die Bridge deaktiviert daher die Hostname-Prüfung (`check_hostname: False`), prüft aber weiterhin ob das Zertifikat von dieser HCU stammt (`CERT_REQUIRED`).
+
+> `*.crt`-Dateien sind in `.gitignore` eingetragen und werden nicht ins Repository eingecheckt.
+
+---
 
 ## HTTP-Endpoints
 
+Alle schreibenden Endpoints und externe GET-Aufrufe erfordern den Header `X-API-Key: <key>`.
+
 ### `POST /hmipSwitch`
 
-Steuert einen Switch-Kanal von extern (z. B. Home Assistant, Loxone).
-
-- **Header:** `X-API-Key: <key>`
-- **Body (JSON):**
-  ```json
-  { "device": "<DEVICE_ID>", "on": true, "channelIndex": 0 }
-  ```
-- **Response:**
-  ```json
-  { "status": "<DEVICE_ID>: ON", "request_id": "<uuid>" }
-  ```
+```json
+{ "device": "<DEVICE_ID>", "on": true, "channelIndex": 0 }
+```
 
 ### `POST /hmipDimmer`
 
-Steuert einen Dimmer-Kanal (z. B. HmIP-PDT, HmIP-DRD3) von extern.
+```json
+{ "device": "<DEVICE_ID>", "dimLevel": 75, "channelIndex": 1 }
+```
 
-- **Header:** `X-API-Key: <key>`
-- **Body (JSON):**
-  ```json
-  { "device": "<DEVICE_ID>", "dimLevel": 50, "channelIndex": 1 }
-  ```
-  - `dimLevel`: Helligkeit in Prozent (`0`–`100`)
-  - `channelIndex`: optional, Standard `1`
-- **Response:**
-  ```json
-  { "status": "<DEVICE_ID>: dimLevel=50%", "request_id": "<uuid>" }
-  ```
-
-> **Hinweis:** `dimLevel: 0` schaltet die Lampe aus. Die Bridge konvertiert den Prozentwert intern auf den HmIP-Bereich (0.0–1.0).
+- `dimLevel`: Helligkeit in Prozent (`0`–`100`). `0` schaltet aus.
 
 ### `POST /hmipRGB`
 
-Steuert einen RGB/RGBW-Controller (z. B. HmIP-RGBW) über das Loxone RGB-Format.
+```json
+{ "device": "<DEVICE_ID>", "rgb": "R=50%,G=30%,B=100%", "channelIndex": 1 }
+```
 
-- **Header:** `X-API-Key: <key>`
-- **Body (JSON):**
-  ```json
-  { "device": "<DEVICE_ID>", "rgb": "R=50%,G=30%,B=100%", "channelIndex": 1 }
-  ```
-  - `rgb`: RGB-Werte im Loxone-Format (`R=X%,G=Y%,B=Z%`, je 0–100%)
-  - `channelIndex`: optional, Standard `1`
-- **Response:**
-  ```json
-  { "status": "<DEVICE_ID>: hue=240° sat=0.7 dim=1.0", "request_id": "<uuid>" }
-  ```
-
-> Die Bridge konvertiert RGB → HSV und sendet `setHueSaturationDimLevel`. Der RGBW-Controller mappt HSV intern auf die 4 Kanäle (R/G/B/W). `R=0%,G=0%,B=0%` schaltet aus.
+- `rgb`: Loxone-Format `R=X%,G=Y%,B=Z%` (je 0–100%)
+- `R=0%,G=0%,B=0%` schaltet aus
+- Die Bridge konvertiert RGB → HSV und sendet `setHueSaturationDimLevel` + `setSwitchState`
 
 ### `GET /hmipSwitch`
 
-Komfort-Endpunkt für schnelle Tests und Integrationen wie Loxone.
-
-- Von **localhost** (`127.0.0.1` / `::1`): kein API-Key erforderlich
-- Von **extern** (z. B. Loxone): `X-API-Key`-Header erforderlich
-- **Query:** `?device=<ID>&on=true|false&channelIndex=0`
-
-**Beispiel für Loxone** (Virtueller HTTP-Ausgang):
 ```
-http://<bridge-ip>:8080/hmipSwitch?device=<DEVICE_ID>&on=true&channelIndex=0
-Header: X-API-Key: <key aus data/api_key.txt>
+GET /hmipSwitch?device=<ID>&on=true&channelIndex=0
 ```
+
+- Von **localhost**: kein API-Key nötig
+- Von **extern**: `X-API-Key`-Header erforderlich
 
 ### `GET /hmipState`
 
-Liefert den aktuellen Zustand eines Geräte-Channels direkt aus dem gespeicherten Snapshot.
+Liefert den aktuellen Channel-Zustand aus dem Snapshot.
 
-- **Query:** `?device=<ID>&channelIndex=0` (`channelIndex` optional, default `0`)
-- **Auth:** `X-API-Key`-Header erforderlich
-
-**Beispiel-Antwort (Switch):**
-```json
-{"on": true, "channelIndex": 0, "functionalChannelType": "SWITCH_CHANNEL"}
+```
+GET /hmipState?device=<ID>&channelIndex=1
+Header: X-API-Key: <key>
 ```
 
-**Beispiel-Antwort (RGBW):**
+Beispiel-Antwort (Switch):
 ```json
-{"on": true, "hue": 120, "saturationLevel": 1.0, "dimLevel": 1.0}
+{ "on": true, "functionalChannelType": "SWITCH_CHANNEL" }
 ```
-
-### `GET /devices/html`
-
-Generiert und liefert eine **Geräte-Übersicht** als HTML.
-
-### `GET /devices/<DEVICE_ID>`
-
-Detailseite mit **Basisdaten**, allen **`functionalChannels`** und **Rohdaten** (pretty-printed JSON).
 
 ### `GET /healthz`
-
-Zustand der Bridge:
 
 ```json
 {
@@ -273,237 +312,182 @@ Zustand der Bridge:
   "snapshot_age_ms": 1234,
   "devices_count": 42,
   "pending_requests": 0,
-  "status": "ok|degraded|unhealthy"
+  "status": "ok"
 }
 ```
 
+`status`: `ok` | `degraded` | `unhealthy`
+
+---
+
+## Weboberfläche
+
+Alle Seiten sind durch den Session-Login geschützt.
+
+| URL | Beschreibung |
+|-----|-------------|
+| `/` | **Dashboard** – Wetter, Alarm, Systemstatus, Duty Cycle, Heizungsübersicht, Gerätewarnungen |
+| `/heating` | **Heizung** – Alle Heizgruppen mit Ist/Soll-Temperatur, Ventilposition, Modus |
+| `/devices/html` | **Geräteübersicht** – Alle Geräte mit Raum, Typ, Links zur Detailseite |
+| `/devices/status` | **Gerätestatus** – LowBat, Erreichbarkeit, RSSI, DutyCycle aller Geräte |
+| `/devices/<ID>` | **Gerätedetail** – Basisdaten, alle `functionalChannels`, Rohdaten |
+| `/healthz` | **Health** – Verbindungsstatus, Snapshot-Alter, offene Requests |
+
+---
+
 ## Loxone-Integration
 
-Die Bridge lässt sich über **Virtuelle HTTP-Ausgänge** (Steuern) und **Virtuelle Eingänge per UDP** (Status empfangen) in Loxone Config einbinden.
+### UDP-Push (HmIP → Loxone)
 
-### UDP Push (HmIP → Loxone)
-
-Sobald sich ein HmIP-Gerät ändert (z. B. jemand schaltet eine Lampe manuell), sendet die Bridge den neuen Zustand **automatisch per UDP** an den Loxone Miniserver. Loxone muss dabei nichts aktiv abfragen — die Werte landen direkt in Virtuellen Eingängen und können sofort in der Logik weiterverwendet werden.
+Bei jeder Gerätezustandsänderung sendet die Bridge den neuen Zustand **automatisch per UDP** an den Loxone Miniserver.
 
 #### 1. Bridge konfigurieren
 
-In `config.yaml` den `loxone`-Block eintragen:
-
 ```yaml
+# config/config.yaml
 loxone:
-  miniserver_ip: 192.168.1.100  # IP des Loxone Miniservers
-  udp_port: 7777                # UDP-Port (Loxone-Standard: 7777)
+  miniserver_ip: 192.168.1.100
+  udp_port: 7777
 ```
 
-Wenn `miniserver_ip` leer bleibt, ist der UDP-Push deaktiviert — keine Auswirkung auf andere Funktionen.
-
-Nach der Änderung Container neu starten:
-```powershell
-docker compose up -d
-```
-
-#### 2. Variablennamen verstehen
-
-Die Bridge sendet pro Gerät und Channel mehrere Werte. Das Format ist immer:
+#### 2. Variablenformat
 
 ```
 hmip_<DEVICE_ID>_ch<N>_<feld>@<wert>
 ```
 
-Beispiel für einen Schalt-Aktor mit Energiemessung (Channel 1):
+Beispiel (Schalt-Aktor mit Energiemessung):
 ```
 hmip_3014F711A000085F299F3C0D_ch1_on@1
 hmip_3014F711A000085F299F3C0D_ch1_currentPowerConsumption@0.0
 hmip_3014F711A000085F299F3C0D_ch1_energyCounter@2.5251
 ```
 
-Alle möglichen Felder:
+Verfügbare Felder:
 
 | Feld | Typ | Beschreibung |
 |------|-----|--------------|
 | `_on` | 0 / 1 | Ein-/Ausschaltzustand |
 | `_dimLevel` | 0.0 – 1.0 | Helligkeit (Dimmer) |
-| `_hue` | 0 – 360 | Farbton in Grad (RGBW) |
+| `_hue` | 0 – 360 | Farbton (RGBW) |
 | `_saturationLevel` | 0.0 – 1.0 | Farbsättigung (RGBW) |
-| `_colorTemperature` | Kelvin | Farbtemperatur |
 | `_actualTemperature` | °C | Gemessene Temperatur |
 | `_humidity` | % | Luftfeuchtigkeit |
-| `_co2Concentration` | ppm | CO₂-Konzentration |
 | `_illumination` | lx | Helligkeit (Sensor) |
 | `_windSpeed` | km/h | Windgeschwindigkeit |
 | `_shutterLevel` | 0.0 – 1.0 | Rollladenposition |
-| `_slatsLevel` | 0.0 – 1.0 | Lamellenposition |
 | `_currentPowerConsumption` | W | Aktuelle Leistung |
 | `_energyCounter` | kWh | Energiezähler |
-| `_ventilationLevel` | 0.0 – 1.0 | Lüftungsstufe |
 
-Die Device-ID und den Channel-Index findet man am einfachsten in der Weboberfläche unter `/devices/html`.
+Device-ID und Channel-Index findet man in der Weboberfläche unter `/devices/html`.
 
-#### 3. Loxone Config: Virtuellen Eingang anlegen
+#### 3. Loxone Config – Virtuellen Eingang anlegen
 
-**Schritt 1:** In Loxone Config → Peripherie → Virtuell → **Virtuellen Eingang** hinzufügen
-
-| Feld | Wert |
-|------|------|
-| **Name** | z. B. `Homematic Bridge UDP` |
-| **Adresse** | leer lassen (UDP wird direkt am Miniserver empfangen) |
-| **UDP-Port** | `7777` (oder wie in `config.yaml` konfiguriert) |
-
-**Schritt 2:** Unter dem Virtuellen Eingang einen **Virtuellen Eingangsbefehl** pro Wert anlegen:
+**Virtuellen Eingang** (Peripherie → Virtuell → Virtuellen Eingang):
 
 | Feld | Wert |
 |------|------|
-| **Name** | z. B. `Stehlampe - Ein/Aus` |
-| **Befehlskennung** | `hmip_3014F711A000085F299F3C0D_ch1_on@\v` |
+| UDP-Port | `7777` |
 
-> Das `\v` ist der Loxone-Platzhalter für den empfangenen Zahlenwert. Alles vor dem `@` muss exakt mit dem Variablennamen übereinstimmen.
-
-**Schritt 3:** Den Ausgang des Virtuellen Eingangsbefehls in der Loxone-Logik weiterverwenden — z. B. als Statusanzeige, Trigger oder Bedingung.
-
-
-
-### Voraussetzungen
-
-- API-Key aus `data/api_key.txt` bereithalten
-- Device-ID des Geräts (z. B. aus `/devices/html` oder dem `system_state.json`)
-- Bridge im selben Netzwerk wie der Loxone Miniserver erreichbar
-
-### Virtuellen HTTP-Ausgang anlegen
-
-In **Loxone Config** → Peripherie → Virtuell → Virtuellen HTTP-Ausgang hinzufügen:
+**Virtuellen Eingangsbefehl** pro Variable:
 
 | Feld | Wert |
 |------|------|
-| **Name** | z. B. `Homematic Bridge` |
-| **Adresse** | `http://<bridge-ip>:8080` |
+| Befehlskennung | `hmip_3014F711A000085F299F3C0D_ch1_on@\v` |
 
-### Virtuellen Ausgangsbefehl anlegen
-
-Unter dem HTTP-Ausgang einen **Virtuellen Ausgangsbefehl** hinzufügen:
-
-| Feld | Wert |
-|------|------|
-| **Name** | z. B. `Stehlampe EIN/AUS` |
-| **Befehl bei EIN** | `/hmipSwitch` |
-| **HTTP-Post-Body bei EIN** | `{"device":"<DEVICE_ID>","on":true,"channelIndex":1}` |
-| **HTTP-Header bei EIN** | `X-API-Key: <key>\r\nContent-Type: application/json` |
-| **Befehl bei AUS** | `/hmipSwitch` |
-| **HTTP-Post-Body bei AUS** | `{"device":"<DEVICE_ID>","on":false,"channelIndex":1}` |
-| **HTTP-Header bei AUS** | `X-API-Key: <key>\r\nContent-Type: application/json` |
-
-> **Hinweis:** Den Body-Inhalt ohne Anführungszeichen und ohne `-d` eintragen — nur den reinen JSON-String. Headers mehrerer Felder mit `\r\n` trennen.
-
-### Konkrete Beispielkonfiguration (Stehlampe)
-
-```
-Adresse:              http://192.168.2.108:8080
-Befehl bei EIN:       /hmipSwitch
-Body bei EIN:         {"device":"3014F711A0000DE2699BC616","on":true,"channelIndex":1}
-Header bei EIN:       X-API-Key: ZfAWvv_...\r\nContent-Type: application/json
-
-Befehl bei AUS:       /hmipSwitch
-Body bei AUS:         {"device":"3014F711A0000DE2699BC616","on":false,"channelIndex":1}
-Header bei AUS:       X-API-Key: ZfAWvv_...\r\nContent-Type: application/json
-```
-
-### Dimmer steuern (Lichtsteuerungsbaustein)
-
-Für Dimmer `/hmipDimmer` verwenden — sendet einen Prozentwert (0–100):
-
-| Feld | Wert |
-|------|------|
-| **Befehl bei EIN** | `/hmipDimmer` |
-| **HTTP-Post-Body bei EIN** | `{"device":"<DEVICE_ID>","dimLevel":<v>,"channelIndex":1}` |
-| **HTTP-Header bei EIN** | `X-API-Key: <key>\r\nContent-Type: application/json` |
-| **Befehl bei AUS** | `/hmipDimmer` |
-| **HTTP-Post-Body bei AUS** | `{"device":"<DEVICE_ID>","dimLevel":0,"channelIndex":1}` |
-| **HTTP-Header bei AUS** | `X-API-Key: <key>\r\nContent-Type: application/json` |
-
-`<v>` ist der Ausgabewert des Loxone-Lichtsteuerungsbausteins (0–100%).
-
-### RGB-Controller steuern (Lichtsteuerungsbaustein → RGB)
-
-Für HmIP-RGBW den Loxone **Lichtsteuerungsbaustein im RGB-Modus** verwenden. Der Ausgang liefert `R=X%,G=Y%,B=Z%`:
-
-| Feld | Wert |
-|------|------|
-| **Befehl bei EIN** | `/hmipRGB` |
-| **HTTP-Post-Body bei EIN** | `{"device":"<DEVICE_ID>","rgb":"R=<vR>%,G=<vG>%,B=<vB>%","channelIndex":1}` |
-| **HTTP-Header bei EIN** | `X-API-Key: <key>\r\nContent-Type: application/json` |
-| **Befehl bei AUS** | `/hmipRGB` |
-| **HTTP-Post-Body bei AUS** | `{"device":"<DEVICE_ID>","rgb":"R=0%,G=0%,B=0%","channelIndex":1}` |
-| **HTTP-Header bei AUS** | `X-API-Key: <key>\r\nContent-Type: application/json` |
-
-`<vR>`, `<vG>`, `<vB>` sind die einzelnen RGB-Ausgänge des Loxone-Lichtsteuerungsbausteins.
-
-### channelIndex ermitteln
-
-Den richtigen `channelIndex` findest du in der Gerätedetailseite (`/devices/<DEVICE_ID>`):
-- Channel `0` = Basiskanal (Gerätestatus, nicht steuerbar)
-- Channel `1` = erster Funktionskanal (z. B. `DIMMER_CHANNEL`, `SWITCH_CHANNEL`)
+> `\v` ist der Loxone-Platzhalter für den Zahlenwert. Alles vor `@` muss exakt übereinstimmen.
 
 ---
 
-## HTML-Ansichten
+### HTTP-Steuerung (Loxone → HmIP)
 
-- Übersicht: `http://localhost:8080/devices/html`
-- Detail: `http://localhost:8080/devices/<DEVICE_ID>`
+**Virtuellen HTTP-Ausgang** anlegen (Peripherie → Virtuell):
 
-Die Übersicht verlinkt direkt auf die Detailseiten.
+| Feld | Wert |
+|------|------|
+| Adresse | `http://<bridge-ip>:8080` |
 
-## Sicherheit
+#### Switch
 
-- **API-Key** (Header `X-API-Key`) schützt alle schreibenden Endpunkte sowie externe GET-Aufrufe.
-- **GET /hmipSwitch** ist von localhost ohne Key nutzbar – für externe Zugriffe wird der Key geprüft.
-- **TLS zum HCU-WebSocket** aktivieren: `ssl_verify: true` + `ssl_cert_path` oder `certifi`-Bundle.
-- Empfehlung: Bridge hinter einem **Reverse Proxy** (z. B. Caddy, nginx) mit TLS betreiben.
+| Feld | Wert |
+|------|------|
+| Befehl bei EIN | `/hmipSwitch` |
+| Body bei EIN | `{"device":"<ID>","on":true,"channelIndex":1}` |
+| Header | `X-API-Key: <key>`  `Content-Type: application/json` |
+| Befehl bei AUS | `/hmipSwitch` |
+| Body bei AUS | `{"device":"<ID>","on":false,"channelIndex":1}` |
+
+#### Dimmer (Lichtsteuerungsbaustein)
+
+| Feld | Wert |
+|------|------|
+| Befehl bei EIN | `/hmipDimmer` |
+| Body bei EIN | `{"device":"<ID>","dimLevel":<v>,"channelIndex":1}` |
+| Body bei AUS | `{"device":"<ID>","dimLevel":0,"channelIndex":1}` |
+
+`<v>` = Ausgabewert des Lichtsteuerungsbausteins (0–100%).
+
+#### RGB-Controller (Lichtsteuerungsbaustein im RGB-Modus)
+
+| Feld | Wert |
+|------|------|
+| Befehl bei EIN | `/hmipRGB` |
+| Body bei EIN | `{"device":"<ID>","rgb":"R=<vR>%,G=<vG>%,B=<vB>%","channelIndex":1}` |
+| Body bei AUS | `{"device":"<ID>","rgb":"R=0%,G=0%,B=0%","channelIndex":1}` |
+
+`<vR>`, `<vG>`, `<vB>` = RGB-Ausgänge des Lichtsteuerungsbausteins.
+
+#### channelIndex ermitteln
+
+In der Gerätedetailseite (`/devices/<ID>`):
+- Channel `0` = Basiskanal (Gerätestatus)
+- Channel `1` = erster Funktionskanal (z. B. `SWITCH_CHANNEL`, `DIMMER_CHANNEL`)
+
+---
 
 ## Update
 
 ### Mit Docker
 
 ```bash
-# 1. Neuen Code holen
 git pull
-
-# 2. Image neu bauen und Container ersetzen
 docker compose up -d --build
-
-# 3. Prüfen ob alles läuft
 docker compose logs -f
 ```
 
-`config/config.yaml`, `data/` und `logs/` bleiben durch die Volumes erhalten – kein Datenverlust.
+`config/`, `data/` und `logs/` bleiben durch die Volumes erhalten.
 
-> Der Homematic-Token muss **nicht** neu generiert werden. Er bleibt in `config/config.yaml` gespeichert.
+> Der Homematic-Token und der API-Key müssen **nicht** neu generiert werden.
 
-### Manuell (ohne Docker)
+### Manuell
 
 ```bash
-# 1. Neuen Code holen
 git pull
-
-# 2. Abhängigkeiten aktualisieren
-source .venv/bin/activate    # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
-
-# 3. Neu starten
 python main.py
 ```
 
+---
+
 ## Troubleshooting
 
-- **`"Kein homematic_token konfiguriert"`** → Token noch nicht generiert. Zuerst `python app/request_token.py` (manuell) oder `docker compose run --rm homematic-bridge python app/request_token.py` (Docker) ausführen.
-- **`devices_count: 0` in `/healthz`** → Prüfe ob `system_state.json` einen Vollzustand enthält. Bridge neustarten triggert erneut `getSystemState`.
-- **WebSocket verbindet nicht** → Hostname/Port zur HCU prüfen; Firewall; bei Zertifikatfehlern `ssl_verify: false` (nur Test!) oder korrekte CA angeben.
-- **HTML zeigt „Keine Geräte"** → Prüfe `system_state.json`; die Bridge unterstützt Dict- und Listen-Layouts unter `body` / `body.body`.
-- **401 bei GET-Aufruf von extern** → `X-API-Key`-Header fehlt oder falsch; Key aus `data/api_key.txt` verwenden.
+| Problem | Lösung |
+|---------|--------|
+| `Kein homematic_token` | `python app/request_token.py` ausführen |
+| `devices_count: 0` in `/healthz` | Bridge neu starten triggert `getSystemState` |
+| WebSocket verbindet nicht | Hostname/IP der HCU prüfen; bei SSL-Fehlern `ssl_verify: false` |
+| `401 Unauthorized` | `X-API-Key`-Header prüfen; Key aus `data/api_key.txt` |
+| Login schlägt fehl | Passwort = API-Key (oder gesetztes Passwort via `set_password.py`) |
+| `service "bridge" is not running` | Servicename prüfen mit `docker compose ps` |
+| SSL: Hostname mismatch | Erwartet – wird intern ignoriert, Zertifikat wird trotzdem geprüft |
+| Docker logs leer | `ENV PYTHONUNBUFFERED=1` im Dockerfile sicherstellen |
 
 ## Entwicklung & Logs
 
 - Log-Datei: `logs/bridge.log` (Rotation: täglich, 7 Backups)
 - Log-Level in `internal_config.yaml` anpassen: `debug` / `info` / `warning` / `error`
-- Sensible Payloads werden nur auf **DEBUG** geloggt
+- Log-Level auch zur Laufzeit über das HCU-Plugin-Zahnrad-Menü änderbar
 
 ## Lizenz
 
@@ -511,11 +495,6 @@ Dieser Code steht unter der **Apache License 2.0**. Siehe [`LICENSE`](./LICENSE)
 
 `THIRD-PARTY_NOTICES.md` enthält Informationen zu den verwendeten Open-Source-Bibliotheken.
 
-## Hinweise / Danksagung
-
-- Nicht offiziell mit eQ-3/Homematic verbunden.
-- Danke an die Maintainer der verwendeten Open-Source-Bibliotheken.
-
 ---
 
-Wenn dir die Bridge hilft, freuen wir uns über einen ⭐ auf GitHub und über Issues/PRs!
+> Nicht offiziell mit eQ-3/Homematic verbunden. Wenn dir die Bridge hilft, freuen wir uns über einen ⭐ auf GitHub!
