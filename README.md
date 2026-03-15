@@ -283,35 +283,82 @@ Die Bridge lässt sich über **Virtuelle HTTP-Ausgänge** (Steuern) und **Virtue
 
 ### UDP Push (HmIP → Loxone)
 
-Die Bridge sendet bei jedem HmIP-State-Change automatisch per **UDP** an den Loxone Miniserver.
-Dafür in `config.yaml` den `loxone`-Block konfigurieren:
+Sobald sich ein HmIP-Gerät ändert (z. B. jemand schaltet eine Lampe manuell), sendet die Bridge den neuen Zustand **automatisch per UDP** an den Loxone Miniserver. Loxone muss dabei nichts aktiv abfragen — die Werte landen direkt in Virtuellen Eingängen und können sofort in der Logik weiterverwendet werden.
+
+#### 1. Bridge konfigurieren
+
+In `config.yaml` den `loxone`-Block eintragen:
 
 ```yaml
 loxone:
   miniserver_ip: 192.168.1.100  # IP des Loxone Miniservers
-  udp_port: 7777                # UDP-Port des Miniservers (Loxone-Standard)
+  udp_port: 7777                # UDP-Port (Loxone-Standard: 7777)
 ```
 
-#### Variablennamen
+Wenn `miniserver_ip` leer bleibt, ist der UDP-Push deaktiviert — keine Auswirkung auf andere Funktionen.
 
-Format: `hmip_<DEVICE_ID>_ch<N>_<feld>`
+Nach der Änderung Container neu starten:
+```powershell
+docker compose up -d
+```
 
-| Feld | Typ | Beispiel |
-|------|-----|---------|
-| `_on` | 0 / 1 | `hmip_3014F711...C52_ch1_on` |
-| `_dimLevel` | 0.0 – 1.0 | `hmip_3014F711...C52_ch1_dimLevel` |
-| `_hue` | 0 – 360 | `hmip_3014F711...C52_ch1_hue` |
-| `_saturationLevel` | 0.0 – 1.0 | `hmip_3014F711...C52_ch1_saturationLevel` |
-| `_actualTemperature` | °C | `hmip_3014F711...C52_ch0_actualTemperature` |
-| `_humidity` | % | `hmip_3014F711...C52_ch0_humidity` |
+#### 2. Variablennamen verstehen
 
-#### Loxone Config: Virtuellen Eingang anlegen
+Die Bridge sendet pro Gerät und Channel mehrere Werte. Das Format ist immer:
 
-1. Peripherie → Virtuell → **Virtuellen Eingang** hinzufügen
-2. Adresse: UDP-Port des Miniservers (z. B. `7777`) — wird automatisch von Loxone geöffnet
-3. **Virtuellen Eingangsbefehl** anlegen:
-   - **Befehlskennung:** z. B. `hmip_3014F711A00033E0C9923C52_ch1_on`
-   - **Wert:** `\v` (Loxone-Platzhalter für den empfangenen Wert)
+```
+hmip_<DEVICE_ID>_ch<N>_<feld>@<wert>
+```
+
+Beispiel für einen Schalt-Aktor mit Energiemessung (Channel 1):
+```
+hmip_3014F711A000085F299F3C0D_ch1_on@1
+hmip_3014F711A000085F299F3C0D_ch1_currentPowerConsumption@0.0
+hmip_3014F711A000085F299F3C0D_ch1_energyCounter@2.5251
+```
+
+Alle möglichen Felder:
+
+| Feld | Typ | Beschreibung |
+|------|-----|--------------|
+| `_on` | 0 / 1 | Ein-/Ausschaltzustand |
+| `_dimLevel` | 0.0 – 1.0 | Helligkeit (Dimmer) |
+| `_hue` | 0 – 360 | Farbton in Grad (RGBW) |
+| `_saturationLevel` | 0.0 – 1.0 | Farbsättigung (RGBW) |
+| `_colorTemperature` | Kelvin | Farbtemperatur |
+| `_actualTemperature` | °C | Gemessene Temperatur |
+| `_humidity` | % | Luftfeuchtigkeit |
+| `_co2Concentration` | ppm | CO₂-Konzentration |
+| `_illumination` | lx | Helligkeit (Sensor) |
+| `_windSpeed` | km/h | Windgeschwindigkeit |
+| `_shutterLevel` | 0.0 – 1.0 | Rollladenposition |
+| `_slatsLevel` | 0.0 – 1.0 | Lamellenposition |
+| `_currentPowerConsumption` | W | Aktuelle Leistung |
+| `_energyCounter` | kWh | Energiezähler |
+| `_ventilationLevel` | 0.0 – 1.0 | Lüftungsstufe |
+
+Die Device-ID und den Channel-Index findet man am einfachsten in der Weboberfläche unter `/devices/html`.
+
+#### 3. Loxone Config: Virtuellen Eingang anlegen
+
+**Schritt 1:** In Loxone Config → Peripherie → Virtuell → **Virtuellen Eingang** hinzufügen
+
+| Feld | Wert |
+|------|------|
+| **Name** | z. B. `Homematic Bridge UDP` |
+| **Adresse** | leer lassen (UDP wird direkt am Miniserver empfangen) |
+| **UDP-Port** | `7777` (oder wie in `config.yaml` konfiguriert) |
+
+**Schritt 2:** Unter dem Virtuellen Eingang einen **Virtuellen Eingangsbefehl** pro Wert anlegen:
+
+| Feld | Wert |
+|------|------|
+| **Name** | z. B. `Stehlampe - Ein/Aus` |
+| **Befehlskennung** | `hmip_3014F711A000085F299F3C0D_ch1_on@\v` |
+
+> Das `\v` ist der Loxone-Platzhalter für den empfangenen Zahlenwert. Alles vor dem `@` muss exakt mit dem Variablennamen übereinstimmen.
+
+**Schritt 3:** Den Ausgang des Virtuellen Eingangsbefehls in der Loxone-Logik weiterverwenden — z. B. als Statusanzeige, Trigger oder Bedingung.
 
 
 
