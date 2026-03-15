@@ -104,6 +104,20 @@ details[open] .chevron { transform: rotate(180deg); }
 
 /* Raw JSON */
 pre.json-raw { padding: 20px; background: var(--bg); font-family: var(--mono); font-size: 12px; overflow-x: auto; line-height: 1.6; border-top: 1px solid var(--border); }
+
+/* Status page */
+.status-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.pill-ok      { background: #1a3a1a; color: var(--green); }
+.pill-warn    { background: #3a2a00; color: var(--yellow); }
+.pill-error   { background: #3a1010; color: var(--red); }
+.pill-muted   { background: var(--surface2); color: var(--muted); }
+.rssi-bar { display: inline-flex; gap: 2px; align-items: flex-end; height: 14px; }
+.rssi-bar span { width: 4px; border-radius: 1px; background: var(--border); }
+.rssi-bar span.lit { background: var(--green); }
+.rssi-bar.warn span.lit { background: var(--yellow); }
+.rssi-bar.bad  span.lit { background: var(--red); }
+.row-warn td { background: #1a1500 !important; }
+.row-error td { background: #1a0a0a !important; }
 """
 
 _JS_SEARCH = """
@@ -167,6 +181,7 @@ def _nav(active: str = "", device_count: int = 0) -> str:
         '<div class="brand">⚡ Homematic <em>Bridge</em></div>'
         '<div class="nav-links">'
         + lnk("/devices/html", "Geräte", "devices")
+        + lnk("/devices/status", "Status", "status")
         + lnk("/healthz", "Health", "health")
         + '</div>'
         '<div class="spacer"></div>'
@@ -360,3 +375,111 @@ def generate_device_detail_html(system_state_path: str, device_id: str) -> str:
     )
 
     return _page(f"Device · {label}", _nav("devices"), body)
+
+
+# ── Status page ───────────────────────────────────────────────────────────────
+def _rssi_html(rssi: Any) -> str:
+    """Rendert einen RSSI-Wert als Mini-Balken + Zahl."""
+    if rssi is None or not isinstance(rssi, (int, float)):
+        return '<span class="v-null">–</span>'
+    v = int(rssi)
+    # 128 = no signal / unbekannt
+    if v == 128:
+        return '<span class="v-null">n/a</span>'
+    # Stärke: ≥ -70 gut, -70..-85 mittel, < -85 schlecht
+    if v >= -70:
+        bars, cls = 4, ""
+    elif v >= -80:
+        bars, cls = 3, ""
+    elif v >= -90:
+        bars, cls = 2, "warn"
+    else:
+        bars, cls = 1, "bad"
+    bar_html = "".join(
+        f'<span style="height:{(i+1)*3+2}px" class="{"lit" if i < bars else ""}"></span>'
+        for i in range(4)
+    )
+    return f'<span class="rssi-bar {cls}">{bar_html}</span> <span class="mono">{v} dBm</span>'
+
+def _bool_pill(val: Any, label_true: str, label_false: str,
+               cls_true: str = "pill-error", cls_false: str = "pill-ok") -> str:
+    if val is True:
+        return f'<span class="status-pill {cls_true}">{label_true}</span>'
+    if val is False:
+        return f'<span class="status-pill {cls_false}">{label_false}</span>'
+    return '<span class="status-pill pill-muted">–</span>'
+
+def generate_device_status_html(system_state_path: str) -> str:
+    with open(system_state_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    # Collect status per device
+    entries = []
+    for dev_id, dev in _iter_devices(data):
+        ch0 = dev.get("functionalChannels", {}).get("0", {})
+        low_bat    = ch0.get("lowBat")
+        unreach    = ch0.get("unreach")
+        duty       = ch0.get("dutyCycle")
+        sabotage   = ch0.get("sabotage")
+        rssi       = ch0.get("rssiDeviceValue")
+        label      = dev.get("label", "–")
+        dtype      = dev.get("type", "–")
+
+        # Severity: 2=error, 1=warn, 0=ok
+        sev = 0
+        if low_bat or unreach or duty or sabotage:
+            sev = 2
+        elif isinstance(rssi, (int, float)) and rssi != 128 and rssi < -85:
+            sev = 1
+
+        entries.append((sev, label, dev_id, dtype, low_bat, unreach, duty, sabotage, rssi))
+
+    # Sort: errors first, then warn, then ok; within group alphabetically
+    entries.sort(key=lambda e: (-e[0], str(e[1]).lower()))
+
+    warn_count  = sum(1 for e in entries if e[0] >= 2)
+    total       = len(entries)
+
+    rows = []
+    for sev, label, dev_id, dtype, low_bat, unreach, duty, sabotage, rssi in entries:
+        row_cls = 'row-error' if sev == 2 else ('row-warn' if sev == 1 else '')
+        eid = html.escape(dev_id)
+        rows.append(
+            f'<tr class="{row_cls}">'
+            f'<td class="label-cell"><a href="/devices/{eid}">{html.escape(str(label))}</a></td>'
+            f'<td><span class="type-pill">{html.escape(str(dtype))}</span></td>'
+            f'<td>{_bool_pill(low_bat, "Low Bat", "OK")}</td>'
+            f'<td>{_bool_pill(unreach, "Nicht erreichbar", "Erreichbar")}</td>'
+            f'<td>{_bool_pill(duty, "Duty Cycle", "OK")}</td>'
+            f'<td>{_bool_pill(sabotage, "Sabotage", "OK")}</td>'
+            f'<td>{_rssi_html(rssi)}</td>'
+            f'<td class="mono" style="font-size:11px;color:var(--muted)">'
+            f'<a href="/devices/{eid}">{eid}</a></td>'
+            f'</tr>'
+        )
+
+    if not rows:
+        rows.append('<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:24px">Keine Geräte.</td></tr>')
+
+    summary_pill = (
+        f'<span class="status-pill pill-error">{warn_count} Warnung{"en" if warn_count != 1 else ""}</span>'
+        if warn_count else
+        f'<span class="status-pill pill-ok">Alle {total} Geräte OK</span>'
+    )
+
+    body = (
+        '<div class="page-header">'
+        f'<h1>Gerätestatus &nbsp;{summary_pill}</h1>'
+        f'<div class="sub">{total} Geräte · Geräte mit Warnungen werden oben angezeigt</div>'
+        '</div>'
+        '<table class="data-table">'
+        '<thead><tr>'
+        '<th>Label</th><th>Typ</th>'
+        '<th>Batterie</th><th>Erreichbarkeit</th><th>Duty Cycle</th><th>Sabotage</th>'
+        '<th>RSSI</th><th>Device ID</th>'
+        '</tr></thead>'
+        f'<tbody>{"".join(rows)}</tbody>'
+        '</table>'
+    )
+
+    return _page("HmIP Gerätestatus", _nav("status", total), body)
