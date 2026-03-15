@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # main.py
 
+import colorsys
 import json
 import sys
 import threading
@@ -19,6 +20,7 @@ from logging.handlers import TimedRotatingFileHandler
 from flask import Flask, request, jsonify, send_file, Response
 from config.loader import load_config, load_internal_config
 from app.messages import (send_plugin_state, send_hmip_set_switch, send_hmip_set_dim_level,
+                          send_hmip_set_hue_saturation_dim_level,
                           send_get_system_state,
                           send_config_template_response, send_config_update_response)
 from app.utils import save_system_state
@@ -428,6 +430,45 @@ def hmip_dimmer_post():
     _register_pending(rid, "/hmip/device/control/setDimLevel")
 
     return jsonify({"status": f"{device_id}: dimLevel={dim_level}%", "request_id": rid}), 200
+
+# --- POST-Route für RGB-Controller (z.B. HmIP-RGBW) ---
+@app.post("/hmipRGB")
+@require_api_key
+def hmip_rgb_post():
+    global conn
+    if conn is None:
+        return jsonify({"error": "WebSocket nicht verbunden"}), 503
+
+    data = request.get_json(silent=True, force=True) or {}
+    device_id = data.get("device")
+    rgb_str = data.get("rgb")          # Loxone-Format: "R=50%,G=30%,B=100%"
+    channel_index = data.get("channelIndex", 1)
+
+    if not device_id or not rgb_str:
+        return jsonify({"error": "Ungültige Parameter: device (str), rgb (str, z.B. 'R=50%,G=30%,B=100%'), optional channelIndex (int, default 1)"}), 400
+
+    try:
+        parts = {}
+        for part in rgb_str.replace(" ", "").split(","):
+            key, val = part.split("=")
+            parts[key.upper()] = float(val.rstrip("%")) / 100.0
+        r = max(0.0, min(1.0, parts.get("R", 0.0)))
+        g = max(0.0, min(1.0, parts.get("G", 0.0)))
+        b = max(0.0, min(1.0, parts.get("B", 0.0)))
+    except Exception:
+        return jsonify({"error": f"Ungültiges RGB-Format. Erwartet: 'R=50%,G=30%,B=100%', erhalten: '{rgb_str}'"}), 400
+
+    h, s, v = colorsys.rgb_to_hsv(r, g, b)
+    hue = round(h * 360)
+    saturation = round(s, 3)
+    dim_level = round(v, 3)
+
+    with send_lock:
+        rid = send_hmip_set_hue_saturation_dim_level(conn, device_id, hue, saturation, dim_level, channel_index)
+    _register_pending(rid, "/hmip/device/control/setHueSaturationDimLevel")
+
+    return jsonify({"status": f"{device_id}: hue={hue}° sat={saturation} dim={dim_level}", "request_id": rid}), 200
+
 
 # --- GET-Route: lokal ohne Key, extern mit X-API-Key (z.B. Loxone) ---
 @app.get("/hmipSwitch")

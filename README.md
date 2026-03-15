@@ -205,6 +205,24 @@ Steuert einen Dimmer-Kanal (z. B. HmIP-PDT, HmIP-DRD3) von extern.
 
 > **Hinweis:** `dimLevel: 0` schaltet die Lampe aus. Die Bridge konvertiert den Prozentwert intern auf den HmIP-Bereich (0.0–1.0).
 
+### `POST /hmipRGB`
+
+Steuert einen RGB/RGBW-Controller (z. B. HmIP-RGBW) über das Loxone RGB-Format.
+
+- **Header:** `X-API-Key: <key>`
+- **Body (JSON):**
+  ```json
+  { "device": "<DEVICE_ID>", "rgb": "R=50%,G=30%,B=100%", "channelIndex": 1 }
+  ```
+  - `rgb`: RGB-Werte im Loxone-Format (`R=X%,G=Y%,B=Z%`, je 0–100%)
+  - `channelIndex`: optional, Standard `1`
+- **Response:**
+  ```json
+  { "status": "<DEVICE_ID>: hue=240° sat=0.7 dim=1.0", "request_id": "<uuid>" }
+  ```
+
+> Die Bridge konvertiert RGB → HSV und sendet `setHueSaturationDimLevel`. Der RGBW-Controller mappt HSV intern auf die 4 Kanäle (R/G/B/W). `R=0%,G=0%,B=0%` schaltet aus.
+
 ### `GET /hmipSwitch`
 
 Komfort-Endpunkt für schnelle Tests und Integrationen wie Loxone.
@@ -303,6 +321,21 @@ Für Dimmer `/hmipDimmer` verwenden — sendet einen Prozentwert (0–100):
 | **HTTP-Header bei AUS** | `X-API-Key: <key>\r\nContent-Type: application/json` |
 
 `<v>` ist der Ausgabewert des Loxone-Lichtsteuerungsbausteins (0–100%).
+
+### RGB-Controller steuern (Lichtsteuerungsbaustein → RGB)
+
+Für HmIP-RGBW den Loxone **Lichtsteuerungsbaustein im RGB-Modus** verwenden. Der Ausgang liefert `R=X%,G=Y%,B=Z%`:
+
+| Feld | Wert |
+|------|------|
+| **Befehl bei EIN** | `/hmipRGB` |
+| **HTTP-Post-Body bei EIN** | `{"device":"<DEVICE_ID>","rgb":"R=<vR>%,G=<vG>%,B=<vB>%","channelIndex":1}` |
+| **HTTP-Header bei EIN** | `X-API-Key: <key>\r\nContent-Type: application/json` |
+| **Befehl bei AUS** | `/hmipRGB` |
+| **HTTP-Post-Body bei AUS** | `{"device":"<DEVICE_ID>","rgb":"R=0%,G=0%,B=0%","channelIndex":1}` |
+| **HTTP-Header bei AUS** | `X-API-Key: <key>\r\nContent-Type: application/json` |
+
+`<vR>`, `<vG>`, `<vB>` sind die einzelnen RGB-Ausgänge des Loxone-Lichtsteuerungsbausteins.
 
 ### channelIndex ermitteln
 

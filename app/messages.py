@@ -113,6 +113,24 @@ def send_hmip_set_dim_level(ws, device_id: str, dim_level: float, channel_index:
         return rid
 
 
+def send_hmip_set_hue_saturation_dim_level(ws, device_id: str, hue: int, saturation_level: float, dim_level: float, channel_index: int = 1) -> str:
+    body = {
+        "hue": hue,
+        "saturationLevel": saturation_level,
+        "dimLevel": dim_level,
+        "channelIndex": channel_index,
+        "deviceId": device_id,
+    }
+    rid, payload = _build_hmip_request("/hmip/device/control/setHueSaturationDimLevel", body)
+    try:
+        ws.send(json.dumps(payload))
+        log.info(f"HMIP_SYSTEM_REQUEST gesendet für device {device_id} → hue={hue}° sat={saturation_level:.2f} dim={dim_level:.2f} (id={rid})")
+        return rid
+    except Exception as e:
+        log.error(f"Fehler beim Senden von HMIP_SYSTEM_REQUEST (setHueSaturationDimLevel): {e}")
+        return rid
+
+
 def send_hmip_set_switch(ws, device_id: str, state: bool, channel_index: int = 0) -> str:
     body = {
         "on": state,
