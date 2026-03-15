@@ -118,6 +118,34 @@ pre.json-raw { padding: 20px; background: var(--bg); font-family: var(--mono); f
 .rssi-bar.bad  span.lit { background: var(--red); }
 .row-warn td { background: #1a1500 !important; }
 .row-error td { background: #1a0a0a !important; }
+
+/* Dashboard */
+.dash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.dash-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; }
+.dash-card.wide { grid-column: span 2; }
+.dash-card h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 600; margin-bottom: 14px; }
+.dash-card .big-val { font-size: 36px; font-weight: 300; line-height: 1; margin-bottom: 4px; }
+.dash-card .big-val em { font-size: 18px; font-style: normal; color: var(--muted); }
+.dash-card .sub-val { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.weather-icon { font-size: 48px; line-height: 1; margin-bottom: 8px; }
+.dash-kv { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.dash-kv:last-child { border-bottom: none; }
+.dash-kv .dk { color: var(--muted); font-size: 12px; }
+.dash-kv .dv { font-family: var(--mono); font-size: 12px; }
+.progress-bar { background: var(--surface2); border-radius: 4px; height: 6px; margin-top: 8px; overflow: hidden; }
+.progress-bar .fill { height: 100%; border-radius: 4px; background: var(--green); transition: width .3s; }
+.progress-bar .fill.warn { background: var(--yellow); }
+.progress-bar .fill.bad  { background: var(--red); }
+.heating-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.heat-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; }
+.heat-card .room { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.heat-card .temps { display: flex; align-items: baseline; gap: 6px; }
+.heat-card .actual { font-size: 22px; font-weight: 300; }
+.heat-card .setpoint { font-size: 12px; color: var(--muted); }
+.heat-card .valve { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.heat-card .mode-pill { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--surface); color: var(--muted); border: 1px solid var(--border); margin-top: 6px; display: inline-block; }
+.alarm-active { border-color: var(--red) !important; }
+.alarm-ok     { border-color: var(--green) !important; }
 """
 
 _JS_SEARCH = """
@@ -203,8 +231,10 @@ def _nav(active: str = "", device_count: int = 0) -> str:
         '<nav>'
         '<div class="brand">⚡ Homematic <em>Bridge</em></div>'
         '<div class="nav-links">'
+        + lnk("/", "Dashboard", "dashboard")
         + lnk("/devices/html", "Geräte", "devices")
         + lnk("/devices/status", "Status", "status")
+        + lnk("/heating", "Heizung", "heating")
         + lnk("/healthz", "Health", "health")
         + '</div>'
         '<div class="spacer"></div>'
@@ -521,3 +551,259 @@ def generate_device_status_html(system_state_path: str) -> str:
     )
 
     return _page("HmIP Gerätestatus", _nav("status", total), body)
+
+
+# ── Shared data extractors ─────────────────────────────────────────────────────
+_WEATHER_ICON = {
+    "CLEAR": "☀️", "PARTLY_CLOUDY": "🌤️", "CLOUDY": "☁️", "HEAVILY_CLOUDY": "☁️",
+    "FOGGY": "🌫️", "STRONG_WIND": "💨", "RAINY": "🌧️", "HEAVY_RAIN": "⛈️",
+    "LIGHT_RAIN": "🌦️", "SNOWY": "❄️", "SNOWY_RAINY": "🌨️", "THUNDERSTORM": "⛈️",
+}
+
+def _wind_dir(deg: Any) -> str:
+    if not isinstance(deg, (int, float)):
+        return "–"
+    dirs = ["N","NO","O","SO","S","SW","W","NW"]
+    return dirs[round(int(deg) / 45) % 8]
+
+def _get_home_and_groups(data: Dict[str, Any]):
+    """Gibt (home_dict, groups_dict) zurück."""
+    body = data.get("body", {}).get("body", {}) or data.get("body", {})
+    home = body.get("home", {})
+    groups = body.get("groups", {})
+    return home, groups
+
+def _get_security_functional_home(home: Dict[str, Any], groups: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    for fh in (home.get("functionalHomes") or {}).values():
+        if isinstance(fh, dict) and fh.get("solution") == "SECURITY_AND_ALARM":
+            return fh
+    return None
+
+def _get_heating_groups(groups: Dict[str, Any]) -> list:
+    result = []
+    for g in groups.values():
+        if isinstance(g, dict) and g.get("type") == "HEATING":
+            result.append(g)
+    return sorted(result, key=lambda g: str(g.get("label", "")))
+
+
+# ── Dashboard ──────────────────────────────────────────────────────────────────
+def generate_dashboard_html(system_state_path: str) -> str:
+    with open(system_state_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    home, groups = _get_home_and_groups(data)
+    weather = home.get("weather") or {}
+    sec_fh  = _get_security_functional_home(home, groups)
+
+    # ── Weather card ──
+    condition  = weather.get("weatherCondition", "–")
+    icon       = _WEATHER_ICON.get(condition, "🌡️")
+    temp       = weather.get("temperature")
+    hum        = weather.get("humidity")
+    wind       = weather.get("windSpeed")
+    wind_dir   = _wind_dir(weather.get("windDirection"))
+    temp_min   = weather.get("minTemperature")
+    temp_max   = weather.get("maxTemperature")
+    temp_str   = f"{temp:.1f}" if isinstance(temp, (int, float)) else "–"
+    wind_str   = f"{wind:.1f} km/h {wind_dir}" if isinstance(wind, (int, float)) else "–"
+    minmax_str = f"{temp_min:.1f}° / {temp_max:.1f}°" if isinstance(temp_min, (int, float)) else ""
+
+    weather_card = (
+        '<div class="dash-card">'
+        '<h3>Wetter</h3>'
+        f'<div class="weather-icon">{icon}</div>'
+        f'<div class="big-val">{temp_str}<em> °C</em></div>'
+        f'<div class="sub-val">{html.escape(condition.replace("_"," ").title())}'
+        + (f' · {minmax_str}' if minmax_str else '') + '</div>'
+        f'<div style="margin-top:12px">'
+        f'<div class="dash-kv"><span class="dk">Luftfeuchtigkeit</span><span class="dv">{hum} %</span></div>'
+        f'<div class="dash-kv"><span class="dk">Wind</span><span class="dv">{html.escape(wind_str)}</span></div>'
+        f'</div>'
+        '</div>'
+    )
+
+    # ── Alarm card ──
+    alarm_active     = sec_fh.get("alarmActive", False) if sec_fh else None
+    safety_active    = sec_fh.get("safetyAlarmActive", False) if sec_fh else None
+    intrusion_active = sec_fh.get("intrusionAlarmActive", False) if sec_fh else None
+    any_alarm        = alarm_active or safety_active or intrusion_active
+
+    last_event_ts    = sec_fh.get("alarmEventTimestamp") if sec_fh else None
+    last_event_type  = sec_fh.get("alarmSecurityJournalEntryType", "") if sec_fh else ""
+
+    import datetime
+    def _ts(ms):
+        if not ms: return "–"
+        try:
+            return datetime.datetime.fromtimestamp(ms / 1000).strftime("%d.%m.%Y %H:%M")
+        except Exception:
+            return "–"
+
+    alarm_border = "alarm-active" if any_alarm else "alarm-ok"
+    alarm_status = (
+        '<span class="status-pill pill-error">⚠ ALARM AKTIV</span>'
+        if any_alarm else
+        '<span class="status-pill pill-ok">Kein Alarm</span>'
+    )
+    alarm_card = (
+        f'<div class="dash-card {alarm_border}">'
+        '<h3>Alarm / Sicherheit</h3>'
+        f'<div style="margin-bottom:12px">{alarm_status}</div>'
+        '<div class="dash-kv"><span class="dk">Einbruch</span>'
+        f'<span class="dv">{_bool_pill(intrusion_active,"AKTIV","OK")}</span></div>'
+        '<div class="dash-kv"><span class="dk">Sicherheitsalarm</span>'
+        f'<span class="dv">{_bool_pill(safety_active,"AKTIV","OK")}</span></div>'
+        '<div class="dash-kv"><span class="dk">Letztes Ereignis</span>'
+        f'<span class="dv">{html.escape(last_event_type.replace("_"," "))}</span></div>'
+        '<div class="dash-kv"><span class="dk">Zeitpunkt</span>'
+        f'<span class="dv">{_ts(last_event_ts)}</span></div>'
+        '</div>'
+    )
+
+    # ── System card ──
+    duty      = home.get("dutyCycle") or 0
+    connected = home.get("connected")
+    upd_state = home.get("updateState", "–")
+    duty_cls  = "bad" if duty > 80 else ("warn" if duty > 50 else "")
+    sys_card = (
+        '<div class="dash-card">'
+        '<h3>System</h3>'
+        f'<div class="dash-kv"><span class="dk">Verbindung</span>'
+        f'<span class="dv">{_bool_pill(connected,"Verbunden","Getrennt","pill-ok","pill-error")}</span></div>'
+        f'<div class="dash-kv"><span class="dk">Firmware</span>'
+        f'<span class="dv">{html.escape(str(upd_state))}</span></div>'
+        f'<div class="dash-kv"><span class="dk">Duty Cycle</span>'
+        f'<span class="dv mono">{duty:.1f} %</span></div>'
+        f'<div class="progress-bar"><div class="fill {duty_cls}" style="width:{min(duty,100):.0f}%"></div></div>'
+        '</div>'
+    )
+
+    # ── Heating summary card ──
+    heating_groups = _get_heating_groups(groups)
+    heat_items = ""
+    for hg in heating_groups[:6]:  # max 6 auf Dashboard
+        lbl   = html.escape(str(hg.get("label", "–")))
+        actual = hg.get("actualTemperature")
+        setp  = hg.get("setPointTemperature")
+        valve = hg.get("valvePosition")
+        mode  = hg.get("controlMode", "")
+        actual_str = f"{actual:.1f}°" if isinstance(actual, (int, float)) else "–"
+        setp_str   = f"Soll: {setp:.1f}°" if isinstance(setp, (int, float)) else ""
+        valve_str  = f"Ventil: {valve*100:.0f}%" if isinstance(valve, (int, float)) else ""
+        mode_str   = mode.replace("_", " ").title() if mode else ""
+        heat_items += (
+            f'<div class="heat-card">'
+            f'<div class="room">{lbl}</div>'
+            f'<div class="temps"><span class="actual">{actual_str}</span>'
+            f'<span class="setpoint">{setp_str}</span></div>'
+            + (f'<div class="valve">{valve_str}</div>' if valve_str else '')
+            + (f'<div class="mode-pill">{mode_str}</div>' if mode_str else '')
+            + '</div>'
+        )
+    more = len(heating_groups) - 6
+    if more > 0:
+        heat_items += f'<div class="heat-card" style="display:flex;align-items:center;justify-content:center;color:var(--muted)">+{more} weitere → <a href="/heating" style="margin-left:6px">Alle</a></div>'
+
+    heat_card = (
+        '<div class="dash-card wide">'
+        '<h3>Heizung <a href="/heating" style="font-size:11px;float:right;color:var(--accent)">Alle →</a></h3>'
+        f'<div class="heating-grid">{heat_items}</div>'
+        '</div>'
+    ) if heating_groups else ""
+
+    # ── Device warning summary ──
+    warn_devs = []
+    for dev_id, dev in _iter_devices(data):
+        ch0 = dev.get("functionalChannels", {}).get("0", {})
+        if ch0.get("lowBat") or ch0.get("unreach") or ch0.get("dutyCycle") or ch0.get("sabotage"):
+            warn_devs.append(dev.get("label", dev_id))
+    if warn_devs:
+        warn_list = "".join(f'<div class="dash-kv"><span class="dk">⚠</span><span class="dv">{html.escape(str(l))}</span></div>' for l in warn_devs[:6])
+        if len(warn_devs) > 6:
+            warn_list += f'<div class="dash-kv" style="color:var(--muted)">... +{len(warn_devs)-6} weitere</div>'
+        warn_card = (
+            '<div class="dash-card alarm-active">'
+            f'<h3>Gerätewarnungen <a href="/devices/status" style="font-size:11px;float:right;color:var(--accent)">Alle →</a></h3>'
+            + warn_list + '</div>'
+        )
+    else:
+        warn_card = (
+            '<div class="dash-card alarm-ok">'
+            '<h3>Gerätewarnungen</h3>'
+            '<div style="color:var(--green);font-size:13px">Alle Geräte OK</div>'
+            '</div>'
+        )
+
+    body = (
+        '<div class="page-header"><h1>Dashboard</h1></div>'
+        f'<div class="dash-grid">'
+        + weather_card + alarm_card + sys_card + warn_card
+        + '</div>'
+        + heat_card
+    )
+
+    return _page("HmIP Dashboard", _nav("dashboard"), body)
+
+
+# ── Heating page ───────────────────────────────────────────────────────────────
+def generate_heating_html(system_state_path: str) -> str:
+    with open(system_state_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    home, groups = _get_home_and_groups(data)
+    heating_groups = _get_heating_groups(groups)
+    absence = "–"
+    for fh in (home.get("functionalHomes") or {}).values():
+        if isinstance(fh, dict) and fh.get("solution") == "INDOOR_CLIMATE":
+            absence = str(fh.get("absenceType", "–")).replace("_", " ").title()
+
+    rows = []
+    for hg in heating_groups:
+        lbl    = html.escape(str(hg.get("label", "–")))
+        actual = hg.get("actualTemperature")
+        setp   = hg.get("setPointTemperature")
+        hum    = hg.get("humidity")
+        valve  = hg.get("valvePosition")
+        mode   = hg.get("controlMode", "–")
+        boost  = hg.get("boostMode", False)
+        party  = hg.get("partyMode", False)
+
+        actual_str = f"{actual:.1f} °C" if isinstance(actual, (int, float)) else "–"
+        setp_str   = f"{setp:.1f} °C"   if isinstance(setp,   (int, float)) else "–"
+        hum_str    = f"{hum} %"          if isinstance(hum,    (int, float)) else "–"
+        valve_str  = f"{valve*100:.0f} %" if isinstance(valve, (int, float)) else "–"
+        mode_str   = html.escape(str(mode).replace("_", " ").title())
+
+        flags = ""
+        if boost:  flags += ' <span class="status-pill pill-warn">Boost</span>'
+        if party:  flags += ' <span class="status-pill pill-warn">Party</span>'
+
+        rows.append(
+            f'<tr>'
+            f'<td class="label-cell">{lbl}</td>'
+            f'<td class="mono">{actual_str}</td>'
+            f'<td class="mono">{setp_str}</td>'
+            f'<td class="mono">{hum_str}</td>'
+            f'<td class="mono">{valve_str}</td>'
+            f'<td>{mode_str}{flags}</td>'
+            f'</tr>'
+        )
+
+    if not rows:
+        rows.append('<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px">Keine Heizgruppen gefunden.</td></tr>')
+
+    body = (
+        '<div class="page-header">'
+        '<h1>Heizung</h1>'
+        f'<div class="sub">Abwesenheitsmodus: <strong>{html.escape(absence)}</strong></div>'
+        '</div>'
+        '<table class="data-table">'
+        '<thead><tr>'
+        '<th>Raum</th><th>Ist-Temp</th><th>Soll-Temp</th><th>Luftfeuchte</th><th>Ventil</th><th>Modus</th>'
+        '</tr></thead>'
+        f'<tbody>{"".join(rows)}</tbody>'
+        '</table>'
+    )
+
+    return _page("HmIP Heizung", _nav("heating"), body)

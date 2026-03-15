@@ -25,7 +25,9 @@ from app.messages import (send_plugin_state, send_hmip_set_switch, send_hmip_set
                           send_config_template_response, send_config_update_response)
 from app.utils import save_system_state, _locate_devices_container, _find_device_in_list
 from app.loxone_udp import push_event_devices
-from app.generate_html import generate_device_overview, generate_device_detail_html, generate_device_status_html
+from app.generate_html import (generate_device_overview, generate_device_detail_html,
+                               generate_device_status_html, generate_dashboard_html,
+                               generate_heating_html)
 from threading import Lock
 
 # Konfiguration laden (inkl. Token sicherstellen)
@@ -370,6 +372,18 @@ def ws_loop():
 
 # Flask HTTP-Server
 app = Flask(__name__)
+
+@app.route("/")
+@require_web_auth
+def serve_dashboard():
+    html_str = generate_dashboard_html(config_internal["system_state_path"])
+    return Response(html_str, mimetype="text/html; charset=utf-8")
+
+@app.route("/heating")
+@require_web_auth
+def serve_heating():
+    html_str = generate_heating_html(config_internal["system_state_path"])
+    return Response(html_str, mimetype="text/html; charset=utf-8")
 
 @app.route("/devices/html")
 @require_web_auth
