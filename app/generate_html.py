@@ -130,6 +130,29 @@ document.getElementById('search').addEventListener('input', function() {
 """
 
 # ── Helpers: JSON-Navigation ─────────────────────────────────────────────────
+def _build_room_map(snapshot: Dict[str, Any]) -> Dict[str, str]:
+    """Gibt {device_id: room_label} zurück, basierend auf META-Gruppen."""
+    room_map: Dict[str, str] = {}
+    candidates = [
+        ("body", "groups"),
+        ("body", "body", "groups"),
+    ]
+    groups = None
+    for path in candidates:
+        groups = _get_nested(snapshot, path)
+        if isinstance(groups, dict):
+            break
+    if not isinstance(groups, dict):
+        return room_map
+    for g in groups.values():
+        if not isinstance(g, dict) or g.get("type") != "META":
+            continue
+        room_label = str(g.get("label") or "–")
+        for ch in (g.get("channels") or []):
+            if isinstance(ch, dict) and ch.get("deviceId"):
+                room_map[ch["deviceId"]] = room_label
+    return room_map
+
 def _get_nested(d: Dict[str, Any], keys: Iterable[str]) -> Any:
     cur = d
     for k in keys:
@@ -224,6 +247,7 @@ def generate_device_overview(system_state_path: str, output_path: str = "static/
     with open(system_state_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
+    room_map = _build_room_map(data)
     rows = []
     count = 0
     for dev_id, dev in _iter_devices(data):
@@ -231,18 +255,20 @@ def generate_device_overview(system_state_path: str, output_path: str = "static/
         label  = html.escape(str(dev.get("label", "–")))
         dtype  = html.escape(str(dev.get("type", "–")))
         model  = html.escape(str(dev.get("modelType", "–")))
+        room   = html.escape(room_map.get(dev_id, "–"))
         eid    = html.escape(dev_id)
         rows.append(
             f'<tr>'
             f'<td class="mono"><a href="/devices/{eid}">{eid}</a></td>'
             f'<td class="label-cell">{label}</td>'
+            f'<td>{room}</td>'
             f'<td><span class="type-pill">{dtype}</span></td>'
             f'<td class="mono">{model}</td>'
             f'</tr>'
         )
 
     if not rows:
-        rows.append('<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px">Keine Geräte gefunden.</td></tr>')
+        rows.append('<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px">Keine Geräte gefunden.</td></tr>')
 
     tbody = "".join(rows)
     body = (
@@ -250,9 +276,9 @@ def generate_device_overview(system_state_path: str, output_path: str = "static/
         '<h1>Geräteübersicht</h1>'
         f'<div class="sub">{count} Geräte im aktuellen Snapshot</div>'
         '</div>'
-        '<div class="search-wrap"><input id="search" type="text" placeholder="Suchen nach ID, Label, Typ …" autocomplete="off"></div>'
+        '<div class="search-wrap"><input id="search" type="text" placeholder="Suchen nach ID, Label, Raum, Typ …" autocomplete="off"></div>'
         '<table class="data-table">'
-        '<thead><tr><th>Device ID</th><th>Label</th><th>Typ</th><th>Modell</th></tr></thead>'
+        '<thead><tr><th>Device ID</th><th>Label</th><th>Raum</th><th>Typ</th><th>Modell</th></tr></thead>'
         f'<tbody>{tbody}</tbody>'
         '</table>'
     )
@@ -314,9 +340,11 @@ def generate_device_detail_html(system_state_path: str, device_id: str) -> str:
         )
         return _page("Gerät nicht gefunden", _nav(), body)
 
+    room_map = _build_room_map(data)
     label = html.escape(str(dev.get("label", "–")))
     dtype = html.escape(str(dev.get("type", "–")))
     model = html.escape(str(dev.get("modelType", "–")))
+    room  = html.escape(room_map.get(device_id, "–"))
     eid   = html.escape(device_id)
 
     # Breadcrumb
@@ -324,13 +352,19 @@ def generate_device_detail_html(system_state_path: str, device_id: str) -> str:
         '<div class="breadcrumb">'
         '<a href="/devices/html">Geräte</a>'
         '<span class="sep">›</span>'
+        f'{room} <span style="opacity:.4">›</span> '
         f'{label}'
         '</div>'
     )
 
     # Meta-Grid
     meta_keys = ["id", "label", "type", "modelType", "homeId", "permanentlyReachable", "firmwareVersion"]
-    meta_items = ""
+    meta_items = (
+        f'<div class="meta-card">'
+        f'<div class="k">Raum</div>'
+        f'<div class="v">{room}</div>'
+        f'</div>'
+    )
     for k in meta_keys:
         if k in dev:
             meta_items += (
@@ -413,6 +447,8 @@ def generate_device_status_html(system_state_path: str) -> str:
     with open(system_state_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
+    room_map = _build_room_map(data)
+
     # Collect status per device
     entries = []
     for dev_id, dev in _iter_devices(data):
@@ -424,6 +460,7 @@ def generate_device_status_html(system_state_path: str) -> str:
         rssi       = ch0.get("rssiDeviceValue")
         label      = dev.get("label", "–")
         dtype      = dev.get("type", "–")
+        room       = room_map.get(dev_id, "–")
 
         # Severity: 2=error, 1=warn, 0=ok
         sev = 0
@@ -432,7 +469,7 @@ def generate_device_status_html(system_state_path: str) -> str:
         elif isinstance(rssi, (int, float)) and rssi != 128 and rssi < -85:
             sev = 1
 
-        entries.append((sev, label, dev_id, dtype, low_bat, unreach, duty, sabotage, rssi))
+        entries.append((sev, label, dev_id, dtype, room, low_bat, unreach, duty, sabotage, rssi))
 
     # Sort: errors first, then warn, then ok; within group alphabetically
     entries.sort(key=lambda e: (-e[0], str(e[1]).lower()))
@@ -441,12 +478,13 @@ def generate_device_status_html(system_state_path: str) -> str:
     total       = len(entries)
 
     rows = []
-    for sev, label, dev_id, dtype, low_bat, unreach, duty, sabotage, rssi in entries:
+    for sev, label, dev_id, dtype, room, low_bat, unreach, duty, sabotage, rssi in entries:
         row_cls = 'row-error' if sev == 2 else ('row-warn' if sev == 1 else '')
         eid = html.escape(dev_id)
         rows.append(
             f'<tr class="{row_cls}">'
             f'<td class="label-cell"><a href="/devices/{eid}">{html.escape(str(label))}</a></td>'
+            f'<td>{html.escape(str(room))}</td>'
             f'<td><span class="type-pill">{html.escape(str(dtype))}</span></td>'
             f'<td>{_bool_pill(low_bat, "Low Bat", "OK")}</td>'
             f'<td>{_bool_pill(unreach, "Nicht erreichbar", "Erreichbar")}</td>'
@@ -459,7 +497,7 @@ def generate_device_status_html(system_state_path: str) -> str:
         )
 
     if not rows:
-        rows.append('<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:24px">Keine Geräte.</td></tr>')
+        rows.append('<tr><td colspan="9" style="color:var(--muted);text-align:center;padding:24px">Keine Geräte.</td></tr>')
 
     summary_pill = (
         f'<span class="status-pill pill-error">{warn_count} Warnung{"en" if warn_count != 1 else ""}</span>'
@@ -474,7 +512,7 @@ def generate_device_status_html(system_state_path: str) -> str:
         '</div>'
         '<table class="data-table">'
         '<thead><tr>'
-        '<th>Label</th><th>Typ</th>'
+        '<th>Label</th><th>Raum</th><th>Typ</th>'
         '<th>Batterie</th><th>Erreichbarkeit</th><th>Duty Cycle</th><th>Sabotage</th>'
         '<th>RSSI</th><th>Device ID</th>'
         '</tr></thead>'
