@@ -187,6 +187,24 @@ Steuert einen Switch-Kanal von extern (z. B. Home Assistant, Loxone).
   { "status": "<DEVICE_ID>: ON", "request_id": "<uuid>" }
   ```
 
+### `POST /hmipDimmer`
+
+Steuert einen Dimmer-Kanal (z. B. HmIP-PDT, HmIP-DRD3) von extern.
+
+- **Header:** `X-API-Key: <key>`
+- **Body (JSON):**
+  ```json
+  { "device": "<DEVICE_ID>", "dimLevel": 50, "channelIndex": 1 }
+  ```
+  - `dimLevel`: Helligkeit in Prozent (`0`–`100`)
+  - `channelIndex`: optional, Standard `1`
+- **Response:**
+  ```json
+  { "status": "<DEVICE_ID>: dimLevel=50%", "request_id": "<uuid>" }
+  ```
+
+> **Hinweis:** `dimLevel: 0` schaltet die Lampe aus. Die Bridge konvertiert den Prozentwert intern auf den HmIP-Bereich (0.0–1.0).
+
 ### `GET /hmipSwitch`
 
 Komfort-Endpunkt für schnelle Tests und Integrationen wie Loxone.
@@ -270,6 +288,21 @@ Befehl bei AUS:       /hmipSwitch
 Body bei AUS:         {"device":"3014F711A0000DE2699BC616","on":false,"channelIndex":1}
 Header bei AUS:       X-API-Key: ZfAWvv_...\r\nContent-Type: application/json
 ```
+
+### Dimmer steuern (Lichtsteuerungsbaustein)
+
+Für Dimmer `/hmipDimmer` verwenden — sendet einen Prozentwert (0–100):
+
+| Feld | Wert |
+|------|------|
+| **Befehl bei EIN** | `/hmipDimmer` |
+| **HTTP-Post-Body bei EIN** | `{"device":"<DEVICE_ID>","dimLevel":<v>,"channelIndex":1}` |
+| **HTTP-Header bei EIN** | `X-API-Key: <key>\r\nContent-Type: application/json` |
+| **Befehl bei AUS** | `/hmipDimmer` |
+| **HTTP-Post-Body bei AUS** | `{"device":"<DEVICE_ID>","dimLevel":0,"channelIndex":1}` |
+| **HTTP-Header bei AUS** | `X-API-Key: <key>\r\nContent-Type: application/json` |
+
+`<v>` ist der Ausgabewert des Loxone-Lichtsteuerungsbausteins (0–100%).
 
 ### channelIndex ermitteln
 
