@@ -8,13 +8,13 @@ import os
 import time
 from typing import Any, Dict, Optional
 
-from flask import Blueprint, Response, jsonify, request, send_file
+from flask import Blueprint, Response, jsonify, redirect, request, send_file, session
 
 import app.state as state
 from app.auth import require_api_key, require_web_auth
 from app.generate_html import (generate_dashboard_html, generate_device_detail_html,
                                 generate_device_overview, generate_device_status_html,
-                                generate_heating_html)
+                                generate_heating_html, generate_login_html)
 from app.messages import (send_hmip_set_dim_level, send_hmip_set_hue_saturation_dim_level,
                            send_hmip_set_switch)
 from app.utils import _find_device_in_list, _locate_devices_container
@@ -65,6 +65,28 @@ def _snapshot_age_ms(path: str) -> Optional[int]:
 
 def _html(content: str) -> Response:
     return Response(content, mimetype="text/html; charset=utf-8")
+
+
+# ── Auth-Routen ───────────────────────────────────────────────────────────────
+
+@bp.route("/login", methods=["GET", "POST"])
+def login():
+    if not state.REQUIRE_API_KEY:
+        return redirect("/")
+    next_url = request.args.get("next") or "/"
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        if state.API_KEY and password == state.API_KEY:
+            session["authenticated"] = True
+            return redirect(next_url)
+        return _html(generate_login_html(error=True, next_url=next_url))
+    return _html(generate_login_html(next_url=next_url))
+
+
+@bp.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/login")
 
 
 # ── Web-Oberfläche ────────────────────────────────────────────────────────────

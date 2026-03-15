@@ -6,7 +6,7 @@ import os
 import secrets
 from functools import wraps
 
-from flask import request, jsonify, Response
+from flask import request, jsonify, Response, session, redirect, url_for
 
 import app.state as state
 
@@ -56,12 +56,7 @@ def require_web_auth(f):
     def wrapper(*args, **kwargs):
         if not state.REQUIRE_API_KEY:
             return f(*args, **kwargs)
-        auth = request.authorization
-        if not auth or auth.password != state.API_KEY:
-            return Response(
-                "Authentifizierung erforderlich.",
-                401,
-                {"WWW-Authenticate": 'Basic realm="Homematic Bridge"'}
-            )
+        if not session.get("authenticated"):
+            return redirect(f"/login?next={request.path}")
         return f(*args, **kwargs)
     return wrapper

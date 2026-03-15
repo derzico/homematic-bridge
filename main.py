@@ -3,6 +3,7 @@
 
 import logging
 import os
+import secrets
 import sys
 import threading
 from logging.handlers import TimedRotatingFileHandler
@@ -63,7 +64,19 @@ if config_internal.get("log_file"):
     log.addHandler(file_handler)
 
 # ── Flask-App erstellen ───────────────────────────────────────────────────────
+def _load_or_create_secret_key(path: str) -> bytes:
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except FileNotFoundError:
+        key = secrets.token_bytes(32)
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(key)
+        return key
+
 app = Flask(__name__)
+app.secret_key = _load_or_create_secret_key("data/secret_key.bin")
 app.register_blueprint(routes_bp)
 
 # ── Start ─────────────────────────────────────────────────────────────────────

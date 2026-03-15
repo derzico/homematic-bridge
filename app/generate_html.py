@@ -146,6 +146,19 @@ pre.json-raw { padding: 20px; background: var(--bg); font-family: var(--mono); f
 .heat-card .mode-pill { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--surface); color: var(--muted); border: 1px solid var(--border); margin-top: 6px; display: inline-block; }
 .alarm-active { border-color: var(--red) !important; }
 .alarm-ok     { border-color: var(--green) !important; }
+
+/* Login page */
+.login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.login-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 40px 48px; width: 100%; max-width: 380px; }
+.login-card .logo { text-align: center; font-size: 22px; font-weight: 600; margin-bottom: 32px; }
+.login-card .logo em { color: var(--accent); font-style: normal; }
+.login-field { margin-bottom: 16px; }
+.login-field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px; }
+.login-field input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 10px 14px; border-radius: 6px; font-size: 14px; outline: none; }
+.login-field input:focus { border-color: var(--accent); }
+.login-btn { width: 100%; background: var(--accent); color: #0d1117; border: none; padding: 11px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+.login-btn:hover { opacity: .9; }
+.login-error { background: #3a1010; border: 1px solid var(--red); color: var(--red); padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; }
 """
 
 _JS_SEARCH = """
@@ -239,6 +252,7 @@ def _nav(active: str = "", device_count: int = 0) -> str:
         + '</div>'
         '<div class="spacer"></div>'
         + badge
+        + '<a href="/logout" style="font-size:12px;color:var(--muted);padding:6px 10px;border-radius:6px;border:1px solid var(--border)">Abmelden</a>'
         + '</nav>'
     )
 
@@ -807,3 +821,36 @@ def generate_heating_html(system_state_path: str) -> str:
     )
 
     return _page("HmIP Heizung", _nav("heating"), body)
+
+
+# ── Login-Seite ────────────────────────────────────────────────────────────────
+def generate_login_html(error: bool = False, next_url: str = "/") -> str:
+    error_block = '<div class="login-error">Falsches Passwort. Bitte erneut versuchen.</div>' if error else ""
+    next_escaped = html.escape(next_url)
+    body = (
+        '<div class="login-wrap">'
+        '<div class="login-card">'
+        '<div class="logo">⚡ Homematic <em>Bridge</em></div>'
+        + error_block +
+        f'<form method="POST" action="/login?next={next_escaped}">'
+        '<div class="login-field">'
+        '<label>Passwort (API-Key)</label>'
+        '<input type="password" name="password" autofocus autocomplete="current-password" placeholder="API-Key eingeben">'
+        '</div>'
+        '<button class="login-btn" type="submit">Anmelden</button>'
+        '</form>'
+        '</div>'
+        '</div>'
+    )
+    return (
+        "<!DOCTYPE html>"
+        '<html lang="de">'
+        "<head>"
+        '<meta charset="UTF-8">'
+        "<title>Login – Homematic Bridge</title>"
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f"<style>{_CSS}</style>"
+        "</head>"
+        f"<body>{body}</body>"
+        "</html>"
+    )
