@@ -184,6 +184,16 @@ pending_ttl_seconds: 60
 
 ## Sicherheit
 
+> **Hinweis: Unverschlüsselte HTTP-Verbindung**
+>
+> Die Bridge kommuniziert standardmäßig über **HTTP (Port 8080)** — ohne TLS-Verschlüsselung.
+> Das bedeutet: Der `X-API-Key`-Header und Session-Cookies sind im Netzwerktraffic **im Klartext** sichtbar
+> und könnten mit Tools wie Wireshark ausgelesen werden.
+>
+> **Empfehlung:** Im lokalen Heimnetz ist das Risiko begrenzt (Angreifer müsste physisch im selben LAN sein).
+> Für höhere Sicherheitsanforderungen (z. B. Zugriff über VPN oder Internet) sollte ein
+> **TLS-Reverse-Proxy** (z. B. Caddy oder Nginx) vorgeschaltet werden — dies ist als TODO vorgemerkt.
+
 ### Webinterface-Login
 
 Das Webinterface ist durch einen **Session-basierten Login** geschützt. Nach dem Einloggen wird ein signiertes Session-Cookie gesetzt — kein HTTP-Basic-Auth-Popup.
