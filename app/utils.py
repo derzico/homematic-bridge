@@ -5,12 +5,14 @@ import json
 import logging
 import os
 import tempfile
+import threading
 from typing import Any, Dict, Tuple, Optional
 from config.loader import load_internal_config
 
 config_internal = load_internal_config()
 SNAPSHOT_PATH = config_internal["system_state_path"]
 log = logging.getLogger("bridge-ws")
+_snapshot_lock = threading.Lock()
 
 # --------- Helpers: IO ---------
 def _atomic_write(path: str, data: str) -> None:
@@ -102,8 +104,15 @@ def _merge_device(current: Dict[str, Any], incoming: Dict[str, Any]) -> Dict[str
             incoming.get("functionalChannels", {})
         )
 
-    # Optional: Zeitpunkt des letzten Merges
     return merged
+
+def _merge_group(current: Dict[str, Any], incoming: Dict[str, Any]) -> Dict[str, Any]:
+    """Flacher Merge der Group-Felder."""
+    if not isinstance(current, dict):
+        current = {}
+    if not isinstance(incoming, dict):
+        incoming = {}
+    return {**current, **incoming}
 
 # --------- Public: Save + Merge ---------
 def save_system_state(msg: Dict[str, Any]) -> None:
@@ -122,53 +131,56 @@ def save_system_state(msg: Dict[str, Any]) -> None:
             return
 
         if msg_type == "HMIP_SYSTEM_EVENT":
-            snapshot = _read_snapshot()
-            if snapshot is None:
-                log.warning("Kein vorhandener Snapshot – HMIP_SYSTEM_EVENT wird ignoriert (warte auf Vollsnapshot).")
-                return
-
-            devices_container, hint = _locate_devices_container(snapshot)
-            if devices_container is None:
-                log.warning("Devices-Container im Snapshot nicht gefunden (%s) – Event kann nicht gemerged werden.", hint)
-                return
-
-            tx = (msg.get("body") or {}).get("eventTransaction") or {}
-            events = tx.get("events") or {}
-
-            # iteriere deterministisch in Key-Reihenfolge ("0","1",...)
-            for _, ev in sorted(events.items(), key=lambda kv: kv[0]):
-                if not isinstance(ev, dict):
-                    continue
-                dev = ev.get("device")
-                if not isinstance(dev, dict):
-                    # z.B. GROUP_CHANGED o.ä. ohne device -> überspringen
-                    continue
-
-                dev_id = dev.get("id")
-                if not dev_id:
-                    continue
-
-                if isinstance(devices_container, list):
-                    cur, idx = _find_device_in_list(devices_container, dev_id)
-                    if cur is None:
-                        # neues Device anlegen
-                        devices_container.append(dev)
-                        log.debug("Neues Device angelegt (Liste): %s", dev_id)
-                    else:
-                        devices_container[idx] = _merge_device(cur, dev)
-                        log.debug("Device gemerged (Liste): %s", dev_id)
-
-                elif isinstance(devices_container, dict):
-                    cur = devices_container.get(dev_id, {})
-                    devices_container[dev_id] = _merge_device(cur, dev)
-                    log.debug("Device gemerged (Dict): %s", dev_id)
-
-                else:
-                    log.warning("Unbekannter Devices-Container-Typ: %s", type(devices_container))
+            with _snapshot_lock:
+                snapshot = _read_snapshot()
+                if snapshot is None:
+                    log.warning("Kein vorhandener Snapshot – HMIP_SYSTEM_EVENT wird ignoriert (warte auf Vollsnapshot).")
                     return
 
-            _write_snapshot(snapshot)
-            log.debug("Systemzustand (Delta-Event) in Snapshot gemerged.")
+                body_inner = (snapshot.get("body") or {}).get("body") or {}
+                devices_container, hint = _locate_devices_container(snapshot)
+                groups_container = body_inner.get("groups")
+
+                if devices_container is None:
+                    log.warning("Devices-Container im Snapshot nicht gefunden (%s) – Event kann nicht gemerged werden.", hint)
+                    return
+
+                tx = (msg.get("body") or {}).get("eventTransaction") or {}
+                events = tx.get("events") or {}
+
+                for _, ev in sorted(events.items(), key=lambda kv: kv[0]):
+                    if not isinstance(ev, dict):
+                        continue
+
+                    # ── Device-Event ──
+                    dev = ev.get("device")
+                    if isinstance(dev, dict):
+                        dev_id = dev.get("id")
+                        if dev_id:
+                            if isinstance(devices_container, list):
+                                cur, idx = _find_device_in_list(devices_container, dev_id)
+                                if cur is None:
+                                    devices_container.append(dev)
+                                    log.debug("Neues Device angelegt (Liste): %s", dev_id)
+                                else:
+                                    devices_container[idx] = _merge_device(cur, dev)
+                                    log.debug("Device gemerged: %s", dev_id)
+                            elif isinstance(devices_container, dict):
+                                cur = devices_container.get(dev_id, {})
+                                devices_container[dev_id] = _merge_device(cur, dev)
+                                log.debug("Device gemerged: %s", dev_id)
+
+                    # ── Group-Event ──
+                    grp = ev.get("group")
+                    if isinstance(grp, dict) and isinstance(groups_container, dict):
+                        grp_id = grp.get("id")
+                        if grp_id:
+                            cur = groups_container.get(grp_id, {})
+                            groups_container[grp_id] = _merge_group(cur, grp)
+                            log.debug("Group gemerged: %s (%s)", grp_id, grp.get("label", "–"))
+
+                _write_snapshot(snapshot)
+                log.debug("Systemzustand (Delta-Event) in Snapshot gemerged.")
             return
 
         # Andere Typen ignorieren wir still (oder debug-loggen)
