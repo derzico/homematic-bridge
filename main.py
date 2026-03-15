@@ -23,7 +23,7 @@ from app.messages import (send_plugin_state, send_hmip_set_switch, send_hmip_set
                           send_hmip_set_hue_saturation_dim_level,
                           send_get_system_state,
                           send_config_template_response, send_config_update_response)
-from app.utils import save_system_state
+from app.utils import save_system_state, _locate_devices_container, _find_device_in_list
 from app.generate_html import generate_device_overview, generate_device_detail_html
 from threading import Lock
 
@@ -506,6 +506,41 @@ def hmip_switch_get():
     _register_pending(rid, "/hmip/device/control/setSwitchState")
 
     return jsonify({"status": f"{device_id}: {'ON' if state else 'OFF'}", "request_id": rid}), 200
+
+@app.get("/hmipState")
+@require_api_key
+def hmip_state_get():
+    device_id = request.args.get("device")
+    if not device_id:
+        return jsonify({"error": "Parameter 'device' fehlt"}), 400
+    try:
+        channel_index = str(int(request.args.get("channelIndex", "0")))
+    except ValueError:
+        return jsonify({"error": "channelIndex muss eine Zahl sein"}), 400
+
+    snap = _load_snapshot()
+    if snap is None:
+        return jsonify({"error": "Kein Snapshot vorhanden"}), 503
+
+    devices_container, _ = _locate_devices_container(snap)
+    if devices_container is None:
+        return jsonify({"error": "Devices nicht im Snapshot gefunden"}), 503
+
+    if isinstance(devices_container, dict):
+        device = devices_container.get(device_id)
+    else:
+        device, _ = _find_device_in_list(devices_container, device_id)
+
+    if device is None:
+        return jsonify({"error": f"Device {device_id} nicht gefunden"}), 404
+
+    channels = device.get("functionalChannels", {})
+    channel = channels.get(channel_index)
+    if channel is None:
+        return jsonify({"error": f"Channel {channel_index} nicht gefunden"}), 404
+
+    return jsonify(channel), 200
+
 
 @app.route("/healthz", methods=["GET"])
 def healthz():
