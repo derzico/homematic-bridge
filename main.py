@@ -464,7 +464,13 @@ def hmip_rgb_post():
     dim_level = round(v, 3)
 
     with send_lock:
-        rid = send_hmip_set_hue_saturation_dim_level(conn, device_id, hue, saturation, dim_level, channel_index)
+        if r == 0.0 and g == 0.0 and b == 0.0:
+            rid = send_hmip_set_switch(conn, device_id, False, channel_index)
+            _register_pending(rid, "/hmip/device/control/setSwitchState")
+            return jsonify({"status": f"{device_id}: off", "request_id": rid}), 200
+        else:
+            send_hmip_set_switch(conn, device_id, True, channel_index)
+            rid = send_hmip_set_hue_saturation_dim_level(conn, device_id, hue, saturation, dim_level, channel_index)
     _register_pending(rid, "/hmip/device/control/setHueSaturationDimLevel")
 
     return jsonify({"status": f"{device_id}: hue={hue}° sat={saturation} dim={dim_level}", "request_id": rid}), 200
