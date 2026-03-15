@@ -85,7 +85,7 @@ def ws_loop() -> None:
     cert_path  = state.config.get("ssl_cert_path")
 
     if ssl_verify and cert_path:
-        sslopt = {"cert_reqs": ssl.CERT_REQUIRED, "ca_certs": cert_path}
+        sslopt = {"cert_reqs": ssl.CERT_REQUIRED, "ca_certs": cert_path, "check_hostname": False}
         log.info("[SSL] Zertifikatspfad verwendet: %s", cert_path)
     elif ssl_verify:
         sslopt = {"cert_reqs": ssl.CERT_REQUIRED, "ca_certs": certifi.where()}
