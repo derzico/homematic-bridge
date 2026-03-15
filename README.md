@@ -279,7 +279,41 @@ Zustand der Bridge:
 
 ## Loxone-Integration
 
-Die Bridge lässt sich einfach über **Virtuelle HTTP-Ausgänge** in Loxone Config einbinden.
+Die Bridge lässt sich über **Virtuelle HTTP-Ausgänge** (Steuern) und **Virtuelle Eingänge per UDP** (Status empfangen) in Loxone Config einbinden.
+
+### UDP Push (HmIP → Loxone)
+
+Die Bridge sendet bei jedem HmIP-State-Change automatisch per **UDP** an den Loxone Miniserver.
+Dafür in `config.yaml` den `loxone`-Block konfigurieren:
+
+```yaml
+loxone:
+  miniserver_ip: 192.168.1.100  # IP des Loxone Miniservers
+  udp_port: 7777                # UDP-Port des Miniservers (Loxone-Standard)
+```
+
+#### Variablennamen
+
+Format: `hmip_<DEVICE_ID>_ch<N>_<feld>`
+
+| Feld | Typ | Beispiel |
+|------|-----|---------|
+| `_on` | 0 / 1 | `hmip_3014F711...C52_ch1_on` |
+| `_dimLevel` | 0.0 – 1.0 | `hmip_3014F711...C52_ch1_dimLevel` |
+| `_hue` | 0 – 360 | `hmip_3014F711...C52_ch1_hue` |
+| `_saturationLevel` | 0.0 – 1.0 | `hmip_3014F711...C52_ch1_saturationLevel` |
+| `_actualTemperature` | °C | `hmip_3014F711...C52_ch0_actualTemperature` |
+| `_humidity` | % | `hmip_3014F711...C52_ch0_humidity` |
+
+#### Loxone Config: Virtuellen Eingang anlegen
+
+1. Peripherie → Virtuell → **Virtuellen Eingang** hinzufügen
+2. Adresse: UDP-Port des Miniservers (z. B. `7777`) — wird automatisch von Loxone geöffnet
+3. **Virtuellen Eingangsbefehl** anlegen:
+   - **Befehlskennung:** z. B. `hmip_3014F711A00033E0C9923C52_ch1_on`
+   - **Wert:** `\v` (Loxone-Platzhalter für den empfangenen Wert)
+
+
 
 ### Voraussetzungen
 

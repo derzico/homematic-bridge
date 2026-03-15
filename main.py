@@ -24,6 +24,7 @@ from app.messages import (send_plugin_state, send_hmip_set_switch, send_hmip_set
                           send_get_system_state,
                           send_config_template_response, send_config_update_response)
 from app.utils import save_system_state, _locate_devices_container, _find_device_in_list
+from app.loxone_udp import push_event_devices
 from app.generate_html import generate_device_overview, generate_device_detail_html
 from threading import Lock
 
@@ -31,6 +32,11 @@ from threading import Lock
 config = load_config()
 config_internal = load_internal_config()
 PLUGIN_ID = config.get("plugin_id")
+
+# Loxone UDP Push (optional)
+_loxone_cfg = config.get("loxone") or {}
+LOXONE_HOST = _loxone_cfg.get("miniserver_ip") or ""
+LOXONE_UDP_PORT = int(_loxone_cfg.get("udp_port") or 7777)
 
 # Health-/Pending-Konfiguration
 STALE_SEC = float(config_internal.get("health_stale_seconds", 60.0))       # Snapshot gilt nach X Sekunden als alt
@@ -335,6 +341,7 @@ def ws_loop():
                     elif msg_type == "HMIP_SYSTEM_EVENT":
                         # Delta-Event -> in bestehenden Snapshot mergen
                         save_system_state(msg_data)
+                        push_event_devices(LOXONE_HOST, LOXONE_UDP_PORT, msg_data)
 
                     else:
                         log.debug("Unbehandelter Nachrichtentyp: %r", msg_type)

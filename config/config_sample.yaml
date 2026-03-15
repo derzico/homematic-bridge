@@ -7,6 +7,14 @@ friendly_name:
   en: "Homematic HTTP Bridge"
   de: "Homematic HTTP Bridge"
 
+# Loxone UDP Push (optional)
+# Wenn miniserver_ip gesetzt ist, werden HmIP-State-Änderungen per UDP an den Miniserver gesendet.
+# Variablennamen: hmip_<DEVICE_ID>_ch<N>_on / _dimLevel / _hue / ...
+# In Loxone Config: Virtueller Eingang mit passendem UDP-Variablennamen anlegen.
+loxone:
+  miniserver_ip: # z.B. 192.168.1.100 (leer lassen = deaktiviert)
+  udp_port: 7777
+
 # HTTP-API Auth:
 api_key: # optional: Key hier eintragen (oder leer lassen)
 require_api_key: true
