@@ -97,6 +97,22 @@ def send_config_update_response(ws, msg_id: str, status: str = "APPLIED", messag
         log.error(f"Fehler beim Senden von CONFIG_UPDATE_RESPONSE: {e}")
 
 
+def send_hmip_set_dim_level(ws, device_id: str, dim_level: float, channel_index: int = 1) -> str:
+    body = {
+        "dimLevel": dim_level,
+        "channelIndex": channel_index,
+        "deviceId": device_id
+    }
+    rid, payload = _build_hmip_request("/hmip/device/control/setDimLevel", body)
+    try:
+        ws.send(json.dumps(payload))
+        log.info(f"HMIP_SYSTEM_REQUEST gesendet für device {device_id} → dimLevel={dim_level} (id={rid})")
+        return rid
+    except Exception as e:
+        log.error(f"Fehler beim Senden von HMIP_SYSTEM_REQUEST (setDimLevel): {e}")
+        return rid
+
+
 def send_hmip_set_switch(ws, device_id: str, state: bool, channel_index: int = 0) -> str:
     body = {
         "on": state,
