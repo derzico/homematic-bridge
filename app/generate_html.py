@@ -6,7 +6,116 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, Tuple, Optional
 import html
 
-# ---- Helpers: JSON-Navigation ----
+# ── Shared CSS ──────────────────────────────────────────────────────────────
+_CSS = """
+:root {
+  --bg:          #0d1117;
+  --surface:     #161b22;
+  --surface2:    #21262d;
+  --border:      #30363d;
+  --text:        #e6edf3;
+  --muted:       #8b949e;
+  --accent:      #58a6ff;
+  --accent-dim:  #1f3d6e;
+  --green:       #3fb950;
+  --red:         #f85149;
+  --yellow:      #e3b341;
+  --mono: 'JetBrains Mono','Fira Code','Consolas',monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: system-ui,-apple-system,sans-serif; font-size: 14px; min-height: 100vh; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Nav */
+nav {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 0 24px; height: 52px; display: flex; align-items: center; gap: 20px;
+  position: sticky; top: 0; z-index: 100;
+}
+.brand { font-weight: 600; font-size: 15px; display: flex; align-items: center; gap: 6px; }
+.brand em { color: var(--accent); font-style: normal; }
+.nav-links { display: flex; gap: 2px; }
+.nav-links a { color: var(--muted); padding: 6px 12px; border-radius: 6px; font-size: 13px; transition: color .15s, background .15s; }
+.nav-links a:hover, .nav-links a.active { color: var(--text); background: var(--surface2); text-decoration: none; }
+.spacer { flex: 1; }
+.nav-badge { font-size: 11px; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); padding: 2px 8px; border-radius: 20px; }
+
+/* Layout */
+.container { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+.page-header { margin-bottom: 24px; }
+.page-header h1 { font-size: 20px; font-weight: 600; }
+.page-header .sub { color: var(--muted); margin-top: 6px; font-size: 13px; }
+
+/* Search */
+.search-wrap { margin-bottom: 16px; }
+.search-wrap input {
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  padding: 8px 14px; border-radius: 6px; width: 320px; font-size: 13px; outline: none;
+}
+.search-wrap input:focus { border-color: var(--accent); }
+.search-wrap input::placeholder { color: var(--muted); }
+
+/* Table */
+.data-table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.data-table th { background: var(--surface2); color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+.data-table td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.data-table tbody tr:last-child td { border-bottom: none; }
+.data-table tbody tr:hover { background: var(--surface2); }
+.mono { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.label-cell { font-weight: 500; }
+.type-pill { background: var(--accent-dim); color: var(--accent); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-family: var(--mono); white-space: nowrap; }
+
+/* Breadcrumb */
+.breadcrumb { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
+.breadcrumb a { color: var(--muted); }
+.breadcrumb a:hover { color: var(--accent); text-decoration: none; }
+.breadcrumb .sep { margin: 0 6px; opacity: .5; }
+
+/* Meta grid */
+.meta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-bottom: 24px; }
+.meta-card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px 16px; }
+.meta-card .k { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+.meta-card .v { font-family: var(--mono); font-size: 13px; font-weight: 500; word-break: break-all; }
+
+/* Collapsible cards */
+details { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
+details + details { }
+summary {
+  padding: 12px 20px; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 12px;
+  user-select: none; font-size: 13px; font-weight: 600;
+}
+summary::-webkit-details-marker { display: none; }
+summary:hover { background: var(--surface2); }
+.summary-title { flex: 1; }
+.summary-sub { font-family: var(--mono); font-size: 11px; color: var(--muted); font-weight: 400; }
+.chevron { color: var(--muted); font-size: 11px; transition: transform .2s; }
+details[open] .chevron { transform: rotate(180deg); }
+
+/* KV table inside details */
+.kv-table { width: 100%; border-collapse: collapse; border-top: 1px solid var(--border); }
+.kv-table tr:not(:last-child) td, .kv-table tr:not(:last-child) th { border-bottom: 1px solid var(--border); }
+.kv-table th { padding: 7px 20px; color: var(--muted); font-weight: 400; font-size: 12px; font-family: var(--mono); width: 240px; white-space: nowrap; background: transparent; text-align: left; }
+.kv-table td { padding: 7px 20px; font-size: 12px; font-family: var(--mono); word-break: break-all; }
+.v-true  { color: var(--green); }
+.v-false { color: var(--red); }
+.v-num   { color: var(--yellow); }
+.v-null  { color: var(--muted); font-style: italic; }
+
+/* Raw JSON */
+pre.json-raw { padding: 20px; background: var(--bg); font-family: var(--mono); font-size: 12px; overflow-x: auto; line-height: 1.6; border-top: 1px solid var(--border); }
+"""
+
+_JS_SEARCH = """
+document.getElementById('search').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('tbody tr').forEach(r => {
+    r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+});
+"""
+
+# ── Helpers: JSON-Navigation ─────────────────────────────────────────────────
 def _get_nested(d: Dict[str, Any], keys: Iterable[str]) -> Any:
     cur = d
     for k in keys:
@@ -16,13 +125,6 @@ def _get_nested(d: Dict[str, Any], keys: Iterable[str]) -> Any:
     return cur
 
 def _iter_devices(snapshot: Dict[str, Any]) -> Iterable[Tuple[str, Dict[str, Any]]]:
-    """
-    Liefert (device_id, device_dict) aus möglichen Pfaden:
-      - body.devices
-      - body.home.devices
-      - body.body.devices
-      - body.body.home.devices
-    """
     candidates = [
         ("body", "devices"),
         ("body", "home", "devices"),
@@ -48,94 +150,140 @@ def _iter_devices(snapshot: Dict[str, Any]) -> Iterable[Tuple[str, Dict[str, Any
                 yield str(dev_id), dev
         return
 
-    # nichts gefunden
-    return []
-
 def _find_device(snapshot: Dict[str, Any], device_id: str) -> Optional[Dict[str, Any]]:
     for dev_id, dev in _iter_devices(snapshot):
         if dev_id == device_id:
             return dev
     return None
 
-# ---- Overview-Seite (bestehend) ----
+# ── Shared page wrapper ───────────────────────────────────────────────────────
+def _nav(active: str = "", device_count: int = 0) -> str:
+    badge = f'<span class="nav-badge">{device_count} Geräte</span>' if device_count else ""
+    def lnk(href, label, key):
+        cls = ' class="active"' if active == key else ''
+        return f'<a href="{href}"{cls}>{label}</a>'
+    return (
+        '<nav>'
+        '<div class="brand">⚡ Homematic <em>Bridge</em></div>'
+        '<div class="nav-links">'
+        + lnk("/devices/html", "Geräte", "devices")
+        + lnk("/healthz", "Health", "health")
+        + '</div>'
+        '<div class="spacer"></div>'
+        + badge
+        + '</nav>'
+    )
+
+def _page(title: str, nav_html: str, body: str, extra_js: str = "") -> str:
+    js_tag = f"<script>{extra_js}</script>" if extra_js else ""
+    return (
+        "<!DOCTYPE html>"
+        '<html lang="de">'
+        "<head>"
+        '<meta charset="UTF-8">'
+        f"<title>{html.escape(title)}</title>"
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f"<style>{_CSS}</style>"
+        "</head>"
+        f"<body>{nav_html}"
+        f'<div class="container">{body}</div>'
+        f"{js_tag}"
+        "</body></html>"
+    )
+
+# ── Value renderer ────────────────────────────────────────────────────────────
+def _val_html(v: Any) -> str:
+    if v is None:
+        return '<span class="v-null">null</span>'
+    if isinstance(v, bool):
+        cls = "v-true" if v else "v-false"
+        return f'<span class="{cls}">{"true" if v else "false"}</span>'
+    if isinstance(v, (int, float)):
+        return f'<span class="v-num">{html.escape(str(v))}</span>'
+    if isinstance(v, (dict, list)):
+        return f'<span class="v-null">{html.escape(json.dumps(v, ensure_ascii=False))}</span>'
+    return html.escape(str(v))
+
+# ── Overview page ─────────────────────────────────────────────────────────────
 def generate_device_overview(system_state_path: str, output_path: str = "static/device_overview.html") -> str:
     with open(system_state_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    rows_html = []
+    rows = []
     count = 0
     for dev_id, dev in _iter_devices(data):
         count += 1
-        label = html.escape(str(dev.get("label", "")))
-        dtype = html.escape(str(dev.get("type", "")))
-        rows_html.append(
-            f"<tr>"
-            f"<td><a href=\"/devices/{html.escape(dev_id)}\">{html.escape(dev_id)}</a></td>"
-            f"<td>{label}</td>"
-            f"<td>{dtype}</td>"
-            f"</tr>"
+        label  = html.escape(str(dev.get("label", "–")))
+        dtype  = html.escape(str(dev.get("type", "–")))
+        model  = html.escape(str(dev.get("modelType", "–")))
+        eid    = html.escape(dev_id)
+        rows.append(
+            f'<tr>'
+            f'<td class="mono"><a href="/devices/{eid}">{eid}</a></td>'
+            f'<td class="label-cell">{label}</td>'
+            f'<td><span class="type-pill">{dtype}</span></td>'
+            f'<td class="mono">{model}</td>'
+            f'</tr>'
         )
 
-    if not rows_html:
-        rows_html.append('<tr><td colspan="3"><em>Keine Geräte gefunden.</em></td></tr>')
+    if not rows:
+        rows.append('<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px">Keine Geräte gefunden.</td></tr>')
 
-    html_template = f"""<!DOCTYPE html>
-<html lang="de">
-<head>
-  <meta charset="UTF-8">
-  <title>HMIP Geräteliste</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <style>
-    body {{ font-family: Arial, sans-serif; margin: 40px; }}
-    table {{ border-collapse: collapse; width: 100%; }}
-    th, td {{ border: 1px solid #ccc; padding: 8px; text-align: left; }}
-    th {{ background-color: #f2f2f2; }}
-    .muted {{ color: #666; font-size: 0.9em; }}
-    a {{ text-decoration: none; }}
-  </style>
-</head>
-<body>
-  <h1>Homematic IP – Geräteübersicht</h1>
-  <p class="muted">Quelle: {html.escape(system_state_path)} · Geräte: {count}</p>
-  <table>
-    <thead>
-      <tr><th>Device ID</th><th>Label</th><th>Typ</th></tr>
-    </thead>
-    <tbody>
-      {''.join(rows_html)}
-    </tbody>
-  </table>
-</body>
-</html>"""
+    tbody = "".join(rows)
+    body = (
+        '<div class="page-header">'
+        '<h1>Geräteübersicht</h1>'
+        f'<div class="sub">{count} Geräte im aktuellen Snapshot</div>'
+        '</div>'
+        '<div class="search-wrap"><input id="search" type="text" placeholder="Suchen nach ID, Label, Typ …" autocomplete="off"></div>'
+        '<table class="data-table">'
+        '<thead><tr><th>Device ID</th><th>Label</th><th>Typ</th><th>Modell</th></tr></thead>'
+        f'<tbody>{tbody}</tbody>'
+        '</table>'
+    )
+
+    result = _page(
+        "HmIP Geräteübersicht",
+        _nav("devices", count),
+        body,
+        _JS_SEARCH,
+    )
 
     outp = Path(output_path)
     outp.parent.mkdir(parents=True, exist_ok=True)
-    outp.write_text(html_template, encoding="utf-8")
+    outp.write_text(result, encoding="utf-8")
     return str(outp)
 
-# ---- Detail-Seite pro Device ----
-def _render_simple_table(d: Dict[str, Any], *, title: str = "", skip_keys: Optional[set] = None) -> str:
-    if skip_keys is None:
-        skip_keys = set()
+
+# ── Detail page ───────────────────────────────────────────────────────────────
+def _kv_rows(d: Dict[str, Any], skip: Optional[set] = None) -> str:
+    skip = skip or set()
     rows = []
     for k in sorted(d.keys()):
-        if k in skip_keys:
+        if k in skip:
             continue
-        v = d[k]
-        # Für verschachtelte Strukturen JSON-kompakt darstellen
-        if isinstance(v, (dict, list)):
-            v_str = html.escape(json.dumps(v, ensure_ascii=False))
-        else:
-            v_str = html.escape(str(v))
-        rows.append(f"<tr><th>{html.escape(str(k))}</th><td>{v_str}</td></tr>")
-    caption = f"<caption style='text-align:left;font-weight:bold;padding:6px 0;'>{html.escape(title)}</caption>" if title else ""
+        rows.append(
+            f'<tr>'
+            f'<th>{html.escape(str(k))}</th>'
+            f'<td>{_val_html(d[k])}</td>'
+            f'</tr>'
+        )
+    return "".join(rows) if rows else '<tr><td colspan="2" style="color:var(--muted)">Keine Daten</td></tr>'
+
+def _channel_card(ch_idx: str, ch: Dict[str, Any], open_default: bool = False) -> str:
+    ch_type = html.escape(str(ch.get("functionalChannelType", "")))
+    title   = f"Kanal {html.escape(str(ch_idx))}"
+    open_attr = " open" if open_default else ""
+    kv = _kv_rows(ch)
     return (
-        f"<table>"
-        f"{caption}"
-        f"<tbody>"
-        f"{''.join(rows) if rows else '<tr><td><em>Keine Daten</em></td></tr>'}"
-        f"</tbody>"
-        f"</table>"
+        f'<details{open_attr}>'
+        f'<summary>'
+        f'<span class="summary-title">{title}</span>'
+        f'<span class="summary-sub">{ch_type}</span>'
+        f'<span class="chevron">▼</span>'
+        f'</summary>'
+        f'<table class="kv-table"><tbody>{kv}</tbody></table>'
+        f'</details>'
     )
 
 def generate_device_detail_html(system_state_path: str, device_id: str) -> str:
@@ -144,69 +292,71 @@ def generate_device_detail_html(system_state_path: str, device_id: str) -> str:
 
     dev = _find_device(data, device_id)
     if not isinstance(dev, dict):
-        # 404-Seite als HTML
-        return f"""<!DOCTYPE html>
-<html lang="de">
-<head><meta charset="UTF-8"><title>Gerät nicht gefunden</title></head>
-<body style="font-family:Arial, sans-serif; margin:40px;">
-  <h1>Gerät nicht gefunden</h1>
-  <p>Device <code>{html.escape(device_id)}</code> wurde im aktuellen Snapshot nicht gefunden.</p>
-  <p><a href="/devices/html">Zurück zur Übersicht</a></p>
-</body>
-</html>"""
+        body = (
+            '<div class="page-header"><h1>Gerät nicht gefunden</h1></div>'
+            f'<p style="color:var(--muted)">Device <code>{html.escape(device_id)}</code> wurde im aktuellen Snapshot nicht gefunden.</p>'
+            '<p style="margin-top:16px"><a href="/devices/html">« Zurück zur Übersicht</a></p>'
+        )
+        return _page("Gerät nicht gefunden", _nav(), body)
 
-    label = html.escape(str(dev.get("label", "")))
-    dtype = html.escape(str(dev.get("type", "")))
-    model = html.escape(str(dev.get("modelType", "")))
+    label = html.escape(str(dev.get("label", "–")))
+    dtype = html.escape(str(dev.get("type", "–")))
+    model = html.escape(str(dev.get("modelType", "–")))
+    eid   = html.escape(device_id)
 
-    # Oberste Meta-Tabelle (einige häufige Felder)
-    meta_keys = ["id", "label", "type", "modelType", "homeId", "permanentlyReachable"]
-    meta = {k: dev.get(k) for k in meta_keys if k in dev}
-    meta_html = _render_simple_table(meta, title="Basisdaten")
+    # Breadcrumb
+    breadcrumb = (
+        '<div class="breadcrumb">'
+        '<a href="/devices/html">Geräte</a>'
+        '<span class="sep">›</span>'
+        f'{label}'
+        '</div>'
+    )
 
-    # functionalChannels hübsch darstellen
-    ch_html_parts = []
+    # Meta-Grid
+    meta_keys = ["id", "label", "type", "modelType", "homeId", "permanentlyReachable", "firmwareVersion"]
+    meta_items = ""
+    for k in meta_keys:
+        if k in dev:
+            meta_items += (
+                f'<div class="meta-card">'
+                f'<div class="k">{html.escape(k)}</div>'
+                f'<div class="v">{_val_html(dev[k])}</div>'
+                f'</div>'
+            )
+    meta_grid = f'<div class="meta-grid">{meta_items}</div>'
+
+    # Channels
     fch = dev.get("functionalChannels", {})
+    ch_parts = []
     if isinstance(fch, dict):
-        for ch_idx in sorted(fch.keys(), key=lambda x: (str(x))):
+        for i, ch_idx in enumerate(sorted(fch.keys(), key=str)):
             ch = fch.get(ch_idx, {})
             if isinstance(ch, dict):
-                title = f"Kanal {html.escape(str(ch_idx))} – {html.escape(str(ch.get('functionalChannelType','')))}"
-                ch_html_parts.append(_render_simple_table(ch, title=title))
-    channels_html = "".join(ch_html_parts) if ch_html_parts else "<p><em>Keine Channels</em></p>"
+                ch_parts.append(_channel_card(ch_idx, ch, open_default=(i == 0)))
+    channels_html = "".join(ch_parts) if ch_parts else '<p style="color:var(--muted)">Keine Channels</p>'
 
-    # Komplettes Device-JSON als <pre> (für Deep-Dive)
+    # Raw JSON (collapsed by default)
     full_json = html.escape(json.dumps(dev, ensure_ascii=False, indent=2))
+    raw_section = (
+        '<details>'
+        '<summary><span class="summary-title">Rohdaten (JSON)</span><span class="chevron">▼</span></summary>'
+        f'<pre class="json-raw">{full_json}</pre>'
+        '</details>'
+    )
 
-    return f"""<!DOCTYPE html>
-<html lang="de">
-<head>
-  <meta charset="UTF-8">
-  <title>Device {html.escape(device_id)}</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <style>
-    body {{ font-family: Arial, sans-serif; margin: 40px; }}
-    h1, h2 {{ margin: 0 0 10px 0; }}
-    .muted {{ color: #666; font-size: 0.9em; margin-bottom: 20px; }}
-    table {{ border-collapse: collapse; width: 100%; margin: 16px 0; }}
-    th, td {{ border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; }}
-    th {{ background-color: #f9f9f9; width: 240px; }}
-    pre {{ background:#f7f7f7; padding:16px; overflow:auto; }}
-    a {{ text-decoration: none; }}
-  </style>
-</head>
-<body>
-  <h1>Device: {html.escape(device_id)}</h1>
-  <div class="muted">Label: {label} · Typ: {dtype} · Modell: {model}</div>
+    body = (
+        breadcrumb
+        + '<div class="page-header">'
+        + f'<h1>{label}</h1>'
+        + f'<div class="sub"><span class="type-pill">{dtype}</span>&nbsp; {model} &nbsp;·&nbsp; <span class="mono">{eid}</span></div>'
+        + '</div>'
+        + meta_grid
+        + f'<h2 style="font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Functional Channels</h2>'
+        + channels_html
+        + '<div style="margin-top:16px">'
+        + raw_section
+        + '</div>'
+    )
 
-  {meta_html}
-
-  <h2>Functional Channels</h2>
-  {channels_html}
-
-  <h2>Rohdaten</h2>
-  <pre>{full_json}</pre>
-
-  <p><a href="/devices/html">« Zur Übersicht</a></p>
-</body>
-</html>"""
+    return _page(f"Device · {label}", _nav("devices"), body)
