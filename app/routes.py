@@ -76,7 +76,8 @@ def login():
     next_url = request.args.get("next") or "/"
     if request.method == "POST":
         password = request.form.get("password", "")
-        if state.API_KEY and password == state.API_KEY:
+        expected = state.config_internal.get("web_password") or state.API_KEY
+        if expected and password == expected:
             session["authenticated"] = True
             return redirect(next_url)
         return _html(generate_login_html(error=True, next_url=next_url))

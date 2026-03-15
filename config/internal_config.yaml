@@ -4,3 +4,5 @@ log_file: logs/bridge.log
 log_level: error
 log_rotate: true
 health_stale_seconds: 60
+# Eigenes Passwort für das Webinterface (optional, Fallback: API-Key)
+# web_password: MeinPasswort
