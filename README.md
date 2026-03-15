@@ -50,7 +50,8 @@ Diese Bridge verbindet sich per **WebSocket** auf die HCU (Port `9001`), sendet 
 
 - ✅ Voll-Snapshot + Event-Merge
 - ✅ WebSocket-Keepalive (Ping bei Inaktivität, automatischer Reconnect mit exponentiellem Backoff)
-- ✅ Steuerung via HTTP (`/hmipSwitch`) – GET und POST
+- ✅ Steuerung via HTTP (`/hmipSwitch`, `/hmipDimmer`, `/hmipRGB`) – GET und POST
+- ✅ Status-Abfrage via HTTP (`/hmipState`) – Gerätezustand aus Snapshot
 - ✅ HTML-Übersicht (`/devices/html`) & Gerätedetail (`/devices/<id>`)
 - ✅ Healthcheck (`/healthz`)
 - ✅ Atomare Writes (keine halb geschriebenen JSONs)
@@ -235,6 +236,23 @@ Komfort-Endpunkt für schnelle Tests und Integrationen wie Loxone.
 ```
 http://<bridge-ip>:8080/hmipSwitch?device=<DEVICE_ID>&on=true&channelIndex=0
 Header: X-API-Key: <key aus data/api_key.txt>
+```
+
+### `GET /hmipState`
+
+Liefert den aktuellen Zustand eines Geräte-Channels direkt aus dem gespeicherten Snapshot.
+
+- **Query:** `?device=<ID>&channelIndex=0` (`channelIndex` optional, default `0`)
+- **Auth:** `X-API-Key`-Header erforderlich
+
+**Beispiel-Antwort (Switch):**
+```json
+{"on": true, "channelIndex": 0, "functionalChannelType": "SWITCH_CHANNEL"}
+```
+
+**Beispiel-Antwort (RGBW):**
+```json
+{"on": true, "hue": 120, "saturationLevel": 1.0, "dimLevel": 1.0}
 ```
 
 ### `GET /devices/html`
