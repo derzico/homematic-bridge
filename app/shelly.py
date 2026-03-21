@@ -96,30 +96,51 @@ def _detect(ip: str, timeout: float) -> Optional[Dict[str, Any]]:
 
 def _get_status_gen1(ip: str, timeout: float) -> Dict:
     data = _get(ip, "/status", timeout) or {}
-    relays = data.get("relays", [])
-    meters = data.get("meters", [])
-    channels = {}
+    relays  = data.get("relays", [])
+    meters  = data.get("meters", [])   # SHSW-1, SHPLG-S  – total in Wm
+    emeters = data.get("emeters", [])  # SHEM, SHEM-3     – total in Wh
+
+    channels: Dict[str, Any] = {}
     for i, rel in enumerate(relays):
+        m = meters[i] if i < len(meters) else {}
         channels[str(i)] = {
             "on": rel.get("ison", False),
-            "power_w": meters[i].get("power") if i < len(meters) else None,
+            "power_w": m.get("power"),
+            # meters.total is in Watt-minutes → convert to kWh
+            "total_kwh": round(m["total"] / 60 / 1000, 3) if m.get("total") is not None else None,
         }
-    return {"channels": channels, "rssi": data.get("wifi_sta", {}).get("rssi")}
+
+    em_data: Dict[str, Any] = {}
+    for i, em in enumerate(emeters):
+        em_data[str(i)] = {
+            "power_w":   em.get("power"),
+            "voltage":   em.get("voltage"),
+            "current":   em.get("current"),
+            "pf":        em.get("pf"),
+            # emeters.total is in Wh → convert to kWh
+            "total_kwh": round(em["total"] / 1000, 2) if em.get("total") is not None else None,
+            "returned_kwh": round(em["total_returned"] / 1000, 2) if em.get("total_returned") else None,
+            "is_valid":  em.get("is_valid", True),
+        }
+
+    return {"channels": channels, "emeters": em_data, "rssi": data.get("wifi_sta", {}).get("rssi")}
 
 
 def _get_status_gen2(ip: str, num_channels: int, timeout: float) -> Dict:
-    channels = {}
+    channels: Dict[str, Any] = {}
     for i in range(num_channels):
         sw = _get(ip, f"/rpc/Switch.GetStatus?id={i}", timeout) or {}
         if sw:
+            aenergy = sw.get("aenergy") or {}
             channels[str(i)] = {
-                "on": sw.get("output", False),
-                "power_w": sw.get("apower"),
-                "voltage": sw.get("voltage"),
-                "current": sw.get("current"),
+                "on":        sw.get("output", False),
+                "power_w":   sw.get("apower"),
+                "voltage":   sw.get("voltage"),
+                "current":   sw.get("current"),
+                "total_kwh": round(aenergy.get("total", 0) / 1000, 3) if aenergy.get("total") is not None else None,
             }
     wifi = _get(ip, "/rpc/Wifi.GetStatus", timeout) or {}
-    return {"channels": channels, "rssi": wifi.get("rssi")}
+    return {"channels": channels, "emeters": {}, "rssi": wifi.get("rssi")}
 
 
 def _build_device(ip: str, gen: int, info: Dict, timeout: float) -> Dict[str, Any]:
@@ -138,6 +159,7 @@ def _build_device(ip: str, gen: int, info: Dict, timeout: float) -> Dict[str, An
             "fw": info.get("ver", ""),
             "rssi": status["rssi"],
             "channels": status["channels"],
+            "emeters": status["emeters"],
             "last_seen": int(time.time()),
         }
     else:
@@ -155,6 +177,7 @@ def _build_device(ip: str, gen: int, info: Dict, timeout: float) -> Dict[str, An
             "fw": info.get("fw", ""),
             "rssi": status["rssi"],
             "channels": status["channels"],
+            "emeters": status["emeters"],
             "last_seen": int(time.time()),
         }
 
@@ -288,21 +311,45 @@ def save_cache(devices: List[Dict[str, Any]]) -> None:
 
 def refresh_device(ip: str, gen: int) -> Optional[Dict]:
     """Aktualisiert Status eines einzelnen Geräts und speichert in Cache."""
-    num_ch = 1  # Standard; wird aus Cache übernommen wenn möglich
     cached = {d["ip"]: d for d in load_cached()}
-    if ip in cached:
-        num_ch = len(cached[ip].get("channels", {1: None}))
+    num_ch = len(cached[ip].get("channels", {"0": None})) if ip in cached else 1
     if gen == 2:
         status = _get_status_gen2(ip, num_ch, timeout=3.0)
     else:
         status = _get_status_gen1(ip, timeout=3.0)
     if ip in cached:
-        cached[ip]["channels"] = status["channels"]
-        cached[ip]["rssi"] = status["rssi"]
-        cached[ip]["last_seen"] = int(time.time())
+        cached[ip].update({
+            "channels": status["channels"],
+            "emeters":  status["emeters"],
+            "rssi":     status["rssi"],
+            "last_seen": int(time.time()),
+        })
         save_cache(list(cached.values()))
         return cached[ip]
     return None
+
+
+def refresh_all_devices() -> int:
+    """Aktualisiert Status aller gecachten Geräte parallel. Gibt Anzahl zurück."""
+    devices = load_cached()
+    if not devices:
+        return 0
+    updated = []
+
+    def _refresh_one(dev):
+        try:
+            result = refresh_device(dev["ip"], dev["gen"])
+            return result or dev
+        except Exception:
+            return dev
+
+    with ThreadPoolExecutor(max_workers=min(32, len(devices))) as ex:
+        updated = list(ex.map(_refresh_one, devices))
+
+    updated.sort(key=lambda d: d["ip"])
+    save_cache(updated)
+    log.info(f"Shelly: Status von {len(updated)} Geräten aktualisiert")
+    return len(updated)
 
 
 # ── Steuerung ─────────────────────────────────────────────────────────────────

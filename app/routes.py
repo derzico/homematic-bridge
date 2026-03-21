@@ -337,6 +337,15 @@ def shelly_devices():
     return jsonify(shelly_mod.load_cached()), 200
 
 
+@bp.post("/shelly/refresh-status")
+@require_web_auth
+def shelly_refresh_status():
+    cfg = state.config.get("shelly", {})
+    shelly_mod.set_credentials(cfg.get("username"), cfg.get("password"))
+    count = shelly_mod.refresh_all_devices()
+    return jsonify({"updated": count}), 200
+
+
 @bp.post("/shelly/<ip>/relay/<int:channel>")
 @require_web_auth
 def shelly_relay(ip: str, channel: int):

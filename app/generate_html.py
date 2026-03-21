@@ -863,6 +863,20 @@ function pollScan() {
       }
     });
 }
+
+async function refreshStatus() {
+  const btn = document.getElementById('refresh-btn');
+  btn.disabled = true; btn.textContent = 'Aktualisiere…';
+  try {
+    await fetch('/shelly/refresh-status', {method: 'POST'});
+    location.reload();
+  } catch(e) {
+    btn.disabled = false; btn.textContent = 'Status aktualisieren';
+  }
+}
+
+// Auto-refresh alle 60s
+setTimeout(() => { fetch('/shelly/refresh-status', {method:'POST'}).then(() => location.reload()); }, 60000);
 """
 
 
@@ -895,17 +909,109 @@ def generate_shelly_html() -> str:
     elif status["error"]:
         scan_info = f"Fehler: {html.escape(status['error'])}"
 
+    _BTN_STYLE = (
+        "border:1px solid var(--border);padding:3px 10px;border-radius:4px;"
+        "font-size:11px;cursor:pointer;margin-right:4px;color:var(--text)"
+    )
+
+    def _rssi_html(rssi):
+        if not isinstance(rssi, (int, float)):
+            return '<span class="mono" style="color:var(--muted)">–</span>'
+        if rssi >= -60:   cls, bars = "", 4
+        elif rssi >= -75: cls, bars = "warn", 2
+        else:             cls, bars = "bad", 1
+        bar_spans = "".join(
+            f'<span style="height:{4+i*3}px" class="{"lit" if i < bars else ""}"></span>'
+            for i in range(4)
+        )
+        return f'<span class="rssi-bar {cls}">{bar_spans}</span> <span class="mono">{rssi} dBm</span>'
+
+    def _age_str(last_seen):
+        if not last_seen:
+            return "–"
+        import time as _t
+        age = int(_t.time() - last_seen)
+        if age < 60:    return f"{age}s"
+        if age < 3600:  return f"{age//60}m"
+        return f"{age//3600}h"
+
+    def _em_cell(emeters: dict) -> str:
+        """Energie-Monitor Darstellung (SHEM, SHEM-3)."""
+        if not emeters:
+            return '<span style="color:var(--muted)">–</span>'
+        phase_labels = {0: "L1", 1: "L2", 2: "L3"}
+        parts = []
+        total_power = 0.0
+        for idx, em in sorted(emeters.items(), key=lambda x: x[0]):
+            i = int(idx)
+            lbl = phase_labels.get(i, f"CH{i}")
+            pw  = em.get("power_w")
+            v   = em.get("voltage")
+            a   = em.get("current")
+            pf  = em.get("pf")
+            kwh = em.get("total_kwh")
+            ret = em.get("returned_kwh")
+            if isinstance(pw, (int, float)):
+                total_power += pw
+            pw_str  = f'{pw:.0f} W'   if isinstance(pw, (int, float)) else "–"
+            v_str   = f'{v:.1f} V'    if isinstance(v,  (int, float)) else ""
+            a_str   = f'{a:.2f} A'    if isinstance(a,  (int, float)) else ""
+            pf_str  = f'PF {pf:.2f}'  if isinstance(pf, (int, float)) else ""
+            kwh_str = f'{kwh:.1f} kWh' if isinstance(kwh, (int, float)) else ""
+            ret_str = f'↩ {ret:.1f} kWh' if isinstance(ret, (int, float)) and ret > 0 else ""
+            details = " · ".join(filter(None, [v_str, a_str, pf_str]))
+            energy  = " · ".join(filter(None, [kwh_str, ret_str]))
+            parts.append(
+                f'<div style="margin-bottom:4px">'
+                f'<span style="color:var(--muted);font-size:10px;font-family:var(--mono)">{lbl}</span> '
+                f'<strong class="mono">{pw_str}</strong>'
+                + (f' <span style="color:var(--muted);font-size:11px;font-family:var(--mono)">({details})</span>' if details else '')
+                + (f'<br><span style="color:var(--muted);font-size:11px;font-family:var(--mono)">{energy}</span>' if energy else '')
+                + '</div>'
+            )
+        total_str = f'<div style="border-top:1px solid var(--border);margin-top:4px;padding-top:4px;font-family:var(--mono);font-size:11px;color:var(--muted)">Gesamt: <strong style="color:var(--text)">{total_power:.0f} W</strong></div>' if len(emeters) > 1 else ""
+        return "".join(parts) + total_str
+
+    def _switch_cell(ip: str, gen: int, channels: dict) -> str:
+        """Schalter-Darstellung mit Toggle-Button."""
+        if not channels:
+            return '<span style="color:var(--muted)">–</span>'
+        parts = []
+        for ch_idx, ch in sorted(channels.items(), key=lambda x: x[0]):
+            is_on = ch.get("on", False)
+            power = ch.get("power_w")
+            kwh   = ch.get("total_kwh")
+            btn_id    = f"btn-{ip.replace('.', '-')}-{ch_idx}"
+            btn_color = "var(--green)" if is_on else "var(--surface2)"
+            new_state = "false" if is_on else "true"
+            btn_text  = "EIN" if is_on else "AUS"
+            pw_str  = f' · {power:.0f} W'    if isinstance(power, (int, float)) else ""
+            kwh_str = f' · {kwh:.2f} kWh'    if isinstance(kwh,  (int, float)) else ""
+            parts.append(
+                f'<button id="{btn_id}" '
+                f'onclick="shellyRelay(\'{ip}\',{gen},{ch_idx},{new_state})" '
+                f'style="background:{btn_color};{_BTN_STYLE}">'
+                f'CH{ch_idx} {btn_text}{pw_str}</button>'
+                + (f'<span style="font-size:11px;color:var(--muted);font-family:var(--mono)">{kwh_str}</span>' if kwh_str else '')
+            )
+        return "".join(parts)
+
     header = (
         '<div class="page-header">'
-        '<h1>Shelly Scanner</h1>'
+        '<h1>Shelly</h1>'
         f'<div class="sub">Subnet: <strong>{html.escape(subnet)}</strong>'
-        f' &nbsp;·&nbsp; {len(devices)} Geräte gefunden</div>'
+        f' &nbsp;·&nbsp; {len(devices)} Geräte &nbsp;·&nbsp; '
+        'Auto-Refresh: 60s</div>'
         '</div>'
-        '<div style="margin-bottom:20px;display:flex;align-items:center;gap:12px">'
+        '<div style="margin-bottom:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
         '<button id="scan-btn" onclick="startScan()" style="'
         'background:var(--accent);color:#0d1117;border:none;padding:8px 18px;'
         'border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">'
         'Netzwerk scannen</button>'
+        '<button id="refresh-btn" onclick="refreshStatus()" style="'
+        'background:var(--surface2);color:var(--text);border:1px solid var(--border);padding:8px 14px;'
+        'border-radius:6px;font-size:13px;cursor:pointer">'
+        'Status aktualisieren</button>'
         f'<span id="scan-info" style="color:var(--muted);font-size:13px">{html.escape(scan_info)}</span>'
         '</div>'
     )
@@ -915,60 +1021,23 @@ def generate_shelly_html() -> str:
     else:
         rows = []
         for dev in devices:
-            ip = html.escape(dev.get("ip", ""))
-            name = html.escape(dev.get("name") or dev.get("id") or "–")
-            model = html.escape(dev.get("model", "–"))
-            gen = dev.get("gen", 1)
-            mac = html.escape(dev.get("mac", "–"))
-            fw = html.escape(dev.get("fw", "–"))
-            rssi = dev.get("rssi")
+            ip       = html.escape(dev.get("ip", ""))
+            name     = html.escape(dev.get("name") or dev.get("id") or "–")
+            model    = html.escape(dev.get("model", "–"))
+            gen      = dev.get("gen", 1)
+            mac      = html.escape(dev.get("mac", "–"))
+            fw       = html.escape(dev.get("fw", "–"))
             channels = dev.get("channels", {})
-            last_seen = dev.get("last_seen")
+            emeters  = dev.get("emeters", {})
 
-            # RSSI-Anzeige
-            if isinstance(rssi, (int, float)):
-                if rssi >= -60:
-                    rssi_cls, bars = "", 4
-                elif rssi >= -75:
-                    rssi_cls, bars = "warn", 2
-                else:
-                    rssi_cls, bars = "bad", 1
-                rssi_html = (
-                    f'<span class="rssi-bar {rssi_cls}">'
-                    + "".join(f'<span style="height:{4+i*3}px" class="{"lit" if i < bars else ""}"></span>' for i in range(4))
-                    + f'</span> <span class="mono">{rssi} dBm</span>'
-                )
+            # Energie-Monitor wenn emeters vorhanden, sonst Schalter
+            if emeters:
+                control_cell = _em_cell(emeters)
+                # Relay-Button zusätzlich wenn vorhanden (SHEM hat Relay)
+                if channels:
+                    control_cell += '<div style="margin-top:6px">' + _switch_cell(ip, gen, channels) + '</div>'
             else:
-                rssi_html = '<span class="mono" style="color:var(--muted)">–</span>'
-
-            # Channel-Buttons
-            btn_html = ""
-            for ch_idx, ch in sorted(channels.items(), key=lambda x: x[0]):
-                is_on = ch.get("on", False)
-                power = ch.get("power_w")
-                btn_id = f"btn-{ip.replace('.', '-')}-{ch_idx}"
-                btn_color = "var(--green)" if is_on else "var(--surface2)"
-                btn_text = "EIN" if is_on else "AUS"
-                new_state = "false" if is_on else "true"
-                power_str = f" · {power:.0f} W" if isinstance(power, (int, float)) else ""
-                btn_html += (
-                    f'<button id="{btn_id}" '
-                    f'onclick="shellyRelay(\'{ip}\',{gen},{ch_idx},{new_state})" '
-                    f'style="background:{btn_color};color:var(--text);border:1px solid var(--border);'
-                    f'padding:4px 12px;border-radius:4px;font-size:12px;cursor:pointer;margin-right:6px">'
-                    f'CH{ch_idx} {btn_text}{power_str}</button>'
-                )
-
-            last_str = ""
-            if last_seen:
-                import time as _t
-                age = int(_t.time() - last_seen)
-                if age < 60:
-                    last_str = f"{age}s"
-                elif age < 3600:
-                    last_str = f"{age//60}m"
-                else:
-                    last_str = f"{age//3600}h"
+                control_cell = _switch_cell(ip, gen, channels)
 
             rows.append(
                 f'<tr>'
@@ -976,11 +1045,11 @@ def generate_shelly_html() -> str:
                 f'<td><span class="type-pill">{model}</span></td>'
                 f'<td class="mono">Gen{gen}</td>'
                 f'<td><a href="http://{ip}" target="_blank" class="mono">{ip}</a></td>'
-                f'<td class="mono">{mac}</td>'
-                f'<td class="mono">{fw}</td>'
-                f'<td>{rssi_html}</td>'
-                f'<td>{btn_html}</td>'
-                f'<td class="mono" style="color:var(--muted)">{last_str}</td>'
+                f'<td class="mono" style="font-size:11px">{mac}</td>'
+                f'<td class="mono" style="font-size:11px;color:var(--muted)">{fw}</td>'
+                f'<td>{_rssi_html(dev.get("rssi"))}</td>'
+                f'<td>{control_cell}</td>'
+                f'<td class="mono" style="color:var(--muted)">{_age_str(dev.get("last_seen"))}</td>'
                 f'</tr>'
             )
 
@@ -989,7 +1058,7 @@ def generate_shelly_html() -> str:
             '<table class="data-table">'
             '<thead><tr>'
             '<th>Name</th><th>Modell</th><th>Gen</th><th>IP</th><th>MAC</th>'
-            '<th>Firmware</th><th>WLAN</th><th>Steuerung</th><th>Gesehen</th>'
+            '<th>Firmware</th><th>WLAN</th><th>Status / Steuerung</th><th>Gesehen</th>'
             '</tr></thead>'
             f'<tbody>{"".join(rows)}</tbody>'
             '</table>'
