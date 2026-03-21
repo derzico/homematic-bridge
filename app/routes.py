@@ -15,7 +15,8 @@ import app.state as state
 from app.auth import require_api_key, require_web_auth
 from app.generate_html import (generate_dashboard_html, generate_device_detail_html,
                                 generate_device_overview, generate_device_status_html,
-                                generate_heating_html, generate_login_html)
+                                generate_heating_html, generate_login_html,
+                                generate_shelly_html)
 from app.messages import (send_hmip_set_dim_level, send_hmip_set_hue_saturation_dim_level,
                            send_hmip_set_switch)
 from app.utils import _find_device_in_list, _locate_devices_container
@@ -262,6 +263,63 @@ def hmip_state_get():
     if channel is None:
         return jsonify({"error": f"Channel {channel_index} nicht gefunden"}), 404
     return jsonify(channel), 200
+
+
+# ── Shelly ───────────────────────────────────────────────────────────────────
+
+import app.shelly as shelly_mod
+
+@bp.route("/shelly")
+@require_web_auth
+def serve_shelly():
+    return _html(generate_shelly_html())
+
+
+@bp.post("/shelly/scan")
+@require_api_key
+def shelly_scan():
+    cfg = state.config.get("shelly", {})
+    if not cfg.get("enabled", False):
+        return jsonify({"error": "Shelly-Scanner ist in der config.yaml nicht aktiviert"}), 400
+    subnet = cfg.get("subnet", "")
+    if not subnet:
+        return jsonify({"error": "Kein subnet in config.yaml konfiguriert"}), 400
+    timeout = float(cfg.get("timeout_sec", 1.5))
+    started = shelly_mod.start_scan(subnet, timeout_sec=timeout)
+    if not started:
+        return jsonify({"status": "already_running"}), 202
+    return jsonify({"status": "started", "subnet": subnet}), 202
+
+
+@bp.get("/shelly/status")
+@require_api_key
+def shelly_scan_status():
+    return jsonify(shelly_mod.scan_status()), 200
+
+
+@bp.get("/shelly/devices")
+@require_api_key
+def shelly_devices():
+    return jsonify(shelly_mod.load_cached()), 200
+
+
+@bp.post("/shelly/<ip>/relay/<int:channel>")
+@require_api_key
+def shelly_relay(ip: str, channel: int):
+    data = request.get_json(silent=True, force=True) or {}
+    on = data.get("on")
+    if not isinstance(on, bool):
+        return jsonify({"error": "Parameter 'on' (bool) fehlt"}), 400
+    # Gen aus Cache ermitteln
+    cached = {d["ip"]: d for d in shelly_mod.load_cached()}
+    device = cached.get(ip)
+    if not device:
+        return jsonify({"error": f"Gerät {ip} nicht im Cache – zuerst scannen"}), 404
+    gen = device.get("gen", 1)
+    ok = shelly_mod.set_relay(ip, gen, channel, on)
+    if ok:
+        shelly_mod.refresh_device(ip, gen)
+    return jsonify({"success": ok, "ip": ip, "channel": channel, "on": on}), 200 if ok else 502
 
 
 # ── Health ────────────────────────────────────────────────────────────────────

@@ -247,6 +247,7 @@ def _nav(active: str = "", device_count: int = 0) -> str:
         + lnk("/devices/html", "Geräte", "devices")
         + lnk("/devices/status", "Status", "status")
         + lnk("/heating", "Heizung", "heating")
+        + lnk("/shelly", "Shelly", "shelly")
         + lnk("/healthz", "Health", "health")
         + '</div>'
         '<div class="spacer"></div>'
@@ -810,6 +811,194 @@ def generate_heating_html(system_state_path: str) -> str:
     )
 
     return _page("HmIP Heizung", _nav("heating"), body)
+
+
+# ── Shelly-Seite ──────────────────────────────────────────────────────────────
+
+_JS_SHELLY = """
+async function shellyRelay(ip, gen, channel, on) {
+  const btn = document.getElementById('btn-' + ip.replace(/\\./g,'-') + '-' + channel);
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const r = await fetch('/shelly/' + ip + '/relay/' + channel, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-API-Key': window._apiKey || ''},
+      body: JSON.stringify({on: on})
+    });
+    const d = await r.json();
+    if (d.success) { setTimeout(() => location.reload(), 800); }
+    else { alert('Fehler beim Schalten'); if (btn) btn.disabled = false; }
+  } catch(e) { alert('Netzwerkfehler'); if (btn) btn.disabled = false; }
+}
+
+async function startScan() {
+  const btn = document.getElementById('scan-btn');
+  btn.disabled = true; btn.textContent = 'Scan läuft…';
+  document.getElementById('scan-info').textContent = 'Scan gestartet – bitte warten…';
+  try {
+    const r = await fetch('/shelly/scan', {
+      method: 'POST',
+      headers: {'X-API-Key': window._apiKey || ''}
+    });
+    const d = await r.json();
+    if (d.status === 'started' || d.status === 'already_running') {
+      pollScan();
+    } else {
+      document.getElementById('scan-info').textContent = d.error || 'Fehler';
+      btn.disabled = false; btn.textContent = 'Netzwerk scannen';
+    }
+  } catch(e) {
+    document.getElementById('scan-info').textContent = 'Netzwerkfehler';
+    btn.disabled = false; btn.textContent = 'Netzwerk scannen';
+  }
+}
+
+function pollScan() {
+  fetch('/shelly/status', {headers: {'X-API-Key': window._apiKey || ''}})
+    .then(r => r.json())
+    .then(d => {
+      if (d.running) {
+        document.getElementById('scan-info').textContent = 'Scan läuft…';
+        setTimeout(pollScan, 2000);
+      } else {
+        location.reload();
+      }
+    });
+}
+"""
+
+
+def generate_shelly_html() -> str:
+    import app.shelly as shelly_mod
+    import app.state as state
+
+    devices = shelly_mod.load_cached()
+    status = shelly_mod.scan_status()
+    cfg = state.config.get("shelly", {})
+    enabled = cfg.get("enabled", False)
+    subnet = cfg.get("subnet", "–")
+
+    # Config-Hinweis wenn nicht aktiviert
+    if not enabled:
+        body = (
+            '<div class="page-header"><h1>Shelly Scanner</h1></div>'
+            '<div class="dash-card" style="max-width:520px">'
+            '<h3>Nicht aktiviert</h3>'
+            '<p style="color:var(--muted);font-size:13px;line-height:1.6">Füge in <code>config/config.yaml</code> folgendes hinzu:</p>'
+            '<pre class="json-raw" style="margin-top:12px">shelly:\n  enabled: true\n  subnet: "192.168.1.0/24"\n  timeout_sec: 1.5</pre>'
+            '</div>'
+        )
+        return _page("Shelly", _nav("shelly"), body)
+
+    # Header-Bereich
+    scan_info = ""
+    if status["running"]:
+        scan_info = "Scan läuft…"
+    elif status["error"]:
+        scan_info = f"Fehler: {html.escape(status['error'])}"
+
+    header = (
+        '<div class="page-header">'
+        '<h1>Shelly Scanner</h1>'
+        f'<div class="sub">Subnet: <strong>{html.escape(subnet)}</strong>'
+        f' &nbsp;·&nbsp; {len(devices)} Geräte gefunden</div>'
+        '</div>'
+        '<div style="margin-bottom:20px;display:flex;align-items:center;gap:12px">'
+        '<button id="scan-btn" onclick="startScan()" style="'
+        'background:var(--accent);color:#0d1117;border:none;padding:8px 18px;'
+        'border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">'
+        'Netzwerk scannen</button>'
+        f'<span id="scan-info" style="color:var(--muted);font-size:13px">{html.escape(scan_info)}</span>'
+        '</div>'
+    )
+
+    if not devices:
+        table = '<div style="color:var(--muted);font-size:13px">Noch keine Geräte gefunden. Starte einen Scan.</div>'
+    else:
+        rows = []
+        for dev in devices:
+            ip = html.escape(dev.get("ip", ""))
+            name = html.escape(dev.get("name") or dev.get("id") or "–")
+            model = html.escape(dev.get("model", "–"))
+            gen = dev.get("gen", 1)
+            mac = html.escape(dev.get("mac", "–"))
+            fw = html.escape(dev.get("fw", "–"))
+            rssi = dev.get("rssi")
+            channels = dev.get("channels", {})
+            last_seen = dev.get("last_seen")
+
+            # RSSI-Anzeige
+            if isinstance(rssi, (int, float)):
+                if rssi >= -60:
+                    rssi_cls, bars = "", 4
+                elif rssi >= -75:
+                    rssi_cls, bars = "warn", 2
+                else:
+                    rssi_cls, bars = "bad", 1
+                rssi_html = (
+                    f'<span class="rssi-bar {rssi_cls}">'
+                    + "".join(f'<span style="height:{4+i*3}px" class="{"lit" if i < bars else ""}"></span>' for i in range(4))
+                    + f'</span> <span class="mono">{rssi} dBm</span>'
+                )
+            else:
+                rssi_html = '<span class="mono" style="color:var(--muted)">–</span>'
+
+            # Channel-Buttons
+            btn_html = ""
+            for ch_idx, ch in sorted(channels.items(), key=lambda x: x[0]):
+                is_on = ch.get("on", False)
+                power = ch.get("power_w")
+                btn_id = f"btn-{ip.replace('.', '-')}-{ch_idx}"
+                btn_color = "var(--green)" if is_on else "var(--surface2)"
+                btn_text = "EIN" if is_on else "AUS"
+                new_state = "false" if is_on else "true"
+                power_str = f" · {power:.0f} W" if isinstance(power, (int, float)) else ""
+                btn_html += (
+                    f'<button id="{btn_id}" '
+                    f'onclick="shellyRelay(\'{ip}\',{gen},{ch_idx},{new_state})" '
+                    f'style="background:{btn_color};color:var(--text);border:1px solid var(--border);'
+                    f'padding:4px 12px;border-radius:4px;font-size:12px;cursor:pointer;margin-right:6px">'
+                    f'CH{ch_idx} {btn_text}{power_str}</button>'
+                )
+
+            last_str = ""
+            if last_seen:
+                import time as _t
+                age = int(_t.time() - last_seen)
+                if age < 60:
+                    last_str = f"{age}s"
+                elif age < 3600:
+                    last_str = f"{age//60}m"
+                else:
+                    last_str = f"{age//3600}h"
+
+            rows.append(
+                f'<tr>'
+                f'<td class="label-cell">{name}</td>'
+                f'<td><span class="type-pill">{model}</span></td>'
+                f'<td class="mono">Gen{gen}</td>'
+                f'<td><a href="http://{ip}" target="_blank" class="mono">{ip}</a></td>'
+                f'<td class="mono">{mac}</td>'
+                f'<td class="mono">{fw}</td>'
+                f'<td>{rssi_html}</td>'
+                f'<td>{btn_html}</td>'
+                f'<td class="mono" style="color:var(--muted)">{last_str}</td>'
+                f'</tr>'
+            )
+
+        table = (
+            '<div class="search-wrap"><input id="search" placeholder="Suchen…"></div>'
+            '<table class="data-table">'
+            '<thead><tr>'
+            '<th>Name</th><th>Modell</th><th>Gen</th><th>IP</th><th>MAC</th>'
+            '<th>Firmware</th><th>WLAN</th><th>Steuerung</th><th>Gesehen</th>'
+            '</tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody>'
+            '</table>'
+        )
+
+    body = header + table
+    return _page("Shelly", _nav("shelly"), body, extra_js=_JS_SEARCH + _JS_SHELLY)
 
 
 # ── Login-Seite ────────────────────────────────────────────────────────────────

@@ -15,6 +15,15 @@ loxone:
   miniserver_ip: # z.B. 192.168.1.100 (leer lassen = deaktiviert)
   udp_port: 7777
 
+# Shelly Netzwerk-Scanner (optional)
+# Wenn enabled: true, erscheint unter /shelly eine Übersicht aller Shelly-Geräte im Netz.
+# subnet: Das zu scannende Netzwerk (CIDR-Notation).
+# timeout_sec: Timeout pro IP beim Sweep (kleiner = schneller, aber mehr Fehlalarme).
+shelly:
+  enabled: false
+  subnet: "192.168.1.0/24"
+  timeout_sec: 1.5
+
 # HTTP-API Auth:
 api_key: # optional: Key hier eintragen (oder leer lassen)
 require_api_key: true
