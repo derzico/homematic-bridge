@@ -81,9 +81,35 @@ app.secret_key = _load_or_create_secret_key("data/secret_key.bin")
 app.permanent_session_lifetime = timedelta(hours=8)
 app.register_blueprint(routes_bp)
 
+# ── Shelly-Scan starten ───────────────────────────────────────────────────────
+def _shelly_scan_loop() -> None:
+    import time
+    import app.shelly as shelly_mod
+    cfg = state.config.get("shelly") or {}
+    if not cfg.get("enabled"):
+        return
+    subnet  = cfg.get("subnet", "")
+    timeout = float(cfg.get("timeout_sec", 1.5))
+    interval_h = float(cfg.get("scan_interval_hours", 0))
+    if not subnet:
+        return
+    shelly_mod.set_credentials(cfg.get("username"), cfg.get("password"))
+    if cfg.get("scan_on_startup", False):
+        log.info("Shelly: Startup-Scan gestartet (%s)", subnet)
+        shelly_mod.start_scan(subnet, timeout_sec=timeout)
+    if interval_h > 0:
+        while True:
+            time.sleep(interval_h * 3600)
+            log.info("Shelly: Zyklischer Scan gestartet (%s)", subnet)
+            shelly_mod.set_credentials(state.config.get("shelly", {}).get("username"),
+                                       state.config.get("shelly", {}).get("password"))
+            shelly_mod.start_scan(subnet, timeout_sec=timeout)
+
+
 # ── Start ─────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     threading.Thread(target=ws_loop, daemon=True).start()
+    threading.Thread(target=_shelly_scan_loop, daemon=True).start()
     host, port = "0.0.0.0", 8080
     try:
         from waitress import serve
