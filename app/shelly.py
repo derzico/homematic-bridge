@@ -18,6 +18,18 @@ log = logging.getLogger("bridge-ws")
 _SHELLY_CACHE = "data/shelly_devices.json"
 _WORKERS = 64
 
+# Globale Credentials (aus config.yaml geladen)
+_credentials: Optional[tuple] = None  # (username, password) oder None
+
+
+def set_credentials(username: Optional[str], password: Optional[str]) -> None:
+    global _credentials
+    if username and password:
+        _credentials = (username, password)
+    else:
+        _credentials = None
+
+
 # ── Scan-Status (thread-safe) ─────────────────────────────────────────────────
 
 _scan_lock = threading.Lock()
@@ -38,13 +50,33 @@ def scan_status() -> Dict[str, Any]:
 # ── HTTP-Helpers ──────────────────────────────────────────────────────────────
 
 def _get(ip: str, path: str, timeout: float) -> Optional[Dict]:
+    """GET mit optionaler Auth. Bei 401 wird ohne Auth wiederholt (gemischte Umgebungen)."""
+    url = f"http://{ip}{path}"
     try:
-        r = requests.get(f"http://{ip}{path}", timeout=timeout)
+        r = requests.get(url, auth=_credentials, timeout=timeout)
         if r.status_code == 200:
             return r.json()
+        if r.status_code == 401 and _credentials:
+            # Gerät hat kein Passwort – ohne Auth nochmals versuchen
+            r2 = requests.get(url, timeout=timeout)
+            if r2.status_code == 200:
+                return r2.json()
     except Exception:
         pass
     return None
+
+
+def _post(ip: str, path: str, timeout: float, **kwargs) -> Optional[requests.Response]:
+    """POST mit optionaler Auth."""
+    url = f"http://{ip}{path}"
+    try:
+        r = requests.post(url, auth=_credentials, timeout=timeout, **kwargs)
+        if r.status_code == 401 and _credentials:
+            r = requests.post(url, timeout=timeout, **kwargs)
+        return r
+    except Exception as e:
+        log.error(f"Shelly POST {url} fehlgeschlagen: {e}")
+        return None
 
 
 # ── Geräteerkennung ───────────────────────────────────────────────────────────
@@ -277,21 +309,8 @@ def refresh_device(ip: str, gen: int) -> Optional[Dict]:
 
 def set_relay(ip: str, gen: int, channel: int = 0, on: bool = True) -> bool:
     """Schaltet Relay. Gibt True bei Erfolg zurück."""
-    try:
-        if gen == 2:
-            r = requests.post(
-                f"http://{ip}/rpc/Switch.Set",
-                json={"id": channel, "on": on},
-                timeout=5,
-            )
-            return r.status_code == 200
-        else:
-            r = requests.post(
-                f"http://{ip}/relay/{channel}",
-                data={"turn": "on" if on else "off"},
-                timeout=5,
-            )
-            return r.status_code == 200
-    except Exception as e:
-        log.error(f"Shelly Relay-Steuerung fehlgeschlagen {ip}:{channel}: {e}")
-        return False
+    if gen == 2:
+        r = _post(ip, "/rpc/Switch.Set", timeout=5, json={"id": channel, "on": on})
+    else:
+        r = _post(ip, f"/relay/{channel}", timeout=5, data={"turn": "on" if on else "off"})
+    return r is not None and r.status_code == 200

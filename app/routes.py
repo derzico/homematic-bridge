@@ -318,6 +318,7 @@ def shelly_scan():
     if not subnet:
         return jsonify({"error": "Kein subnet in config.yaml konfiguriert"}), 400
     timeout = float(cfg.get("timeout_sec", 1.5))
+    shelly_mod.set_credentials(cfg.get("username"), cfg.get("password"))
     started = shelly_mod.start_scan(subnet, timeout_sec=timeout)
     if not started:
         return jsonify({"status": "already_running"}), 202
@@ -349,6 +350,8 @@ def shelly_relay(ip: str, channel: int):
     if not device:
         return jsonify({"error": f"Gerät {ip} nicht im Cache – zuerst scannen"}), 404
     gen = device.get("gen", 1)
+    cfg = state.config.get("shelly", {})
+    shelly_mod.set_credentials(cfg.get("username"), cfg.get("password"))
     ok = shelly_mod.set_relay(ip, gen, channel, on)
     if ok:
         shelly_mod.refresh_device(ip, gen)
