@@ -13,10 +13,10 @@ from werkzeug.security import check_password_hash
 
 import app.state as state
 from app.auth import require_api_key, require_web_auth
-from app.generate_html import (generate_dashboard_html, generate_device_detail_html,
-                                generate_device_overview, generate_device_status_html,
-                                generate_heating_html, generate_login_html,
-                                generate_shelly_html)
+from app.generate_html import (generate_config_html, generate_dashboard_html,
+                                generate_device_detail_html, generate_device_overview,
+                                generate_device_status_html, generate_heating_html,
+                                generate_login_html, generate_shelly_html)
 from app.messages import (send_hmip_set_dim_level, send_hmip_set_hue_saturation_dim_level,
                            send_hmip_set_switch)
 from app.utils import _find_device_in_list, _locate_devices_container
@@ -86,6 +86,7 @@ def login():
             expected = state.config_internal.get("web_password") or state.API_KEY
             ok = bool(expected and password == expected)
         if ok:
+            session.permanent = True
             session["authenticated"] = True
             return redirect(next_url)
         return _html(generate_login_html(error=True, next_url=next_url))
@@ -267,7 +268,39 @@ def hmip_state_get():
 
 # ── Shelly ───────────────────────────────────────────────────────────────────
 
+import yaml
 import app.shelly as shelly_mod
+
+_CONFIG_PATH = "config/config.yaml"
+
+
+@bp.route("/config", methods=["GET", "POST"])
+@require_web_auth
+def serve_config():
+    error = None
+    success = False
+    if request.method == "POST":
+        raw = request.form.get("content", "")
+        try:
+            parsed = yaml.safe_load(raw)
+            if not isinstance(parsed, dict):
+                raise ValueError("Ungültiges YAML – muss ein Mapping sein")
+            with open(_CONFIG_PATH, "w", encoding="utf-8") as f:
+                f.write(raw)
+            # State neu laden
+            state.config = parsed
+            _lox = parsed.get("loxone") or {}
+            state.LOXONE_HOST = _lox.get("miniserver_ip") or ""
+            state.LOXONE_UDP_PORT = int(_lox.get("udp_port") or 7777)
+            success = True
+        except Exception as e:
+            error = str(e)
+    try:
+        with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
+            content = f.read()
+    except FileNotFoundError:
+        content = ""
+    return _html(generate_config_html(content, error=error, success=success))
 
 @bp.route("/shelly")
 @require_web_auth

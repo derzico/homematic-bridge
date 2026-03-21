@@ -248,6 +248,7 @@ def _nav(active: str = "", device_count: int = 0) -> str:
         + lnk("/devices/status", "Status", "status")
         + lnk("/heating", "Heizung", "heating")
         + lnk("/shelly", "Shelly", "shelly")
+        + lnk("/config", "Konfig", "config")
         + lnk("/healthz", "Health", "health")
         + '</div>'
         '<div class="spacer"></div>'
@@ -996,6 +997,39 @@ def generate_shelly_html() -> str:
 
     body = header + table
     return _page("Shelly", _nav("shelly"), body, extra_js=_JS_SEARCH + _JS_SHELLY)
+
+
+# ── Config-Editor ─────────────────────────────────────────────────────────────
+
+def generate_config_html(content: str, error: Optional[str] = None, success: bool = False) -> str:
+    alert = ""
+    if error:
+        alert = f'<div class="login-error" style="margin-bottom:16px">Fehler: {html.escape(error)}</div>'
+    elif success:
+        alert = '<div style="background:#1a3a1a;border:1px solid var(--green);color:var(--green);padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:16px">Gespeichert. Verbindungsänderungen (HCU, Token) erfordern einen Neustart.</div>'
+
+    body = (
+        '<div class="page-header">'
+        '<h1>Konfiguration</h1>'
+        '<div class="sub">config/config.yaml – nach dem Speichern werden Loxone- und Shelly-Einstellungen sofort übernommen. HCU-Verbindungsänderungen erfordern einen Neustart.</div>'
+        '</div>'
+        + alert +
+        '<form method="POST" action="/config">'
+        '<textarea name="content" spellcheck="false" style="'
+        'width:100%;height:520px;background:var(--bg);color:var(--text);'
+        'border:1px solid var(--border);border-radius:8px;padding:16px;'
+        'font-family:var(--mono);font-size:13px;line-height:1.6;resize:vertical;outline:none">'
+        + html.escape(content) +
+        '</textarea>'
+        '<div style="margin-top:12px;display:flex;gap:10px;align-items:center">'
+        '<button type="submit" style="background:var(--accent);color:#0d1117;border:none;'
+        'padding:9px 22px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">'
+        'Speichern</button>'
+        '<span style="color:var(--muted);font-size:12px">YAML wird vor dem Speichern validiert.</span>'
+        '</div>'
+        '</form>'
+    )
+    return _page("Konfiguration", _nav("config"), body)
 
 
 # ── Login-Seite ────────────────────────────────────────────────────────────────

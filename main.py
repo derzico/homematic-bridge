@@ -6,6 +6,7 @@ import os
 import secrets
 import sys
 import threading
+from datetime import timedelta
 from logging.handlers import TimedRotatingFileHandler
 
 from flask import Flask
@@ -77,6 +78,7 @@ def _load_or_create_secret_key(path: str) -> bytes:
 
 app = Flask(__name__)
 app.secret_key = _load_or_create_secret_key("data/secret_key.bin")
+app.permanent_session_lifetime = timedelta(hours=8)
 app.register_blueprint(routes_bp)
 
 # ── Start ─────────────────────────────────────────────────────────────────────
