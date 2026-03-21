@@ -123,13 +123,14 @@ def _get_status_gen1(ip: str, timeout: float) -> Dict:
             "is_valid":  em.get("is_valid", True),
         }
 
-    upd = data.get("update") or {}
+    # /ota ist zuverlässiger als das update-Feld in /status
+    ota = _get(ip, "/ota", timeout) or {}
     return {
         "channels": channels,
         "emeters":  em_data,
         "rssi":     data.get("wifi_sta", {}).get("rssi"),
-        "update_available": bool(upd.get("has_update")),
-        "new_fw":   upd.get("new_version", ""),
+        "update_available": bool(ota.get("has_update")),
+        "new_fw":   ota.get("new_version") or "",
     }
 
 
@@ -147,8 +148,8 @@ def _get_status_gen2(ip: str, num_channels: int, timeout: float) -> Dict:
                 "total_kwh": round(aenergy.get("total", 0) / 1000, 3) if aenergy.get("total") is not None else None,
             }
     wifi = _get(ip, "/rpc/Wifi.GetStatus", timeout) or {}
-    sys_status = _get(ip, "/rpc/Shelly.GetStatus", timeout) or {}
-    avail = (sys_status.get("sys") or {}).get("available_updates") or {}
+    sys_status = _get(ip, "/rpc/Sys.GetStatus", timeout) or {}
+    avail = sys_status.get("available_updates") or {}
     new_fw = (avail.get("stable") or {}).get("version", "")
     return {
         "channels": channels,
@@ -394,6 +395,22 @@ def refresh_all_devices() -> int:
 
 
 # ── Steuerung ─────────────────────────────────────────────────────────────────
+
+def check_updates_all() -> None:
+    """Fordert alle Geräte auf, nach Firmware-Updates zu suchen (fire & forget)."""
+    devices = load_cached()
+
+    def _check_one(dev):
+        ip, gen = dev["ip"], dev.get("gen", 1)
+        if gen == 2:
+            _get(ip, "/rpc/Shelly.CheckForUpdate", timeout=5.0)
+        else:
+            _get(ip, "/ota/check", timeout=5.0)
+
+    with ThreadPoolExecutor(max_workers=min(32, len(devices))) as ex:
+        list(ex.map(_check_one, devices))
+    log.info("Shelly: Update-Check auf %d Geräten ausgelöst", len(devices))
+
 
 def trigger_update(ip: str, gen: int) -> bool:
     """Startet Firmware-Update. Gibt True zurück wenn Befehl akzeptiert wurde."""

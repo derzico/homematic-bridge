@@ -346,6 +346,13 @@ def shelly_refresh_status():
     return jsonify({"updated": count}), 200
 
 
+@bp.post("/shelly/check-updates")
+@require_web_auth
+def shelly_check_updates():
+    shelly_mod.check_updates_all()
+    return jsonify({"status": "triggered"}), 200
+
+
 @bp.post("/shelly/<ip>/update")
 @require_web_auth
 def shelly_update(ip: str):

@@ -881,6 +881,21 @@ async function shellyUpdate(ip) {
   } catch(e) { alert('Netzwerkfehler'); if (btn) { btn.disabled = false; btn.textContent = 'Update'; } }
 }
 
+async function checkUpdates() {
+  const btn = document.getElementById('upd-check-btn');
+  btn.disabled = true; btn.textContent = 'Prüfe…';
+  try {
+    await fetch('/shelly/check-updates', {method: 'POST'});
+    btn.textContent = 'Warte auf Geräte (5s)…';
+    setTimeout(async () => {
+      await fetch('/shelly/refresh-status', {method: 'POST'});
+      location.reload();
+    }, 5000);
+  } catch(e) {
+    btn.disabled = false; btn.textContent = 'Auf Updates prüfen';
+  }
+}
+
 async function refreshStatus() {
   const btn = document.getElementById('refresh-btn');
   btn.disabled = true; btn.textContent = 'Aktualisiere…';
@@ -1060,6 +1075,10 @@ def generate_shelly_html() -> str:
         'background:var(--surface2);color:var(--text);border:1px solid var(--border);padding:8px 14px;'
         'border-radius:6px;font-size:13px;cursor:pointer">'
         'Status aktualisieren</button>'
+        '<button id="upd-check-btn" onclick="checkUpdates()" style="'
+        'background:var(--surface2);color:var(--yellow);border:1px solid var(--yellow);padding:8px 14px;'
+        'border-radius:6px;font-size:13px;cursor:pointer">'
+        '▲ Auf Updates prüfen</button>'
         f'<span id="scan-info" style="color:var(--muted);font-size:13px">{html.escape(scan_info)}</span>'
         '</div>'
     )
