@@ -865,7 +865,7 @@ function pollScan() {
 }
 
 async function shellyUpdate(ip) {
-  if (!confirm('Firmware-Update für ' + ip + ' starten?\nDas Gerät ist während des Updates nicht erreichbar.')) return;
+  if (!confirm('Firmware-Update für ' + ip + ' starten?\\nDas Gerät ist während des Updates nicht erreichbar.')) return;
   const btn = document.getElementById('upd-' + ip.replace(/\\./g,'-'));
   if (btn) { btn.disabled = true; btn.textContent = 'Update läuft…'; }
   try {
