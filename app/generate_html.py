@@ -1121,7 +1121,7 @@ def generate_shelly_html() -> str:
                 f'<td class="label-cell">{online_badge}{name}</td>'
                 f'<td><span class="type-pill">{model}</span></td>'
                 f'<td class="mono">Gen{gen}</td>'
-                f'<td><a href="http://{ip}" target="_blank" class="mono">{ip}</a></td>'
+                f'<td><a href="/shelly/{ip}/webui/" target="_blank" class="mono">{ip}</a></td>'
                 f'<td class="mono" style="font-size:11px">{mac}</td>'
                 f'<td class="mono" style="font-size:11px;color:var(--muted)">{fw}'
                 + (

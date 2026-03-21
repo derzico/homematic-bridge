@@ -385,6 +385,86 @@ def shelly_relay(ip: str, channel: int):
     return jsonify({"success": ok, "ip": ip, "channel": channel, "on": on}), 200 if ok else 502
 
 
+@bp.route("/shelly/<ip>/webui", defaults={"subpath": ""}, methods=["GET", "POST"])
+@bp.route("/shelly/<ip>/webui/<path:subpath>", methods=["GET", "POST"])
+@require_web_auth
+def shelly_webui_proxy(ip: str, subpath: str):
+    """Proxied Shelly web-UI – forwards requests with credentials so the user
+    is automatically logged in without having to enter the password manually."""
+    import re
+    import requests as _req
+
+    target = f"http://{ip}/{subpath}"
+    if request.query_string:
+        target += "?" + request.query_string.decode("utf-8", errors="replace")
+
+    creds = shelly_mod._credentials
+    auth = creds if (creds and creds[0]) else None
+
+    try:
+        if request.method == "POST":
+            r = _req.post(
+                target, auth=auth,
+                data=request.get_data(),
+                headers={"Content-Type": request.content_type or "application/x-www-form-urlencoded"},
+                timeout=10, allow_redirects=False,
+            )
+        else:
+            r = _req.get(target, auth=auth, timeout=10, allow_redirects=False)
+    except Exception as exc:
+        return f"<h3 style='font-family:sans-serif;padding:24px'>Shelly nicht erreichbar: {exc}</h3>", 502
+
+    # Redirect → rewrite Location so it stays within the proxy
+    if r.status_code in (301, 302, 303, 307, 308):
+        loc = r.headers.get("Location", "/")
+        if loc.startswith("/") and not loc.startswith("//"):
+            loc = f"/shelly/{ip}/webui{loc}"
+        return redirect(loc, r.status_code)
+
+    content_type = r.headers.get("Content-Type", "application/octet-stream")
+    proxy_base = f"/shelly/{ip}/webui"
+
+    if "text/html" in content_type:
+        # JS interceptor: rewrites absolute-path XHR / fetch calls through our proxy
+        interceptor = (
+            "<script>"
+            "(function(){"
+            f"var B='{proxy_base}';"
+            "var oX=XMLHttpRequest.prototype.open;"
+            "XMLHttpRequest.prototype.open=function(m,u){"
+            "if(typeof u==='string'&&u.charAt(0)==='/'&&u.charAt(1)!=='/')u=B+u;"
+            "return oX.apply(this,arguments);};"
+            "if(window.fetch){var oF=window.fetch;window.fetch=function(u,o){"
+            "if(typeof u==='string'&&u.charAt(0)==='/'&&u.charAt(1)!=='/')u=B+u;"
+            "return oF.call(window,u,o);};"
+            "}"
+            "})();"
+            "</script>"
+        )
+        html_text = r.text
+
+        # Rewrite absolute paths in src / href / action attributes
+        def _rewrite(m: re.Match) -> str:
+            attr, path = m.group(1), m.group(2)
+            if path.startswith("/") and not path.startswith("//"):
+                return f'{attr}="{proxy_base}{path}"'
+            return m.group(0)
+
+        html_text = re.sub(r'(src|href|action)="(/[^"]*)"', _rewrite, html_text)
+
+        # Inject base href (helps with truly relative URLs like "js/app.js")
+        base_tag = f'<base href="{proxy_base}/">'
+        if "<head>" in html_text:
+            html_text = html_text.replace("<head>", f"<head>{base_tag}{interceptor}", 1)
+        else:
+            html_text = base_tag + interceptor + html_text
+
+        return html_text, r.status_code, {"Content-Type": "text/html; charset=utf-8"}
+
+    # All other content (JS, CSS, images, JSON) – pass through as-is
+    return r.content, r.status_code, {"Content-Type": content_type}
+
+
 # ── Health ────────────────────────────────────────────────────────────────────
 
 @bp.route("/healthz")
