@@ -276,7 +276,7 @@ def serve_shelly():
 
 
 @bp.post("/shelly/scan")
-@require_api_key
+@require_web_auth
 def shelly_scan():
     cfg = state.config.get("shelly", {})
     if not cfg.get("enabled", False):
@@ -292,19 +292,19 @@ def shelly_scan():
 
 
 @bp.get("/shelly/status")
-@require_api_key
+@require_web_auth
 def shelly_scan_status():
     return jsonify(shelly_mod.scan_status()), 200
 
 
 @bp.get("/shelly/devices")
-@require_api_key
+@require_web_auth
 def shelly_devices():
     return jsonify(shelly_mod.load_cached()), 200
 
 
 @bp.post("/shelly/<ip>/relay/<int:channel>")
-@require_api_key
+@require_web_auth
 def shelly_relay(ip: str, channel: int):
     data = request.get_json(silent=True, force=True) or {}
     on = data.get("on")

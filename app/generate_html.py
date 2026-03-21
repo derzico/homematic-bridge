@@ -822,7 +822,7 @@ async function shellyRelay(ip, gen, channel, on) {
   try {
     const r = await fetch('/shelly/' + ip + '/relay/' + channel, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-API-Key': window._apiKey || ''},
+      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({on: on})
     });
     const d = await r.json();
@@ -836,10 +836,7 @@ async function startScan() {
   btn.disabled = true; btn.textContent = 'Scan läuft…';
   document.getElementById('scan-info').textContent = 'Scan gestartet – bitte warten…';
   try {
-    const r = await fetch('/shelly/scan', {
-      method: 'POST',
-      headers: {'X-API-Key': window._apiKey || ''}
-    });
+    const r = await fetch('/shelly/scan', {method: 'POST'});
     const d = await r.json();
     if (d.status === 'started' || d.status === 'already_running') {
       pollScan();
@@ -854,7 +851,7 @@ async function startScan() {
 }
 
 function pollScan() {
-  fetch('/shelly/status', {headers: {'X-API-Key': window._apiKey || ''}})
+  fetch('/shelly/status')
     .then(r => r.json())
     .then(d => {
       if (d.running) {
