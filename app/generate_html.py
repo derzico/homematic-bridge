@@ -1013,13 +1013,44 @@ def generate_shelly_html() -> str:
             )
         return "".join(parts)
 
+    online_count  = sum(1 for d in devices if d.get("online", True))
+    offline_count = len(devices) - online_count
+    updates_count = sum(1 for d in devices if d.get("update_available"))
+
+    offline_banner = ""
+    if offline_count:
+        offline_names = ", ".join(
+            d.get("name") or d.get("ip", "?")
+            for d in devices if not d.get("online", True)
+        )
+        offline_banner = (
+            f'<div style="background:#3a1010;border:1px solid var(--red);border-radius:8px;'
+            f'padding:12px 16px;margin-bottom:16px;font-size:13px">'
+            f'<strong style="color:var(--red)">⚠ {offline_count} Gerät{"e" if offline_count>1 else ""} nicht erreichbar</strong>'
+            f'<span style="color:var(--muted);margin-left:8px">{html.escape(offline_names)}</span>'
+            f'<span style="color:var(--muted);font-size:11px;margin-left:12px">'
+            f'– kann temporär sein, wird beim nächsten Scan/Refresh aktualisiert</span>'
+            f'</div>'
+        )
+
+    updates_banner = ""
+    if updates_count:
+        updates_banner = (
+            f'<div style="background:#3a2a00;border:1px solid var(--yellow);border-radius:8px;'
+            f'padding:12px 16px;margin-bottom:16px;font-size:13px">'
+            f'<strong style="color:var(--yellow)">▲ {updates_count} Firmware-Update{"s" if updates_count>1 else ""} verfügbar</strong>'
+            f'<span style="color:var(--muted);margin-left:8px">– Update-Button in der Firmware-Spalte</span>'
+            f'</div>'
+        )
+
     header = (
         '<div class="page-header">'
         '<h1>Shelly</h1>'
         f'<div class="sub">Subnet: <strong>{html.escape(subnet)}</strong>'
-        f' &nbsp;·&nbsp; {len(devices)} Geräte &nbsp;·&nbsp; '
-        'Auto-Refresh: 60s</div>'
+        f' &nbsp;·&nbsp; {online_count}/{len(devices)} online'
+        f' &nbsp;·&nbsp; Auto-Refresh: 60s</div>'
         '</div>'
+        + offline_banner + updates_banner +
         '<div style="margin-bottom:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
         '<button id="scan-btn" onclick="startScan()" style="'
         'background:var(--accent);color:#0d1117;border:none;padding:8px 18px;'
@@ -1046,21 +1077,29 @@ def generate_shelly_html() -> str:
             fw         = html.escape(dev.get("fw", "–"))
             new_fw     = html.escape(dev.get("new_fw", ""))
             upd_avail  = dev.get("update_available", False)
+            is_online  = dev.get("online", True)
             channels   = dev.get("channels", {})
             emeters    = dev.get("emeters", {})
 
+            row_style = ' style="opacity:0.55"' if not is_online else ''
+            online_badge = (
+                '<span class="status-pill pill-error" style="font-size:10px">offline</span> '
+                if not is_online else ''
+            )
+
             # Energie-Monitor wenn emeters vorhanden, sonst Schalter
-            if emeters:
+            if not is_online:
+                control_cell = '<span style="color:var(--muted);font-size:12px">nicht erreichbar</span>'
+            elif emeters:
                 control_cell = _em_cell(emeters)
-                # Relay-Button zusätzlich wenn vorhanden (SHEM hat Relay)
                 if channels:
                     control_cell += '<div style="margin-top:6px">' + _switch_cell(ip, gen, channels) + '</div>'
             else:
                 control_cell = _switch_cell(ip, gen, channels)
 
             rows.append(
-                f'<tr>'
-                f'<td class="label-cell">{name}</td>'
+                f'<tr{row_style}>'
+                f'<td class="label-cell">{online_badge}{name}</td>'
                 f'<td><span class="type-pill">{model}</span></td>'
                 f'<td class="mono">Gen{gen}</td>'
                 f'<td><a href="http://{ip}" target="_blank" class="mono">{ip}</a></td>'

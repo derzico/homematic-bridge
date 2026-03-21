@@ -248,9 +248,24 @@ def _run_scan(subnet: str, timeout_sec: float, include_mdns: bool) -> None:
                     found.append(dev)
                     log.info(f"Shelly: {dev['name']} ({dev['ip']}, Gen{dev['gen']})")
 
+        # Geräte aus altem Cache die nicht mehr gefunden wurden → offline markieren
+        old_cache = {d["ip"]: d for d in load_cached()}
+        new_ips = {d["ip"] for d in found}
+        for ip, old_dev in old_cache.items():
+            if ip not in new_ips:
+                old_dev["online"] = False
+                found.append(old_dev)
+                log.warning(f"Shelly nicht mehr erreichbar: {old_dev.get('name', ip)} ({ip})")
+
+        # Online-Flag bei gefundenen Geräten setzen
+        for dev in found:
+            if dev["ip"] in new_ips:
+                dev["online"] = True
+
         found.sort(key=lambda d: d["ip"])
         save_cache(found)
-        log.info(f"Shelly-Scan fertig: {len(found)} Geräte")
+        online = sum(1 for d in found if d.get("online", True))
+        log.info(f"Shelly-Scan fertig: {online}/{len(found)} Geräte online")
 
     except Exception as e:
         with _scan_lock:
@@ -337,14 +352,18 @@ def refresh_device(ip: str, gen: int) -> Optional[Dict]:
         status = _get_status_gen2(ip, num_ch, timeout=3.0)
     else:
         status = _get_status_gen1(ip, timeout=3.0)
+
     if ip in cached:
+        # Gerät nicht erreichbar wenn keine Channel/Emeter-Daten zurückkamen
+        reachable = bool(status.get("channels") or status.get("emeters") or status.get("rssi") is not None)
         cached[ip].update({
+            "online":          reachable,
             "channels":        status["channels"],
             "emeters":         status["emeters"],
             "rssi":            status["rssi"],
             "update_available": status.get("update_available", False),
             "new_fw":          status.get("new_fw", ""),
-            "last_seen":       int(time.time()),
+            "last_seen":       int(time.time()) if reachable else cached[ip].get("last_seen"),
         })
         save_cache(list(cached.values()))
         return cached[ip]
