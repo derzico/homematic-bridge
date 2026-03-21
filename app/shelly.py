@@ -123,7 +123,14 @@ def _get_status_gen1(ip: str, timeout: float) -> Dict:
             "is_valid":  em.get("is_valid", True),
         }
 
-    return {"channels": channels, "emeters": em_data, "rssi": data.get("wifi_sta", {}).get("rssi")}
+    upd = data.get("update") or {}
+    return {
+        "channels": channels,
+        "emeters":  em_data,
+        "rssi":     data.get("wifi_sta", {}).get("rssi"),
+        "update_available": bool(upd.get("has_update")),
+        "new_fw":   upd.get("new_version", ""),
+    }
 
 
 def _get_status_gen2(ip: str, num_channels: int, timeout: float) -> Dict:
@@ -140,7 +147,16 @@ def _get_status_gen2(ip: str, num_channels: int, timeout: float) -> Dict:
                 "total_kwh": round(aenergy.get("total", 0) / 1000, 3) if aenergy.get("total") is not None else None,
             }
     wifi = _get(ip, "/rpc/Wifi.GetStatus", timeout) or {}
-    return {"channels": channels, "emeters": {}, "rssi": wifi.get("rssi")}
+    sys_status = _get(ip, "/rpc/Shelly.GetStatus", timeout) or {}
+    avail = (sys_status.get("sys") or {}).get("available_updates") or {}
+    new_fw = (avail.get("stable") or {}).get("version", "")
+    return {
+        "channels": channels,
+        "emeters":  {},
+        "rssi":     wifi.get("rssi"),
+        "update_available": bool(new_fw),
+        "new_fw":   new_fw,
+    }
 
 
 def _build_device(ip: str, gen: int, info: Dict, timeout: float) -> Dict[str, Any]:
@@ -159,7 +175,9 @@ def _build_device(ip: str, gen: int, info: Dict, timeout: float) -> Dict[str, An
             "fw": info.get("ver", ""),
             "rssi": status["rssi"],
             "channels": status["channels"],
-            "emeters": status["emeters"],
+            "emeters":  status["emeters"],
+            "update_available": status.get("update_available", False),
+            "new_fw":   status.get("new_fw", ""),
             "last_seen": int(time.time()),
         }
     else:
@@ -177,7 +195,9 @@ def _build_device(ip: str, gen: int, info: Dict, timeout: float) -> Dict[str, An
             "fw": info.get("fw", ""),
             "rssi": status["rssi"],
             "channels": status["channels"],
-            "emeters": status["emeters"],
+            "emeters":  status["emeters"],
+            "update_available": status.get("update_available", False),
+            "new_fw":   status.get("new_fw", ""),
             "last_seen": int(time.time()),
         }
 
@@ -319,10 +339,12 @@ def refresh_device(ip: str, gen: int) -> Optional[Dict]:
         status = _get_status_gen1(ip, timeout=3.0)
     if ip in cached:
         cached[ip].update({
-            "channels": status["channels"],
-            "emeters":  status["emeters"],
-            "rssi":     status["rssi"],
-            "last_seen": int(time.time()),
+            "channels":        status["channels"],
+            "emeters":         status["emeters"],
+            "rssi":            status["rssi"],
+            "update_available": status.get("update_available", False),
+            "new_fw":          status.get("new_fw", ""),
+            "last_seen":       int(time.time()),
         })
         save_cache(list(cached.values()))
         return cached[ip]
@@ -353,6 +375,15 @@ def refresh_all_devices() -> int:
 
 
 # ── Steuerung ─────────────────────────────────────────────────────────────────
+
+def trigger_update(ip: str, gen: int) -> bool:
+    """Startet Firmware-Update. Gibt True zurück wenn Befehl akzeptiert wurde."""
+    if gen == 2:
+        r = _post(ip, "/rpc/Shelly.Update", timeout=10, json={"stage": "stable"})
+    else:
+        r = _post(ip, "/ota?update=1", timeout=10)
+    return r is not None and r.status_code == 200
+
 
 def set_relay(ip: str, gen: int, channel: int = 0, on: bool = True) -> bool:
     """Schaltet Relay. Gibt True bei Erfolg zurück."""

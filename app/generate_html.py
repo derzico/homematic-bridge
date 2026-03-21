@@ -864,6 +864,23 @@ function pollScan() {
     });
 }
 
+async function shellyUpdate(ip) {
+  if (!confirm('Firmware-Update für ' + ip + ' starten?\nDas Gerät ist während des Updates nicht erreichbar.')) return;
+  const btn = document.getElementById('upd-' + ip.replace(/\\./g,'-'));
+  if (btn) { btn.disabled = true; btn.textContent = 'Update läuft…'; }
+  try {
+    const r = await fetch('/shelly/' + ip + '/update', {method: 'POST'});
+    const d = await r.json();
+    if (d.success) {
+      if (btn) btn.textContent = 'Neustart…';
+      setTimeout(() => location.reload(), 15000);
+    } else {
+      alert('Update fehlgeschlagen');
+      if (btn) { btn.disabled = false; btn.textContent = 'Update'; }
+    }
+  } catch(e) { alert('Netzwerkfehler'); if (btn) { btn.disabled = false; btn.textContent = 'Update'; } }
+}
+
 async function refreshStatus() {
   const btn = document.getElementById('refresh-btn');
   btn.disabled = true; btn.textContent = 'Aktualisiere…';
@@ -1021,14 +1038,16 @@ def generate_shelly_html() -> str:
     else:
         rows = []
         for dev in devices:
-            ip       = html.escape(dev.get("ip", ""))
-            name     = html.escape(dev.get("name") or dev.get("id") or "–")
-            model    = html.escape(dev.get("model", "–"))
-            gen      = dev.get("gen", 1)
-            mac      = html.escape(dev.get("mac", "–"))
-            fw       = html.escape(dev.get("fw", "–"))
-            channels = dev.get("channels", {})
-            emeters  = dev.get("emeters", {})
+            ip         = html.escape(dev.get("ip", ""))
+            name       = html.escape(dev.get("name") or dev.get("id") or "–")
+            model      = html.escape(dev.get("model", "–"))
+            gen        = dev.get("gen", 1)
+            mac        = html.escape(dev.get("mac", "–"))
+            fw         = html.escape(dev.get("fw", "–"))
+            new_fw     = html.escape(dev.get("new_fw", ""))
+            upd_avail  = dev.get("update_available", False)
+            channels   = dev.get("channels", {})
+            emeters    = dev.get("emeters", {})
 
             # Energie-Monitor wenn emeters vorhanden, sonst Schalter
             if emeters:
@@ -1046,7 +1065,15 @@ def generate_shelly_html() -> str:
                 f'<td class="mono">Gen{gen}</td>'
                 f'<td><a href="http://{ip}" target="_blank" class="mono">{ip}</a></td>'
                 f'<td class="mono" style="font-size:11px">{mac}</td>'
-                f'<td class="mono" style="font-size:11px;color:var(--muted)">{fw}</td>'
+                f'<td class="mono" style="font-size:11px;color:var(--muted)">{fw}'
+                + (
+                    f'<br><button id="upd-{ip.replace(".", "-")}" onclick="shellyUpdate(\'{ip}\')" '
+                    f'style="background:#3a2a00;color:var(--yellow);border:1px solid var(--yellow);'
+                    f'padding:2px 8px;border-radius:4px;font-size:10px;cursor:pointer;margin-top:3px">'
+                    f'▲ {new_fw}</button>'
+                    if upd_avail else ''
+                )
+                + '</td>'
                 f'<td>{_rssi_html(dev.get("rssi"))}</td>'
                 f'<td>{control_cell}</td>'
                 f'<td class="mono" style="color:var(--muted)">{_age_str(dev.get("last_seen"))}</td>'

@@ -346,6 +346,17 @@ def shelly_refresh_status():
     return jsonify({"updated": count}), 200
 
 
+@bp.post("/shelly/<ip>/update")
+@require_web_auth
+def shelly_update(ip: str):
+    cached = {d["ip"]: d for d in shelly_mod.load_cached()}
+    device = cached.get(ip)
+    if not device:
+        return jsonify({"error": f"Gerät {ip} nicht im Cache"}), 404
+    ok = shelly_mod.trigger_update(ip, device.get("gen", 1))
+    return jsonify({"success": ok, "ip": ip}), 200 if ok else 502
+
+
 @bp.post("/shelly/<ip>/relay/<int:channel>")
 @require_web_auth
 def shelly_relay(ip: str, channel: int):
