@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 import app.state as state
 from app.adapters.base import BaseAdapter, Device, DeviceCapability, DeviceChannel
 from app.utils import _locate_devices_container
-from app.websocket_handler import ws_loop
+from app.adapters.hmip_websocket import ws_loop
 
 log = logging.getLogger("bridge-ws")
 
@@ -105,8 +105,8 @@ class HmIPAdapter(BaseAdapter):
         return None
 
     def control(self, device_id: str, action: str, params: Optional[Dict[str, Any]] = None) -> bool:
-        from app.messages import send_hmip_set_switch, send_hmip_set_dim_level
-        from app.websocket_handler import _register_pending
+        from app.adapters.hmip_messages import send_hmip_set_switch, send_hmip_set_dim_level
+        from app.adapters.hmip_websocket import _register_pending
 
         params = params or {}
         if not state.conn:

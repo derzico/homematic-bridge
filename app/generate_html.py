@@ -897,7 +897,7 @@ setTimeout(() => { fetch('/shelly/refresh-status', {method:'POST'}).then(() => l
 
 
 def generate_shelly_html() -> str:
-    import app.shelly as shelly_mod
+    import app.adapters.shelly_adapter as shelly_mod
     import app.state as state
 
     devices = shelly_mod.load_cached()

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# websocket_handler.py – WebSocket-Loop, Pending-Registry, Log-Level-Update
+# app/adapters/hmip_websocket.py – WebSocket-Loop, Pending-Registry, Log-Level-Update
 
 import json
 import logging
@@ -14,8 +14,8 @@ import websocket
 import yaml
 
 import app.state as state
-from app.messages import (send_config_template_response, send_config_update_response,
-                          send_get_system_state, send_plugin_state)
+from app.adapters.hmip_messages import (send_config_template_response, send_config_update_response,
+                                       send_get_system_state, send_plugin_state)
 from app.utils import save_system_state
 from app.loxone_udp import push_event_devices
 

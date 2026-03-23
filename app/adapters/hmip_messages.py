@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-
-# messages.py
+# app/adapters/hmip_messages.py – HmIP WebSocket-Nachrichten
 
 import json
 import logging

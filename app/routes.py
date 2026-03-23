@@ -17,10 +17,10 @@ from app.generate_html import (generate_config_html, generate_dashboard_html,
                                 generate_device_detail_html, generate_device_overview,
                                 generate_device_status_html, generate_heating_html,
                                 generate_login_html, generate_shelly_html)
-from app.messages import (send_hmip_set_dim_level, send_hmip_set_hue_saturation_dim_level,
-                           send_hmip_set_switch)
+from app.adapters.hmip_messages import (send_hmip_set_dim_level, send_hmip_set_hue_saturation_dim_level,
+                                        send_hmip_set_switch)
+from app.adapters.hmip_websocket import _register_pending
 from app.utils import _find_device_in_list, _locate_devices_container
-from app.websocket_handler import _register_pending
 
 bp = Blueprint("bridge", __name__)
 log = logging.getLogger("bridge-ws")
@@ -259,7 +259,7 @@ def hmip_state_get():
 # ── Shelly ───────────────────────────────────────────────────────────────────
 
 import yaml
-import app.shelly as shelly_mod
+import app.adapters.shelly_adapter as shelly_mod
 from config.loader import validate_config
 
 _CONFIG_PATH = "config/config.yaml"

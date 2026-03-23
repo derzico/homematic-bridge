@@ -4,7 +4,7 @@
 import time
 
 import app.state as state
-from app.websocket_handler import _cleanup_pending, _register_pending, _resolve_pending
+from app.adapters.hmip_websocket import _cleanup_pending, _register_pending, _resolve_pending
 
 
 class TestPendingRegistry:

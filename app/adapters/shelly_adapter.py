@@ -1,17 +1,439 @@
 # SPDX-License-Identifier: Apache-2.0
-# app/adapters/shelly_adapter.py – Shelly-Adapter (wrappt app/shelly.py)
+# app/adapters/shelly_adapter.py – Shelly-Adapter: Scan, Cache, Steuerung, Device-Konvertierung
 
+import ipaddress
+import json
 import logging
+import os
+import socket
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 
-import app.shelly as shelly_mod
+import requests
+
 import app.state as state
 from app.adapters.base import BaseAdapter, Device, DeviceCapability, DeviceChannel
 
 log = logging.getLogger("bridge-ws")
 
+_SHELLY_CACHE = "data/shelly_devices.json"
+_WORKERS = 64
+
+# Globale Credentials (aus config.yaml geladen)
+_credentials: Optional[tuple] = None  # (username, password) oder None
+
+
+def set_credentials(username: Optional[str], password: Optional[str]) -> None:
+    global _credentials
+    if username and password:
+        _credentials = (username, password)
+    else:
+        _credentials = None
+
+
+# ── Scan-Status (thread-safe) ─────────────────────────────────────────────────
+
+_scan_lock = threading.Lock()
+_scan_running = False
+_scan_started: Optional[float] = None
+_scan_error: Optional[str] = None
+
+
+def scan_status() -> Dict[str, Any]:
+    with _scan_lock:
+        return {
+            "running": _scan_running,
+            "started": _scan_started,
+            "error": _scan_error,
+        }
+
+
+# ── HTTP-Helpers ──────────────────────────────────────────────────────────────
+
+def _get(ip: str, path: str, timeout: float) -> Optional[Dict]:
+    """GET mit optionaler Auth. Bei 401 wird ohne Auth wiederholt (gemischte Umgebungen)."""
+    url = f"http://{ip}{path}"
+    try:
+        r = requests.get(url, auth=_credentials, timeout=timeout)
+        if r.status_code == 200:
+            return r.json()
+        if r.status_code == 401 and _credentials:
+            # Gerät hat kein Passwort – ohne Auth nochmals versuchen
+            r2 = requests.get(url, timeout=timeout)
+            if r2.status_code == 200:
+                return r2.json()
+    except Exception:
+        pass
+    return None
+
+
+def _post(ip: str, path: str, timeout: float, **kwargs) -> Optional[requests.Response]:
+    """POST mit optionaler Auth."""
+    url = f"http://{ip}{path}"
+    try:
+        r = requests.post(url, auth=_credentials, timeout=timeout, **kwargs)
+        if r.status_code == 401 and _credentials:
+            r = requests.post(url, timeout=timeout, **kwargs)
+        return r
+    except Exception:
+        log.exception("Shelly POST %s fehlgeschlagen", url)
+        return None
+
+
+# ── Geräteerkennung ───────────────────────────────────────────────────────────
+
+def _detect(ip: str, timeout: float) -> Optional[Dict[str, Any]]:
+    """Erkennt ob eine IP ein Shelly ist. Gibt {'gen': 1|2, 'info': {...}} zurück."""
+    # Gen2/Gen3 zuerst
+    info = _get(ip, "/rpc/Shelly.GetDeviceInfo", timeout)
+    if isinstance(info, dict) and "app" in info:
+        return {"gen": 2, "info": info}
+    # Gen1
+    info = _get(ip, "/shelly", timeout)
+    if isinstance(info, dict) and ("type" in info or "model" in info):
+        return {"gen": 1, "info": info}
+    return None
+
+
+def _get_status_gen1(ip: str, timeout: float) -> Dict:
+    data = _get(ip, "/status", timeout) or {}
+    relays  = data.get("relays", [])
+    meters  = data.get("meters", [])   # SHSW-1, SHPLG-S  – total in Wm
+    emeters = data.get("emeters", [])  # SHEM, SHEM-3     – total in Wh
+
+    channels: Dict[str, Any] = {}
+    for i, rel in enumerate(relays):
+        m = meters[i] if i < len(meters) else {}
+        channels[str(i)] = {
+            "on": rel.get("ison", False),
+            "power_w": m.get("power"),
+            # meters.total is in Watt-minutes → convert to kWh
+            "total_kwh": round(m["total"] / 60 / 1000, 3) if m.get("total") is not None else None,
+        }
+
+    em_data: Dict[str, Any] = {}
+    for i, em in enumerate(emeters):
+        em_data[str(i)] = {
+            "power_w":   em.get("power"),
+            "voltage":   em.get("voltage"),
+            "current":   em.get("current"),
+            "pf":        em.get("pf"),
+            # emeters.total is in Wh → convert to kWh
+            "total_kwh": round(em["total"] / 1000, 2) if em.get("total") is not None else None,
+            "returned_kwh": round(em["total_returned"] / 1000, 2) if em.get("total_returned") else None,
+            "is_valid":  em.get("is_valid", True),
+        }
+
+    # /ota ist zuverlässiger als das update-Feld in /status
+    ota = _get(ip, "/ota", timeout) or {}
+    return {
+        "channels": channels,
+        "emeters":  em_data,
+        "rssi":     data.get("wifi_sta", {}).get("rssi"),
+        "update_available": bool(ota.get("has_update")),
+        "new_fw":   ota.get("new_version") or "",
+    }
+
+
+def _get_status_gen2(ip: str, num_channels: int, timeout: float) -> Dict:
+    channels: Dict[str, Any] = {}
+    for i in range(num_channels):
+        sw = _get(ip, f"/rpc/Switch.GetStatus?id={i}", timeout) or {}
+        if sw:
+            aenergy = sw.get("aenergy") or {}
+            channels[str(i)] = {
+                "on":        sw.get("output", False),
+                "power_w":   sw.get("apower"),
+                "voltage":   sw.get("voltage"),
+                "current":   sw.get("current"),
+                "total_kwh": round(aenergy.get("total", 0) / 1000, 3) if aenergy.get("total") is not None else None,
+            }
+    wifi = _get(ip, "/rpc/Wifi.GetStatus", timeout) or {}
+    sys_status = _get(ip, "/rpc/Sys.GetStatus", timeout) or {}
+    avail = sys_status.get("available_updates") or {}
+    new_fw = (avail.get("stable") or {}).get("version", "")
+    return {
+        "channels": channels,
+        "emeters":  {},
+        "rssi":     wifi.get("rssi"),
+        "update_available": bool(new_fw),
+        "new_fw":   new_fw,
+    }
+
+
+def _build_device(ip: str, gen: int, info: Dict, timeout: float) -> Dict[str, Any]:
+    if gen == 2:
+        num_ch = info.get("num_outputs") or 1
+        status = _get_status_gen2(ip, num_ch, timeout)
+        # Bei Gen2: Label aus GetConfig holen
+        cfg = _get(ip, "/rpc/Sys.GetConfig", timeout) or {}
+        name = cfg.get("device", {}).get("name") or info.get("app") or info.get("id", "Shelly")
+        return {
+            "ip": ip, "gen": gen,
+            "id": info.get("id", ""),
+            "name": name,
+            "model": info.get("app", info.get("model", "")),
+            "mac": info.get("mac", ""),
+            "fw": info.get("ver", ""),
+            "rssi": status["rssi"],
+            "channels": status["channels"],
+            "emeters":  status["emeters"],
+            "update_available": status.get("update_available", False),
+            "new_fw":   status.get("new_fw", ""),
+            "last_seen": int(time.time()),
+        }
+    else:
+        settings = _get(ip, "/settings", timeout) or {}
+        name = settings.get("name") or info.get("type", "Shelly")
+        status = _get_status_gen1(ip, timeout)
+        mac = info.get("mac", "")
+        model = info.get("type", info.get("model", ""))
+        return {
+            "ip": ip, "gen": gen,
+            "id": f"{model}-{mac[-6:].lower()}" if mac else "",
+            "name": name,
+            "model": model,
+            "mac": mac,
+            "fw": info.get("fw", ""),
+            "rssi": status["rssi"],
+            "channels": status["channels"],
+            "emeters":  status["emeters"],
+            "update_available": status.get("update_available", False),
+            "new_fw":   status.get("new_fw", ""),
+            "last_seen": int(time.time()),
+        }
+
+
+def _probe_ip(ip: str, timeout: float) -> Optional[Dict[str, Any]]:
+    detected = _detect(ip, timeout)
+    if not detected:
+        return None
+    try:
+        return _build_device(ip, detected["gen"], detected["info"], timeout)
+    except Exception as e:
+        log.warning(f"Shelly probe fehlgeschlagen für {ip}: {e}")
+        return None
+
+
+# ── Scan ──────────────────────────────────────────────────────────────────────
+
+def _run_scan(subnet: str, timeout_sec: float, include_mdns: bool) -> None:
+    global _scan_running, _scan_error
+    try:
+        found: List[Dict] = []
+        seen_ips: set = set()
+
+        # mDNS-Scan (optional)
+        if include_mdns:
+            mdns_results = _mdns_scan(timeout_sec=3.0)
+            for dev in mdns_results:
+                found.append(dev)
+                seen_ips.add(dev["ip"])
+
+        # Netzwerk-Sweep
+        try:
+            network = ipaddress.ip_network(subnet, strict=False)
+        except ValueError as e:
+            with _scan_lock:
+                _scan_error = f"Ungültiges Subnet '{subnet}': {e}"
+                _scan_running = False
+            return
+
+        hosts = [str(h) for h in network.hosts() if str(h) not in seen_ips]
+        log.info(f"Shelly-Sweep: {len(hosts)} IPs in {subnet} …")
+
+        with ThreadPoolExecutor(max_workers=_WORKERS) as ex:
+            futures = {ex.submit(_probe_ip, ip, timeout_sec): ip for ip in hosts}
+            for fut in as_completed(futures):
+                dev = fut.result()
+                if dev:
+                    found.append(dev)
+                    log.info(f"Shelly: {dev['name']} ({dev['ip']}, Gen{dev['gen']})")
+
+        # Geräte aus altem Cache die nicht mehr gefunden wurden → offline markieren
+        old_cache = {d["ip"]: d for d in load_cached()}
+        new_ips = {d["ip"] for d in found}
+        for ip, old_dev in old_cache.items():
+            if ip not in new_ips:
+                old_dev["online"] = False
+                found.append(old_dev)
+                log.warning(f"Shelly nicht mehr erreichbar: {old_dev.get('name', ip)} ({ip})")
+
+        # Online-Flag bei gefundenen Geräten setzen
+        for dev in found:
+            if dev["ip"] in new_ips:
+                dev["online"] = True
+
+        found.sort(key=lambda d: d["ip"])
+        save_cache(found)
+        online = sum(1 for d in found if d.get("online", True))
+        log.info(f"Shelly-Scan fertig: {online}/{len(found)} Geräte online")
+
+    except Exception as e:
+        with _scan_lock:
+            _scan_error = str(e)
+        log.exception("Shelly-Scan Fehler")
+    finally:
+        with _scan_lock:
+            _scan_running = False
+
+
+def start_scan(subnet: str, timeout_sec: float = 1.5, include_mdns: bool = True) -> bool:
+    """Startet Scan im Hintergrund. Gibt False zurück wenn Scan bereits läuft."""
+    global _scan_running, _scan_started, _scan_error
+    with _scan_lock:
+        if _scan_running:
+            return False
+        _scan_running = True
+        _scan_started = time.time()
+        _scan_error = None
+    t = threading.Thread(
+        target=_run_scan, args=(subnet, timeout_sec, include_mdns), daemon=True
+    )
+    t.start()
+    return True
+
+
+# ── mDNS ─────────────────────────────────────────────────────────────────────
+
+def _mdns_scan(timeout_sec: float = 3.0) -> List[Dict[str, Any]]:
+    try:
+        from zeroconf import ServiceBrowser, Zeroconf  # type: ignore
+    except ImportError:
+        log.debug("zeroconf nicht installiert – mDNS-Scan übersprungen")
+        return []
+
+    found_ips: List[str] = []
+
+    class _Handler:
+        def add_service(self, zc, type_, name):
+            info = zc.get_service_info(type_, name)
+            if info and info.addresses:
+                ip = socket.inet_ntoa(info.addresses[0])
+                found_ips.append(ip)
+
+        def remove_service(self, *_): pass
+        def update_service(self, *_): pass
+
+    zc = Zeroconf()
+    # Shelly registriert sich unter beiden Service-Typen
+    ServiceBrowser(zc, "_http._tcp.local.", _Handler())
+    ServiceBrowser(zc, "_shelly._tcp.local.", _Handler())
+    time.sleep(timeout_sec)
+    zc.close()
+
+    results = []
+    for ip in set(found_ips):
+        dev = _probe_ip(ip, timeout=2.0)
+        if dev:
+            results.append(dev)
+    return results
+
+
+# ── Cache ─────────────────────────────────────────────────────────────────────
+
+def load_cached() -> List[Dict[str, Any]]:
+    try:
+        with open(_SHELLY_CACHE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def save_cache(devices: List[Dict[str, Any]]) -> None:
+    os.makedirs(os.path.dirname(_SHELLY_CACHE), exist_ok=True)
+    with open(_SHELLY_CACHE, "w", encoding="utf-8") as f:
+        json.dump(devices, f, indent=2)
+
+
+def refresh_device(ip: str, gen: int) -> Optional[Dict]:
+    """Aktualisiert Status eines einzelnen Geräts und speichert in Cache."""
+    cached = {d["ip"]: d for d in load_cached()}
+    num_ch = len(cached[ip].get("channels", {"0": None})) if ip in cached else 1
+    if gen == 2:
+        status = _get_status_gen2(ip, num_ch, timeout=3.0)
+    else:
+        status = _get_status_gen1(ip, timeout=3.0)
+
+    if ip in cached:
+        # Gerät nicht erreichbar wenn keine Channel/Emeter-Daten zurückkamen
+        reachable = bool(status.get("channels") or status.get("emeters") or status.get("rssi") is not None)
+        cached[ip].update({
+            "online":          reachable,
+            "channels":        status["channels"],
+            "emeters":         status["emeters"],
+            "rssi":            status["rssi"],
+            "update_available": status.get("update_available", False),
+            "new_fw":          status.get("new_fw", ""),
+            "last_seen":       int(time.time()) if reachable else cached[ip].get("last_seen"),
+        })
+        save_cache(list(cached.values()))
+        return cached[ip]
+    return None
+
+
+def refresh_all_devices() -> int:
+    """Aktualisiert Status aller gecachten Geräte parallel. Gibt Anzahl zurück."""
+    devices = load_cached()
+    if not devices:
+        return 0
+    updated = []
+
+    def _refresh_one(dev):
+        try:
+            result = refresh_device(dev["ip"], dev["gen"])
+            return result or dev
+        except Exception:
+            return dev
+
+    with ThreadPoolExecutor(max_workers=min(32, len(devices))) as ex:
+        updated = list(ex.map(_refresh_one, devices))
+
+    updated.sort(key=lambda d: d["ip"])
+    save_cache(updated)
+    log.info(f"Shelly: Status von {len(updated)} Geräten aktualisiert")
+    return len(updated)
+
+
+# ── Steuerung ─────────────────────────────────────────────────────────────────
+
+def check_updates_all() -> None:
+    """Fordert alle Geräte auf, nach Firmware-Updates zu suchen (fire & forget)."""
+    devices = load_cached()
+
+    def _check_one(dev):
+        ip, gen = dev["ip"], dev.get("gen", 1)
+        if gen == 2:
+            _get(ip, "/rpc/Shelly.CheckForUpdate", timeout=5.0)
+        else:
+            _get(ip, "/ota/check", timeout=5.0)
+
+    with ThreadPoolExecutor(max_workers=min(32, len(devices))) as ex:
+        list(ex.map(_check_one, devices))
+    log.info("Shelly: Update-Check auf %d Geräten ausgelöst", len(devices))
+
+
+def trigger_update(ip: str, gen: int) -> bool:
+    """Startet Firmware-Update. Gibt True zurück wenn Befehl akzeptiert wurde."""
+    if gen == 2:
+        r = _post(ip, "/rpc/Shelly.Update", timeout=10, json={"stage": "stable"})
+    else:
+        r = _post(ip, "/ota?update=1", timeout=10)
+    return r is not None and r.status_code == 200
+
+
+def set_relay(ip: str, gen: int, channel: int = 0, on: bool = True) -> bool:
+    """Schaltet Relay. Gibt True bei Erfolg zurück."""
+    if gen == 2:
+        r = _post(ip, "/rpc/Switch.Set", timeout=5, json={"id": channel, "on": on})
+    else:
+        r = _post(ip, f"/relay/{channel}", timeout=5, data={"turn": "on" if on else "off"})
+    return r is not None and r.status_code == 200
+
+
+# ── Adapter-Klasse ────────────────────────────────────────────────────────────
 
 class ShellyAdapter(BaseAdapter):
     """Adapter für Shelly-Geräte (Gen1 + Gen2) via HTTP/mDNS."""
@@ -38,11 +460,11 @@ class ShellyAdapter(BaseAdapter):
         if not subnet:
             return
 
-        shelly_mod.set_credentials(cfg.get("username"), cfg.get("password"))
+        set_credentials(cfg.get("username"), cfg.get("password"))
 
         if cfg.get("scan_on_startup", False):
             log.info("Shelly: Startup-Scan gestartet (%s)", subnet)
-            shelly_mod.start_scan(subnet, timeout_sec=timeout)
+            start_scan(subnet, timeout_sec=timeout)
 
         interval_h = float(cfg.get("scan_interval_hours", 0))
         if interval_h > 0:
@@ -57,9 +479,9 @@ class ShellyAdapter(BaseAdapter):
             time.sleep(interval_h * 3600)
             with state.config_lock:
                 cfg = dict(state.config.get("shelly") or {})
-            shelly_mod.set_credentials(cfg.get("username"), cfg.get("password"))
+            set_credentials(cfg.get("username"), cfg.get("password"))
             log.info("Shelly: Zyklischer Scan gestartet (%s)", subnet)
-            shelly_mod.start_scan(subnet, timeout_sec=timeout)
+            start_scan(subnet, timeout_sec=timeout)
 
     def stop(self) -> None:
         pass  # Scan-Threads sind Daemons, beenden sich mit dem Prozess
@@ -68,18 +490,18 @@ class ShellyAdapter(BaseAdapter):
         return self._config.get("enabled", False)
 
     def get_devices(self) -> List[Device]:
-        raw_devices = shelly_mod.load_cached()
+        raw_devices = load_cached()
         return [self._to_device(d) for d in raw_devices]
 
     def get_device(self, device_id: str) -> Optional[Device]:
-        for d in shelly_mod.load_cached():
+        for d in load_cached():
             if d.get("id") == device_id or d.get("ip") == device_id:
                 return self._to_device(d)
         return None
 
     def control(self, device_id: str, action: str, params: Optional[Dict[str, Any]] = None) -> bool:
         params = params or {}
-        cached = {d["ip"]: d for d in shelly_mod.load_cached()}
+        cached = {d["ip"]: d for d in load_cached()}
 
         # device_id kann IP oder Shelly-ID sein
         device = cached.get(device_id)
@@ -97,18 +519,18 @@ class ShellyAdapter(BaseAdapter):
         # Credentials setzen
         with state.config_lock:
             cfg = dict(state.config.get("shelly") or {})
-        shelly_mod.set_credentials(cfg.get("username"), cfg.get("password"))
+        set_credentials(cfg.get("username"), cfg.get("password"))
 
         if action == "switch":
             channel = params.get("channel", 0)
             on = params.get("on", True)
-            ok = shelly_mod.set_relay(ip, gen, channel, on)
+            ok = set_relay(ip, gen, channel, on)
             if ok:
-                shelly_mod.refresh_device(ip, gen)
+                refresh_device(ip, gen)
             return ok
 
         if action == "update":
-            return shelly_mod.trigger_update(ip, gen)
+            return trigger_update(ip, gen)
 
         log.warning("Shelly: Unbekannte Action '%s' für %s", action, device_id)
         return False
