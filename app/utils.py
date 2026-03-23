@@ -36,7 +36,7 @@ def _read_snapshot() -> Optional[Dict[str, Any]]:
     except FileNotFoundError:
         return None
     except Exception as e:
-        log.error(f"Snapshot lesen fehlgeschlagen: {e}")
+        log.exception("Snapshot lesen fehlgeschlagen")
         return None
 
 def _write_snapshot(obj: Dict[str, Any]) -> None:
@@ -187,4 +187,4 @@ def save_system_state(msg: Dict[str, Any]) -> None:
         log.debug("save_system_state: Nachrichtentyp %r ignoriert.", msg_type)
 
     except Exception as e:
-        log.error(f"Fehler beim Aktualisieren des Systemzustands: {e}")
+        log.exception("Fehler beim Aktualisieren des Systemzustands")

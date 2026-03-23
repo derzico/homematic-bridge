@@ -44,9 +44,12 @@ def _cleanup_pending() -> None:
         to_del = [rid for rid, meta in state.pending.items()
                   if now - meta.get("ts", 0) > state.PENDING_TTL]
         for rid in to_del:
-            state.pending.pop(rid, None)
+            meta = state.pending.pop(rid, None)
+            if meta:
+                log.warning("Pending-Request abgelaufen: %s (path=%s, age=%.0fs)",
+                            rid, meta.get("path"), now - meta.get("ts", 0))
     if to_del:
-        log.debug("Pending-Requests bereinigt: %d", len(to_del))
+        log.info("Pending-Requests bereinigt: %d orphans entfernt", len(to_del))
 
 
 # ── Log-Level zur Laufzeit ändern ─────────────────────────────────────────────
@@ -56,7 +59,8 @@ def _apply_log_level(new_level: str) -> bool:
     if level is None:
         return False
     log.setLevel(level)
-    state.config_internal["log_level"] = new_level.lower()
+    with state.config_lock:
+        state.config_internal["log_level"] = new_level.lower()
     cfg_path = "config/internal_config.yaml"
     try:
         with open(cfg_path, "r", encoding="utf-8") as f:
@@ -119,6 +123,7 @@ def ws_loop() -> None:
                     except Exception as ping_err:
                         log.warning("Keepalive-Ping fehlgeschlagen: %s", ping_err)
                         raise
+                    _cleanup_pending()
                     continue
 
                 log.debug("Nachricht empfangen: %s", msg)
@@ -145,7 +150,6 @@ def ws_loop() -> None:
                                 log.warning("ACK %s Fehler (code=%s, id=%s)", path, code, rid)
                         else:
                             log.debug("Unkorrelierte HMIP_SYSTEM_RESPONSE (id=%s, code=%s) ignoriert.", rid, code)
-                        _cleanup_pending()
 
                     elif msg_type == "CONFIG_TEMPLATE_REQUEST":
                         with state.send_lock:
@@ -173,11 +177,13 @@ def ws_loop() -> None:
                     else:
                         log.debug("Unbehandelter Nachrichtentyp: %r", msg_type)
 
-                except Exception as e:
-                    log.error("Fehler beim Verarbeiten der Nachricht: %s", e)
+                except Exception:
+                    log.exception("Fehler beim Verarbeiten der Nachricht")
 
-        except Exception as e:
-            log.error("WebSocket Fehler: %s", e)
+                _cleanup_pending()
+
+        except Exception:
+            log.exception("WebSocket Fehler")
             try:
                 if state.conn:
                     state.conn.close()

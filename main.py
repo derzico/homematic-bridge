@@ -15,11 +15,18 @@ import app.state as state
 from app.auth import _ensure_api_key
 from app.routes import bp as routes_bp
 from app.websocket_handler import ws_loop
-from config.loader import load_config, load_internal_config
+from config.loader import load_config, load_internal_config, validate_config, validate_internal_config
 
-# ── Konfiguration laden ───────────────────────────────────────────────────────
+# ── Konfiguration laden & validieren ─────────────────────────────────────────
 config          = load_config()
 config_internal = load_internal_config()
+
+_cfg_errors = validate_config(config) + validate_internal_config(config_internal)
+if _cfg_errors:
+    _log = logging.getLogger("bridge-ws")
+    for e in _cfg_errors:
+        _log.error("Config-Fehler: %s", e)
+    sys.exit(1)
 
 # ── Shared State initialisieren ───────────────────────────────────────────────
 state.config          = config
@@ -85,7 +92,8 @@ app.register_blueprint(routes_bp)
 def _shelly_scan_loop() -> None:
     import time
     import app.shelly as shelly_mod
-    cfg = state.config.get("shelly") or {}
+    with state.config_lock:
+        cfg = dict(state.config.get("shelly") or {})
     if not cfg.get("enabled"):
         return
     subnet  = cfg.get("subnet", "")
@@ -100,9 +108,10 @@ def _shelly_scan_loop() -> None:
     if interval_h > 0:
         while True:
             time.sleep(interval_h * 3600)
+            with state.config_lock:
+                cfg = dict(state.config.get("shelly") or {})
             log.info("Shelly: Zyklischer Scan gestartet (%s)", subnet)
-            shelly_mod.set_credentials(state.config.get("shelly", {}).get("username"),
-                                       state.config.get("shelly", {}).get("password"))
+            shelly_mod.set_credentials(cfg.get("username"), cfg.get("password"))
             shelly_mod.start_scan(subnet, timeout_sec=timeout)
 
 

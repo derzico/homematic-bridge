@@ -28,3 +28,4 @@ PENDING_TTL: float = 60.0
 # Konfiguration (wird von main.py gesetzt)
 config: Dict[str, Any] = {}
 config_internal: Dict[str, Any] = {}
+config_lock = Lock()  # schützt config / config_internal vor gleichzeitigem Lesen/Schreiben

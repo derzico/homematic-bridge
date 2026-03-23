@@ -88,9 +88,9 @@ def request_token(hcu_host, code, log, verify):
             else:
                 log.error("Antwort enthält keinen authToken.")
         else:
-            log.error(f"HTTP {response.status_code}: {response.text}")
-    except Exception as e:
-        log.error(f"Anfrage fehlgeschlagen: {e}")
+            log.error("HTTP %s: %s", response.status_code, response.text)
+    except Exception:
+        log.exception("Anfrage fehlgeschlagen")
     return None
 
 def confirm_token(hcu_host, code, token, log, verify):
@@ -109,9 +109,9 @@ def confirm_token(hcu_host, code, token, log, verify):
             else:
                 log.error("Antwort enthält keine clientId.")
         else:
-            log.error(f"Bestätigung fehlgeschlagen HTTP {response.status_code}: {response.text}")
-    except Exception as e:
-        log.error(f"Token-Bestätigung fehlgeschlagen: {e}")
+            log.error("Bestätigung fehlgeschlagen HTTP %s: %s", response.status_code, response.text)
+    except Exception:
+        log.exception("Token-Bestätigung fehlgeschlagen")
     return False
 
 def ensure_token():

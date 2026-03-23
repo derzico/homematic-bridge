@@ -75,7 +75,7 @@ def _post(ip: str, path: str, timeout: float, **kwargs) -> Optional[requests.Res
             r = requests.post(url, timeout=timeout, **kwargs)
         return r
     except Exception as e:
-        log.error(f"Shelly POST {url} fehlgeschlagen: {e}")
+        log.exception("Shelly POST %s fehlgeschlagen", url)
         return None
 
 

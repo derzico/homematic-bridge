@@ -270,6 +270,7 @@ def hmip_state_get():
 
 import yaml
 import app.shelly as shelly_mod
+from config.loader import validate_config
 
 _CONFIG_PATH = "config/config.yaml"
 
@@ -285,13 +286,17 @@ def serve_config():
             parsed = yaml.safe_load(raw)
             if not isinstance(parsed, dict):
                 raise ValueError("Ungültiges YAML – muss ein Mapping sein")
+            cfg_errors = validate_config(parsed)
+            if cfg_errors:
+                raise ValueError("Validierung fehlgeschlagen:\n• " + "\n• ".join(cfg_errors))
             with open(_CONFIG_PATH, "w", encoding="utf-8") as f:
                 f.write(raw)
-            # State neu laden
-            state.config = parsed
-            _lox = parsed.get("loxone") or {}
-            state.LOXONE_HOST = _lox.get("miniserver_ip") or ""
-            state.LOXONE_UDP_PORT = int(_lox.get("udp_port") or 7777)
+            # State neu laden (unter Lock, da andere Threads config lesen)
+            with state.config_lock:
+                state.config = parsed
+                _lox = parsed.get("loxone") or {}
+                state.LOXONE_HOST = _lox.get("miniserver_ip") or ""
+                state.LOXONE_UDP_PORT = int(_lox.get("udp_port") or 7777)
             success = True
         except Exception as e:
             error = str(e)

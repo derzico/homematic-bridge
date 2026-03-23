@@ -29,7 +29,7 @@ def send_plugin_state(ws, msg_id=None):
         ws.send(json.dumps(response))
         log.info("PLUGIN_STATE_RESPONSE gesendet.")
     except Exception as e:
-        log.error(f"Fehler beim Senden von PLUGIN_STATE_RESPONSE: {e}")
+        log.exception("Fehler beim Senden von PLUGIN_STATE_RESPONSE")
 
 def _build_hmip_request(path: str, body: dict | None = None) -> tuple[str, dict]:
     rid = str(uuid.uuid4())
@@ -51,7 +51,7 @@ def send_get_system_state(ws) -> str:
         log.info("HMIP_SYSTEM_REQUEST → getSystemState gesendet.")
         return rid
     except Exception as e:
-        log.error(f"Fehler beim Senden von getSystemState: {e}")
+        log.exception("Fehler beim Senden von getSystemState")
         return rid  # trotzdem zurückgeben, damit caller ggf. aufräumt
 
 def send_config_template_response(ws, msg_id: str, current_log_level: str) -> None:
@@ -77,7 +77,7 @@ def send_config_template_response(ws, msg_id: str, current_log_level: str) -> No
         ws.send(json.dumps(response))
         log.info("CONFIG_TEMPLATE_RESPONSE gesendet.")
     except Exception as e:
-        log.error(f"Fehler beim Senden von CONFIG_TEMPLATE_RESPONSE: {e}")
+        log.exception("Fehler beim Senden von CONFIG_TEMPLATE_RESPONSE")
 
 
 def send_config_update_response(ws, msg_id: str, status: str = "APPLIED", message: str = None) -> None:
@@ -94,7 +94,7 @@ def send_config_update_response(ws, msg_id: str, status: str = "APPLIED", messag
         ws.send(json.dumps(response))
         log.info(f"CONFIG_UPDATE_RESPONSE gesendet (status={status}).")
     except Exception as e:
-        log.error(f"Fehler beim Senden von CONFIG_UPDATE_RESPONSE: {e}")
+        log.exception("Fehler beim Senden von CONFIG_UPDATE_RESPONSE")
 
 
 def send_hmip_set_dim_level(ws, device_id: str, dim_level: float, channel_index: int = 1) -> str:
@@ -109,7 +109,7 @@ def send_hmip_set_dim_level(ws, device_id: str, dim_level: float, channel_index:
         log.info(f"HMIP_SYSTEM_REQUEST gesendet für device {device_id} → dimLevel={dim_level} (id={rid})")
         return rid
     except Exception as e:
-        log.error(f"Fehler beim Senden von HMIP_SYSTEM_REQUEST (setDimLevel): {e}")
+        log.exception("Fehler beim Senden von HMIP_SYSTEM_REQUEST (setDimLevel)")
         return rid
 
 
@@ -127,7 +127,7 @@ def send_hmip_set_hue_saturation_dim_level(ws, device_id: str, hue: int, saturat
         log.info(f"HMIP_SYSTEM_REQUEST gesendet für device {device_id} → hue={hue}° sat={saturation_level:.2f} dim={dim_level:.2f} (id={rid})")
         return rid
     except Exception as e:
-        log.error(f"Fehler beim Senden von HMIP_SYSTEM_REQUEST (setHueSaturationDimLevel): {e}")
+        log.exception("Fehler beim Senden von HMIP_SYSTEM_REQUEST (setHueSaturationDimLevel)")
         return rid
 
 
@@ -143,5 +143,5 @@ def send_hmip_set_switch(ws, device_id: str, state: bool, channel_index: int = 0
         log.info(f"HMIP_SYSTEM_REQUEST gesendet für device {device_id} → {'ON' if state else 'OFF'} (id={rid})")
         return rid
     except Exception as e:
-        log.error(f"Fehler beim Senden von HMIP_SYSTEM_REQUEST: {e}")
+        log.exception("Fehler beim Senden von HMIP_SYSTEM_REQUEST")
         return rid
