@@ -5,16 +5,17 @@ import logging
 import os
 import secrets
 import sys
-import threading
 from datetime import timedelta
 from logging.handlers import TimedRotatingFileHandler
 
 from flask import Flask
 
 import app.state as state
+from app.adapters.hmip_adapter import HmIPAdapter
+from app.adapters.registry import AdapterRegistry
+from app.adapters.shelly_adapter import ShellyAdapter
 from app.auth import _ensure_api_key
 from app.routes import bp as routes_bp
-from app.websocket_handler import ws_loop
 from config.loader import load_config, load_internal_config, validate_config, validate_internal_config
 
 # ── Konfiguration laden & validieren ─────────────────────────────────────────
@@ -90,37 +91,25 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.register_blueprint(routes_bp)
 
-# ── Shelly-Scan starten ───────────────────────────────────────────────────────
-def _shelly_scan_loop() -> None:
-    import time
-    import app.shelly as shelly_mod
-    with state.config_lock:
-        cfg = dict(state.config.get("shelly") or {})
-    if not cfg.get("enabled"):
-        return
-    subnet  = cfg.get("subnet", "")
-    timeout = float(cfg.get("timeout_sec", 1.5))
-    interval_h = float(cfg.get("scan_interval_hours", 0))
-    if not subnet:
-        return
-    shelly_mod.set_credentials(cfg.get("username"), cfg.get("password"))
-    if cfg.get("scan_on_startup", False):
-        log.info("Shelly: Startup-Scan gestartet (%s)", subnet)
-        shelly_mod.start_scan(subnet, timeout_sec=timeout)
-    if interval_h > 0:
-        while True:
-            time.sleep(interval_h * 3600)
-            with state.config_lock:
-                cfg = dict(state.config.get("shelly") or {})
-            log.info("Shelly: Zyklischer Scan gestartet (%s)", subnet)
-            shelly_mod.set_credentials(cfg.get("username"), cfg.get("password"))
-            shelly_mod.start_scan(subnet, timeout_sec=timeout)
+# ── Adapter-Registry ─────────────────────────────────────────────────────────
+registry = AdapterRegistry()
+
+# HmIP – immer aktiv (Kernfunktion der Bridge)
+registry.register(HmIPAdapter(config))
+
+# Shelly – optional, je nach config.yaml
+with state.config_lock:
+    _shelly_cfg = dict(state.config.get("shelly") or {})
+if _shelly_cfg.get("enabled"):
+    registry.register(ShellyAdapter(_shelly_cfg))
+
+# Registry im State verfügbar machen (für Routes, Health, etc.)
+state.adapter_registry = registry
 
 
 # ── Start ─────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    threading.Thread(target=ws_loop, daemon=True).start()
-    threading.Thread(target=_shelly_scan_loop, daemon=True).start()
+    registry.start_all()
     host, port = "0.0.0.0", 8080
     try:
         from waitress import serve

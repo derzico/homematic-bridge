@@ -29,3 +29,6 @@ PENDING_TTL: float = 60.0
 config: Dict[str, Any] = {}
 config_internal: Dict[str, Any] = {}
 config_lock = Lock()  # schützt config / config_internal vor gleichzeitigem Lesen/Schreiben
+
+# Adapter-Registry (wird von main.py gesetzt)
+adapter_registry: Optional[Any] = None  # Type: AdapterRegistry (vermeidet zirkulären Import)
