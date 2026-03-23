@@ -86,6 +86,8 @@ def _load_or_create_secret_key(path: str) -> bytes:
 app = Flask(__name__)
 app.secret_key = _load_or_create_secret_key("data/secret_key.bin")
 app.permanent_session_lifetime = timedelta(hours=8)
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.register_blueprint(routes_bp)
 
 # ── Shelly-Scan starten ───────────────────────────────────────────────────────

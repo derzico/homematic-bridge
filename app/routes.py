@@ -12,7 +12,7 @@ from flask import Blueprint, Response, jsonify, redirect, request, session
 from werkzeug.security import check_password_hash
 
 import app.state as state
-from app.auth import require_api_key, require_web_auth
+from app.auth import generate_csrf_token, require_api_key, require_csrf, require_web_auth
 from app.generate_html import (generate_config_html, generate_dashboard_html,
                                 generate_device_detail_html, generate_device_overview,
                                 generate_device_status_html, generate_heating_html,
@@ -36,25 +36,14 @@ def _load_snapshot() -> Optional[Dict[str, Any]]:
         return None
 
 
-def _get_nested(d, keys):
-    cur = d
-    for k in keys:
-        if not isinstance(cur, dict):
-            return None
-        cur = cur.get(k)
-    return cur
-
-
 def _devices_count_from_snapshot(snap: Optional[Dict[str, Any]]) -> int:
     if not isinstance(snap, dict):
         return 0
-    for path in [("body", "devices"), ("body", "home", "devices"),
-                 ("body", "body", "devices"), ("body", "body", "home", "devices")]:
-        devs = _get_nested(snap, path)
-        if isinstance(devs, dict):
-            return len(devs)
-        if isinstance(devs, list):
-            return sum(1 for x in devs if isinstance(x, dict))
+    devs, _ = _locate_devices_container(snap)
+    if isinstance(devs, dict):
+        return len(devs)
+    if isinstance(devs, list):
+        return sum(1 for x in devs if isinstance(x, dict))
     return 0
 
 
@@ -72,6 +61,7 @@ def _html(content: str) -> Response:
 # ── Auth-Routen ───────────────────────────────────────────────────────────────
 
 @bp.route("/login", methods=["GET", "POST"])
+@require_csrf
 def login():
     if not state.REQUIRE_API_KEY:
         return redirect("/")
@@ -89,8 +79,8 @@ def login():
             session.permanent = True
             session["authenticated"] = True
             return redirect(next_url)
-        return _html(generate_login_html(error=True, next_url=next_url))
-    return _html(generate_login_html(next_url=next_url))
+        return _html(generate_login_html(error=True, next_url=next_url, csrf_token=generate_csrf_token()))
+    return _html(generate_login_html(next_url=next_url, csrf_token=generate_csrf_token()))
 
 
 @bp.route("/logout")
@@ -277,6 +267,7 @@ _CONFIG_PATH = "config/config.yaml"
 
 @bp.route("/config", methods=["GET", "POST"])
 @require_web_auth
+@require_csrf
 def serve_config():
     error = None
     success = False
@@ -305,7 +296,7 @@ def serve_config():
             content = f.read()
     except FileNotFoundError:
         content = ""
-    return _html(generate_config_html(content, error=error, success=success))
+    return _html(generate_config_html(content, error=error, success=success, csrf_token=generate_csrf_token()))
 
 @bp.route("/shelly")
 @require_web_auth

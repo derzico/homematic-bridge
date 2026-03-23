@@ -43,6 +43,16 @@ def _write_snapshot(obj: Dict[str, Any]) -> None:
     _atomic_write(SNAPSHOT_PATH, json.dumps(obj, ensure_ascii=False, indent=2))
 
 # --------- Helpers: Struktur finden ---------
+def _get_nested(d: Any, keys: tuple) -> Any:
+    """Navigiert verschachtelte Dicts entlang einer Key-Sequenz."""
+    cur = d
+    for k in keys:
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(k)
+    return cur
+
+
 def _locate_devices_container(snap: Dict[str, Any]) -> Tuple[Optional[Any], str]:
     """
     Liefert (devices_container, path_hint):

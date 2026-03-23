@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
-# auth.py – API-Key-Verwaltung und Auth-Decorators
+# auth.py – API-Key-Verwaltung, Auth-Decorators, CSRF-Schutz
 
 import logging
 import os
 import secrets
 from functools import wraps
+from typing import Callable, Optional
 
-from flask import request, jsonify, Response, session, redirect, url_for
+from flask import abort, jsonify, redirect, request, session
 
 import app.state as state
 
@@ -38,7 +39,7 @@ def _ensure_api_key() -> None:
             log.error("API-Key konnte nicht gespeichert werden: %s", e)
 
 
-def require_api_key(f):
+def require_api_key(f: Callable) -> Callable:
     @wraps(f)
     def wrapper(*args, **kwargs):
         if not state.REQUIRE_API_KEY:
@@ -51,12 +52,42 @@ def require_api_key(f):
     return wrapper
 
 
-def require_web_auth(f):
+def require_web_auth(f: Callable) -> Callable:
     @wraps(f)
     def wrapper(*args, **kwargs):
         if not state.REQUIRE_API_KEY:
             return f(*args, **kwargs)
         if not session.get("authenticated"):
             return redirect(f"/login?next={request.path}")
+        return f(*args, **kwargs)
+    return wrapper
+
+
+# ── CSRF-Schutz ──────────────────────────────────────────────────────────────
+
+def generate_csrf_token() -> str:
+    """Erzeugt ein CSRF-Token und speichert es in der Session."""
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_urlsafe(32)
+    return session["csrf_token"]
+
+
+def validate_csrf_token() -> bool:
+    """Prüft ob das übermittelte CSRF-Token mit der Session übereinstimmt."""
+    token = session.get("csrf_token")
+    if not token:
+        return False
+    submitted = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token")
+    return secrets.compare_digest(token, submitted or "")
+
+
+def require_csrf(f: Callable) -> Callable:
+    """Decorator: prüft CSRF-Token bei POST/PUT/DELETE-Requests."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if request.method in ("POST", "PUT", "DELETE"):
+            if not validate_csrf_token():
+                log.warning("CSRF-Token ungültig oder fehlend: %s %s", request.method, request.path)
+                abort(403)
         return f(*args, **kwargs)
     return wrapper

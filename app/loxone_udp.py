@@ -7,11 +7,12 @@
 
 import logging
 import socket
+from typing import Any, Dict, Set, Union
 
 log = logging.getLogger("bridge-ws")
 
 # Numerische Felder die direkt als Zahl übertragen werden
-_NUMERIC_FIELDS = {
+_NUMERIC_FIELDS: Set[str] = {
     "dimLevel", "saturationLevel", "hue", "colorTemperature",
     "actualTemperature", "humidity", "co2Concentration",
     "illumination", "windSpeed", "shutterLevel", "slatsLevel",
@@ -19,7 +20,7 @@ _NUMERIC_FIELDS = {
 }
 
 
-def push_channel_state(host: str, port: int, device_id: str, channel_index: str | int, channel: dict) -> None:
+def push_channel_state(host: str, port: int, device_id: str, channel_index: Union[str, int], channel: Dict[str, Any]) -> None:
     """Sendet alle relevanten Werte eines functionalChannel per UDP an Loxone."""
     if not host or not channel:
         return
@@ -45,7 +46,7 @@ def push_channel_state(host: str, port: int, device_id: str, channel_index: str 
         log.warning("UDP Push zu Loxone fehlgeschlagen (%s:%s): %s", host, port, e)
 
 
-def push_event_devices(host: str, port: int, msg_data: dict) -> None:
+def push_event_devices(host: str, port: int, msg_data: Dict[str, Any]) -> None:
     """Extrahiert alle Device-Channels aus einem HMIP_SYSTEM_EVENT und pushed sie."""
     if not host:
         return

@@ -5,6 +5,8 @@ import json
 from typing import Any, Dict, Iterable, Tuple, Optional
 import html
 
+from app.utils import _get_nested, _locate_devices_container, _find_device_in_list
+
 # ── Shared CSS ──────────────────────────────────────────────────────────────
 _CSS = """
 :root {
@@ -193,44 +195,26 @@ def _build_room_map(snapshot: Dict[str, Any]) -> Dict[str, str]:
                 room_map[ch["deviceId"]] = room_label
     return room_map
 
-def _get_nested(d: Dict[str, Any], keys: Iterable[str]) -> Any:
-    cur = d
-    for k in keys:
-        if not isinstance(cur, dict):
-            return None
-        cur = cur.get(k)
-    return cur
-
 def _iter_devices(snapshot: Dict[str, Any]) -> Iterable[Tuple[str, Dict[str, Any]]]:
-    candidates = [
-        ("body", "devices"),
-        ("body", "home", "devices"),
-        ("body", "body", "devices"),
-        ("body", "body", "home", "devices"),
-    ]
-    devices = None
-    for path in candidates:
-        devices = _get_nested(snapshot, path)
-        if isinstance(devices, (dict, list)):
-            break
-
+    """Iteriert über alle Devices im Snapshot (Dict oder Liste)."""
+    devices, _ = _locate_devices_container(snapshot)
     if isinstance(devices, dict):
         for dev_id, dev in devices.items():
             if isinstance(dev, dict):
                 yield str(dev_id), dev
-        return
-
-    if isinstance(devices, list):
+    elif isinstance(devices, list):
         for dev in devices:
             if isinstance(dev, dict):
-                dev_id = dev.get("id", "")
-                yield str(dev_id), dev
-        return
+                yield str(dev.get("id", "")), dev
+
 
 def _find_device(snapshot: Dict[str, Any], device_id: str) -> Optional[Dict[str, Any]]:
-    for dev_id, dev in _iter_devices(snapshot):
-        if dev_id == device_id:
-            return dev
+    devices, _ = _locate_devices_container(snapshot)
+    if isinstance(devices, list):
+        dev, _ = _find_device_in_list(devices, device_id)
+        return dev
+    if isinstance(devices, dict):
+        return devices.get(device_id)
     return None
 
 # ── Shared page wrapper ───────────────────────────────────────────────────────
@@ -1155,7 +1139,7 @@ def generate_shelly_html() -> str:
 
 # ── Config-Editor ─────────────────────────────────────────────────────────────
 
-def generate_config_html(content: str, error: Optional[str] = None, success: bool = False) -> str:
+def generate_config_html(content: str, error: Optional[str] = None, success: bool = False, csrf_token: str = "") -> str:
     alert = ""
     if error:
         alert = f'<div class="login-error" style="margin-bottom:16px">Fehler: {html.escape(error)}</div>'
@@ -1169,6 +1153,7 @@ def generate_config_html(content: str, error: Optional[str] = None, success: boo
         '</div>'
         + alert +
         '<form method="POST" action="/config">'
+        f'<input type="hidden" name="csrf_token" value="{html.escape(csrf_token)}">'
         '<textarea name="content" spellcheck="false" style="'
         'width:100%;height:520px;background:var(--bg);color:var(--text);'
         'border:1px solid var(--border);border-radius:8px;padding:16px;'
@@ -1187,7 +1172,7 @@ def generate_config_html(content: str, error: Optional[str] = None, success: boo
 
 
 # ── Login-Seite ────────────────────────────────────────────────────────────────
-def generate_login_html(error: bool = False, next_url: str = "/") -> str:
+def generate_login_html(error: bool = False, next_url: str = "/", csrf_token: str = "") -> str:
     error_block = '<div class="login-error">Falsches Passwort. Bitte erneut versuchen.</div>' if error else ""
     next_escaped = html.escape(next_url)
     body = (
@@ -1196,6 +1181,7 @@ def generate_login_html(error: bool = False, next_url: str = "/") -> str:
         '<div class="logo">⚡ Homematic <em>Bridge</em></div>'
         + error_block +
         f'<form method="POST" action="/login?next={next_escaped}">'
+        f'<input type="hidden" name="csrf_token" value="{html.escape(csrf_token)}">'
         '<div class="login-field">'
         '<label>Passwort (API-Key)</label>'
         '<input type="password" name="password" autofocus autocomplete="current-password" placeholder="API-Key eingeben">'
