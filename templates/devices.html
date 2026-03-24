@@ -1,0 +1,42 @@
+{# SPDX-License-Identifier: Apache-2.0 #}
+{% extends "base.html" %}
+{% block title %}HmIP Geräteübersicht{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Geräteübersicht</h1>
+  <div class="sub">{{ devices | length }} Geräte im aktuellen Snapshot</div>
+</div>
+<div class="search-wrap">
+  <input id="search" type="text" placeholder="Suchen nach ID, Label, Raum, Typ …" autocomplete="off">
+</div>
+<table class="data-table">
+  <thead>
+    <tr><th>Device ID</th><th>Label</th><th>Raum</th><th>Typ</th><th>Modell</th></tr>
+  </thead>
+  <tbody>
+    {% for dev in devices %}
+    <tr>
+      <td class="mono"><a href="/devices/{{ dev.id | e }}">{{ dev.id | e }}</a></td>
+      <td class="label-cell">{{ dev.label | e }}</td>
+      <td>{{ dev.room | e }}</td>
+      <td><span class="type-pill">{{ dev.type | e }}</span></td>
+      <td class="mono">{{ dev.model | e }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px">Keine Geräte gefunden.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('search').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('tbody tr').forEach(r => {
+    r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+});
+</script>
+{% endblock %}

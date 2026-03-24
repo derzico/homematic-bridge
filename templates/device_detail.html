@@ -1,0 +1,66 @@
+{# SPDX-License-Identifier: Apache-2.0 #}
+{% from "macros.html" import val_html, kv_rows, channel_card %}
+{% extends "base.html" %}
+{% block title %}Device · {{ dev.label | e }}{% endblock %}
+
+{% block content %}
+{% if not dev %}
+  <div class="page-header"><h1>Gerät nicht gefunden</h1></div>
+  <p style="color:var(--muted)">Device <code>{{ device_id | e }}</code> wurde im aktuellen Snapshot nicht gefunden.</p>
+  <p style="margin-top:16px"><a href="/devices/html">&laquo; Zurück zur Übersicht</a></p>
+{% else %}
+  {# Breadcrumb #}
+  <div class="breadcrumb">
+    <a href="/devices/html">Geräte</a>
+    <span class="sep">&rsaquo;</span>
+    {{ dev.room | e }} <span style="opacity:.4">&rsaquo;</span>
+    {{ dev.label | e }}
+  </div>
+
+  <div class="page-header">
+    <h1>{{ dev.label | e }}</h1>
+    <div class="sub">
+      <span class="type-pill">{{ dev.type | e }}</span>&nbsp;
+      {{ dev.model | e }} &nbsp;&middot;&nbsp;
+      <span class="mono">{{ dev.id | e }}</span>
+    </div>
+  </div>
+
+  {# Meta-Grid #}
+  <div class="meta-grid">
+    <div class="meta-card">
+      <div class="k">Raum</div>
+      <div class="v">{{ dev.room | e }}</div>
+    </div>
+    {% for k in meta_keys %}
+      {% if k in dev.raw %}
+        <div class="meta-card">
+          <div class="k">{{ k | e }}</div>
+          <div class="v">{{ val_html(dev.raw[k]) }}</div>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  {# Functional Channels #}
+  <h2 style="font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Functional Channels</h2>
+  {% if dev.channels %}
+    {% for ch_idx, ch in dev.channels %}
+      {{ channel_card(ch_idx, ch, open_default=loop.first) }}
+    {% endfor %}
+  {% else %}
+    <p style="color:var(--muted)">Keine Channels</p>
+  {% endif %}
+
+  {# Raw JSON #}
+  <div style="margin-top:16px">
+    <details>
+      <summary>
+        <span class="summary-title">Rohdaten (JSON)</span>
+        <span class="chevron">&#9660;</span>
+      </summary>
+      <pre class="json-raw">{{ dev.raw_json }}</pre>
+    </details>
+  </div>
+{% endif %}
+{% endblock %}

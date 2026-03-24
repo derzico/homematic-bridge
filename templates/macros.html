@@ -1,0 +1,97 @@
+{# SPDX-License-Identifier: Apache-2.0 #}
+{# Wiederverwendbare Makros für die Web-UI #}
+
+{% macro val_html(v) %}
+  {%- if v is none -%}
+    <span class="v-null">null</span>
+  {%- elif v is sameas true -%}
+    <span class="v-true">true</span>
+  {%- elif v is sameas false -%}
+    <span class="v-false">false</span>
+  {%- elif v is number -%}
+    <span class="v-num">{{ v }}</span>
+  {%- elif v is mapping or v is iterable and v is not string -%}
+    <span class="v-null">{{ v | tojson }}</span>
+  {%- else -%}
+    {{ v | e }}
+  {%- endif -%}
+{% endmacro %}
+
+{% macro bool_pill(val, label_true, label_false, cls_true="pill-error", cls_false="pill-ok") %}
+  {%- if val is sameas true -%}
+    <span class="status-pill {{ cls_true }}">{{ label_true }}</span>
+  {%- elif val is sameas false -%}
+    <span class="status-pill {{ cls_false }}">{{ label_false }}</span>
+  {%- else -%}
+    <span class="status-pill pill-muted">&ndash;</span>
+  {%- endif -%}
+{% endmacro %}
+
+{% macro rssi_html(rssi) %}
+  {%- if rssi is none or rssi is not number -%}
+    <span class="v-null">&ndash;</span>
+  {%- elif rssi == 128 -%}
+    <span class="v-null">n/a</span>
+  {%- else -%}
+    {%- if rssi >= -70 -%}
+      {%- set bars = 4 -%}{%- set cls = "" -%}
+    {%- elif rssi >= -80 -%}
+      {%- set bars = 3 -%}{%- set cls = "" -%}
+    {%- elif rssi >= -90 -%}
+      {%- set bars = 2 -%}{%- set cls = "warn" -%}
+    {%- else -%}
+      {%- set bars = 1 -%}{%- set cls = "bad" -%}
+    {%- endif -%}
+    <span class="rssi-bar {{ cls }}">
+      {%- for i in range(4) -%}
+        <span style="height:{{ (i + 1) * 3 + 2 }}px" class="{{ 'lit' if i < bars else '' }}"></span>
+      {%- endfor -%}
+    </span> <span class="mono">{{ rssi | int }} dBm</span>
+  {%- endif -%}
+{% endmacro %}
+
+{% macro rssi_html_shelly(rssi) %}
+  {%- if rssi is none or rssi is not number -%}
+    <span class="mono" style="color:var(--muted)">&ndash;</span>
+  {%- else -%}
+    {%- if rssi >= -60 -%}
+      {%- set bars = 4 -%}{%- set cls = "" -%}
+    {%- elif rssi >= -75 -%}
+      {%- set bars = 2 -%}{%- set cls = "warn" -%}
+    {%- else -%}
+      {%- set bars = 1 -%}{%- set cls = "bad" -%}
+    {%- endif -%}
+    <span class="rssi-bar {{ cls }}">
+      {%- for i in range(4) -%}
+        <span style="height:{{ 4 + i * 3 }}px" class="{{ 'lit' if i < bars else '' }}"></span>
+      {%- endfor -%}
+    </span> <span class="mono">{{ rssi }} dBm</span>
+  {%- endif -%}
+{% endmacro %}
+
+{% macro kv_rows(d, skip=[]) %}
+  {%- set has_rows = [] -%}
+  {%- for k in d | sort -%}
+    {%- if k not in skip -%}
+      {%- if has_rows.append(1) -%}{%- endif -%}
+      <tr>
+        <th>{{ k | e }}</th>
+        <td>{{ val_html(d[k]) }}</td>
+      </tr>
+    {%- endif -%}
+  {%- endfor -%}
+  {%- if not has_rows -%}
+    <tr><td colspan="2" style="color:var(--muted)">Keine Daten</td></tr>
+  {%- endif -%}
+{% endmacro %}
+
+{% macro channel_card(ch_idx, ch, open_default=false) %}
+  <details{{ " open" if open_default else "" }}>
+    <summary>
+      <span class="summary-title">Kanal {{ ch_idx }}</span>
+      <span class="summary-sub">{{ ch.get("functionalChannelType", "") | e }}</span>
+      <span class="chevron">&#9660;</span>
+    </summary>
+    <table class="kv-table"><tbody>{{ kv_rows(ch) }}</tbody></table>
+  </details>
+{% endmacro %}

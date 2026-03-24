@@ -1,0 +1,43 @@
+{# SPDX-License-Identifier: Apache-2.0 #}
+{% from "macros.html" import bool_pill, rssi_html %}
+{% extends "base.html" %}
+{% block title %}HmIP Gerätestatus{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Gerätestatus &nbsp;
+    {% if warn_count %}
+      <span class="status-pill pill-error">{{ warn_count }} Warnung{{ "en" if warn_count != 1 else "" }}</span>
+    {% else %}
+      <span class="status-pill pill-ok">Alle {{ entries | length }} Geräte OK</span>
+    {% endif %}
+  </h1>
+  <div class="sub">{{ entries | length }} Geräte &middot; Geräte mit Warnungen werden oben angezeigt</div>
+</div>
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Label</th><th>Raum</th><th>Typ</th>
+      <th>Batterie</th><th>Erreichbarkeit</th><th>Duty Cycle</th><th>Sabotage</th>
+      <th>RSSI</th><th>Device ID</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in entries %}
+    <tr class="{{ 'row-error' if e.sev == 2 else ('row-warn' if e.sev == 1 else '') }}">
+      <td class="label-cell"><a href="/devices/{{ e.id | e }}">{{ e.label | e }}</a></td>
+      <td>{{ e.room | e }}</td>
+      <td><span class="type-pill">{{ e.type | e }}</span></td>
+      <td>{{ bool_pill(e.low_bat, "Low Bat", "OK") }}</td>
+      <td>{{ bool_pill(e.unreach, "Nicht erreichbar", "Erreichbar") }}</td>
+      <td>{{ bool_pill(e.duty, "Duty Cycle", "OK") }}</td>
+      <td>{{ bool_pill(e.sabotage, "Sabotage", "OK") }}</td>
+      <td>{{ rssi_html(e.rssi) }}</td>
+      <td class="mono" style="font-size:11px;color:var(--muted)"><a href="/devices/{{ e.id | e }}">{{ e.id | e }}</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="9" style="color:var(--muted);text-align:center;padding:24px">Keine Geräte.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

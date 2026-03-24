@@ -1,0 +1,191 @@
+{# SPDX-License-Identifier: Apache-2.0 #}
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>{% block title %}Homematic Bridge{% endblock %}</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+:root {
+  --bg:          #0d1117;
+  --surface:     #161b22;
+  --surface2:    #21262d;
+  --border:      #30363d;
+  --text:        #e6edf3;
+  --muted:       #8b949e;
+  --accent:      #58a6ff;
+  --accent-dim:  #1f3d6e;
+  --green:       #3fb950;
+  --red:         #f85149;
+  --yellow:      #e3b341;
+  --mono: 'JetBrains Mono','Fira Code','Consolas',monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: system-ui,-apple-system,sans-serif; font-size: 14px; min-height: 100vh; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Nav */
+nav {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 0 24px; height: 52px; display: flex; align-items: center; gap: 20px;
+  position: sticky; top: 0; z-index: 100;
+}
+.brand { font-weight: 600; font-size: 15px; display: flex; align-items: center; gap: 6px; }
+.brand em { color: var(--accent); font-style: normal; }
+.nav-links { display: flex; gap: 2px; }
+.nav-links a { color: var(--muted); padding: 6px 12px; border-radius: 6px; font-size: 13px; transition: color .15s, background .15s; }
+.nav-links a:hover, .nav-links a.active { color: var(--text); background: var(--surface2); text-decoration: none; }
+.spacer { flex: 1; }
+.nav-badge { font-size: 11px; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); padding: 2px 8px; border-radius: 20px; }
+
+/* Layout */
+.container { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+.page-header { margin-bottom: 24px; }
+.page-header h1 { font-size: 20px; font-weight: 600; }
+.page-header .sub { color: var(--muted); margin-top: 6px; font-size: 13px; }
+
+/* Search */
+.search-wrap { margin-bottom: 16px; }
+.search-wrap input {
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  padding: 8px 14px; border-radius: 6px; width: 320px; font-size: 13px; outline: none;
+}
+.search-wrap input:focus { border-color: var(--accent); }
+.search-wrap input::placeholder { color: var(--muted); }
+
+/* Table */
+.data-table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.data-table th { background: var(--surface2); color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+.data-table td { padding: 10px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.data-table tbody tr:last-child td { border-bottom: none; }
+.data-table tbody tr:hover { background: var(--surface2); }
+.mono { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.label-cell { font-weight: 500; }
+.type-pill { background: var(--accent-dim); color: var(--accent); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-family: var(--mono); white-space: nowrap; }
+
+/* Breadcrumb */
+.breadcrumb { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
+.breadcrumb a { color: var(--muted); }
+.breadcrumb a:hover { color: var(--accent); text-decoration: none; }
+.breadcrumb .sep { margin: 0 6px; opacity: .5; }
+
+/* Meta grid */
+.meta-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-bottom: 24px; }
+.meta-card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px 16px; }
+.meta-card .k { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+.meta-card .v { font-family: var(--mono); font-size: 13px; font-weight: 500; word-break: break-all; }
+
+/* Collapsible cards */
+details { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
+summary {
+  padding: 12px 20px; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 12px;
+  user-select: none; font-size: 13px; font-weight: 600;
+}
+summary::-webkit-details-marker { display: none; }
+summary:hover { background: var(--surface2); }
+.summary-title { flex: 1; }
+.summary-sub { font-family: var(--mono); font-size: 11px; color: var(--muted); font-weight: 400; }
+.chevron { color: var(--muted); font-size: 11px; transition: transform .2s; }
+details[open] .chevron { transform: rotate(180deg); }
+
+/* KV table inside details */
+.kv-table { width: 100%; border-collapse: collapse; border-top: 1px solid var(--border); }
+.kv-table tr:not(:last-child) td, .kv-table tr:not(:last-child) th { border-bottom: 1px solid var(--border); }
+.kv-table th { padding: 7px 20px; color: var(--muted); font-weight: 400; font-size: 12px; font-family: var(--mono); width: 240px; white-space: nowrap; background: transparent; text-align: left; }
+.kv-table td { padding: 7px 20px; font-size: 12px; font-family: var(--mono); word-break: break-all; }
+.v-true  { color: var(--green); }
+.v-false { color: var(--red); }
+.v-num   { color: var(--yellow); }
+.v-null  { color: var(--muted); font-style: italic; }
+
+/* Raw JSON */
+pre.json-raw { padding: 20px; background: var(--bg); font-family: var(--mono); font-size: 12px; overflow-x: auto; line-height: 1.6; border-top: 1px solid var(--border); }
+
+/* Status page */
+.status-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.pill-ok      { background: #1a3a1a; color: var(--green); }
+.pill-warn    { background: #3a2a00; color: var(--yellow); }
+.pill-error   { background: #3a1010; color: var(--red); }
+.pill-muted   { background: var(--surface2); color: var(--muted); }
+.rssi-bar { display: inline-flex; gap: 2px; align-items: flex-end; height: 14px; }
+.rssi-bar span { width: 4px; border-radius: 1px; background: var(--border); }
+.rssi-bar span.lit { background: var(--green); }
+.rssi-bar.warn span.lit { background: var(--yellow); }
+.rssi-bar.bad  span.lit { background: var(--red); }
+.row-warn td { background: #1a1500 !important; }
+.row-error td { background: #1a0a0a !important; }
+
+/* Dashboard */
+.dash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.dash-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; }
+.dash-card.wide { grid-column: span 2; }
+.dash-card h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 600; margin-bottom: 14px; }
+.dash-card .big-val { font-size: 36px; font-weight: 300; line-height: 1; margin-bottom: 4px; }
+.dash-card .big-val em { font-size: 18px; font-style: normal; color: var(--muted); }
+.dash-card .sub-val { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.weather-icon { font-size: 48px; line-height: 1; margin-bottom: 8px; }
+.dash-kv { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.dash-kv:last-child { border-bottom: none; }
+.dash-kv .dk { color: var(--muted); font-size: 12px; }
+.dash-kv .dv { font-family: var(--mono); font-size: 12px; }
+.progress-bar { background: var(--surface2); border-radius: 4px; height: 6px; margin-top: 8px; overflow: hidden; }
+.progress-bar .fill { height: 100%; border-radius: 4px; background: var(--green); transition: width .3s; }
+.progress-bar .fill.warn { background: var(--yellow); }
+.progress-bar .fill.bad  { background: var(--red); }
+.heating-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.heat-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; }
+.heat-card .room { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.heat-card .temps { display: flex; align-items: baseline; gap: 6px; }
+.heat-card .actual { font-size: 22px; font-weight: 300; }
+.heat-card .setpoint { font-size: 12px; color: var(--muted); }
+.heat-card .valve { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.heat-card .mode-pill { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--surface); color: var(--muted); border: 1px solid var(--border); margin-top: 6px; display: inline-block; }
+.alarm-active { border-color: var(--red) !important; }
+.alarm-ok     { border-color: var(--green) !important; }
+
+/* Login page */
+.login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.login-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 40px 48px; width: 100%; max-width: 380px; }
+.login-card .logo { text-align: center; font-size: 22px; font-weight: 600; margin-bottom: 32px; }
+.login-card .logo em { color: var(--accent); font-style: normal; }
+.login-field { margin-bottom: 16px; }
+.login-field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px; }
+.login-field input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 10px 14px; border-radius: 6px; font-size: 14px; outline: none; }
+.login-field input:focus { border-color: var(--accent); }
+.login-btn { width: 100%; background: var(--accent); color: #0d1117; border: none; padding: 11px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+.login-btn:hover { opacity: .9; }
+.login-error { background: #3a1010; border: 1px solid var(--red); color: var(--red); padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  {% block body %}
+  <nav>
+    <div class="brand">&#9889; Homematic <em>Bridge</em></div>
+    <div class="nav-links">
+      {% set nav_items = [
+        ("/", "Dashboard", "dashboard"),
+        ("/devices/html", "Geräte", "devices"),
+        ("/devices/status", "Status", "status"),
+        ("/heating", "Heizung", "heating"),
+        ("/shelly", "Shelly", "shelly"),
+        ("/config", "Konfig", "config"),
+        ("/healthz", "Health", "health"),
+      ] %}
+      {% for href, label, key in nav_items %}
+        <a href="{{ href }}"{% if active_nav == key %} class="active"{% endif %}>{{ label }}</a>
+      {% endfor %}
+    </div>
+    <div class="spacer"></div>
+    {% if device_count %}
+      <span class="nav-badge">{{ device_count }} Geräte</span>
+    {% endif %}
+    <a href="/logout" style="font-size:12px;color:var(--muted);padding:6px 10px;border-radius:6px;border:1px solid var(--border)">Abmelden</a>
+  </nav>
+  <div class="container">
+    {% block content %}{% endblock %}
+  </div>
+  {% endblock %}
+  {% block scripts %}{% endblock %}
+</body>
+</html>

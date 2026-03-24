@@ -8,15 +8,14 @@ import os
 import time
 from typing import Any, Dict, Optional
 
-from flask import Blueprint, Response, jsonify, redirect, request, session
+from flask import Blueprint, jsonify, redirect, render_template, request, session
 from werkzeug.security import check_password_hash
 
 import app.state as state
 from app.auth import generate_csrf_token, require_api_key, require_csrf, require_web_auth
-from app.generate_html import (generate_config_html, generate_dashboard_html,
-                                generate_device_detail_html, generate_device_overview,
-                                generate_device_status_html, generate_heating_html,
-                                generate_login_html, generate_shelly_html)
+from app.view_helpers import (prepare_dashboard, prepare_device_detail,
+                               prepare_device_overview, prepare_device_status,
+                               prepare_heating, prepare_shelly)
 from app.adapters.hmip_messages import (send_hmip_set_dim_level, send_hmip_set_hue_saturation_dim_level,
                                         send_hmip_set_switch)
 from app.adapters.hmip_websocket import _register_pending
@@ -54,9 +53,6 @@ def _snapshot_age_ms(path: str) -> Optional[int]:
         return None
 
 
-def _html(content: str) -> Response:
-    return Response(content, mimetype="text/html; charset=utf-8")
-
 
 # ── Auth-Routen ───────────────────────────────────────────────────────────────
 
@@ -79,8 +75,8 @@ def login():
             session.permanent = True
             session["authenticated"] = True
             return redirect(next_url)
-        return _html(generate_login_html(error=True, next_url=next_url, csrf_token=generate_csrf_token()))
-    return _html(generate_login_html(next_url=next_url, csrf_token=generate_csrf_token()))
+        return render_template("login.html", error=True, next_url=next_url, csrf_token=generate_csrf_token())
+    return render_template("login.html", error=False, next_url=next_url, csrf_token=generate_csrf_token())
 
 
 @bp.route("/logout")
@@ -94,31 +90,31 @@ def logout():
 @bp.route("/")
 @require_web_auth
 def serve_dashboard():
-    return _html(generate_dashboard_html(state.config_internal["system_state_path"]))
+    return render_template("dashboard.html", **prepare_dashboard(state.config_internal["system_state_path"]))
 
 
 @bp.route("/heating")
 @require_web_auth
 def serve_heating():
-    return _html(generate_heating_html(state.config_internal["system_state_path"]))
+    return render_template("heating.html", **prepare_heating(state.config_internal["system_state_path"]))
 
 
 @bp.route("/devices/html")
 @require_web_auth
 def serve_html_overview():
-    return _html(generate_device_overview(state.config_internal["system_state_path"]))
+    return render_template("devices.html", **prepare_device_overview(state.config_internal["system_state_path"]))
 
 
 @bp.route("/devices/status")
 @require_web_auth
 def serve_device_status():
-    return _html(generate_device_status_html(state.config_internal["system_state_path"]))
+    return render_template("status.html", **prepare_device_status(state.config_internal["system_state_path"]))
 
 
 @bp.route("/devices/<device_id>")
 @require_web_auth
 def serve_device_detail(device_id):
-    return _html(generate_device_detail_html(state.config_internal["system_state_path"], device_id))
+    return render_template("device_detail.html", **prepare_device_detail(state.config_internal["system_state_path"], device_id))
 
 
 # ── API: Switch ───────────────────────────────────────────────────────────────
@@ -296,12 +292,13 @@ def serve_config():
             content = f.read()
     except FileNotFoundError:
         content = ""
-    return _html(generate_config_html(content, error=error, success=success, csrf_token=generate_csrf_token()))
+    return render_template("config.html", content=content, error=error, success=success,
+                           csrf_token=generate_csrf_token(), active_nav="config")
 
 @bp.route("/shelly")
 @require_web_auth
 def serve_shelly():
-    return _html(generate_shelly_html())
+    return render_template("shelly.html", **prepare_shelly())
 
 
 @bp.post("/shelly/scan")

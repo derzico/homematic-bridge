@@ -1,0 +1,104 @@
+{# SPDX-License-Identifier: Apache-2.0 #}
+{% from "macros.html" import bool_pill %}
+{% extends "base.html" %}
+{% block title %}HmIP Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header"><h1>Dashboard</h1></div>
+<div class="dash-grid">
+
+  {# ── Wetter ── #}
+  <div class="dash-card">
+    <h3>Wetter</h3>
+    <div class="weather-icon">{{ weather.icon }}</div>
+    <div class="big-val">{{ weather.temp_str }}<em> &deg;C</em></div>
+    <div class="sub-val">
+      {{ weather.condition | replace("_", " ") | title }}
+      {% if weather.minmax %} &middot; {{ weather.minmax }}{% endif %}
+    </div>
+    <div style="margin-top:12px">
+      <div class="dash-kv"><span class="dk">Luftfeuchtigkeit</span><span class="dv">{{ weather.humidity }} %</span></div>
+      <div class="dash-kv"><span class="dk">Wind</span><span class="dv">{{ weather.wind_str | e }}</span></div>
+    </div>
+  </div>
+
+  {# ── Alarm ── #}
+  <div class="dash-card {{ 'alarm-active' if alarm.any_active else 'alarm-ok' }}">
+    <h3>Alarm / Sicherheit</h3>
+    <div style="margin-bottom:12px">
+      {% if alarm.any_active %}
+        <span class="status-pill pill-error">&#9888; ALARM AKTIV</span>
+      {% else %}
+        <span class="status-pill pill-ok">Kein Alarm</span>
+      {% endif %}
+    </div>
+    <div class="dash-kv"><span class="dk">Einbruch</span>
+      <span class="dv">{{ bool_pill(alarm.intrusion, "AKTIV", "OK") }}</span></div>
+    <div class="dash-kv"><span class="dk">Sicherheitsalarm</span>
+      <span class="dv">{{ bool_pill(alarm.safety, "AKTIV", "OK") }}</span></div>
+    <div class="dash-kv"><span class="dk">Letztes Ereignis</span>
+      <span class="dv">{{ alarm.last_event_type | replace("_", " ") | e }}</span></div>
+    <div class="dash-kv"><span class="dk">Zeitpunkt</span>
+      <span class="dv">{{ alarm.last_event_ts }}</span></div>
+  </div>
+
+  {# ── System ── #}
+  <div class="dash-card">
+    <h3>System</h3>
+    <div class="dash-kv"><span class="dk">Verbindung</span>
+      <span class="dv">{{ bool_pill(system.connected, "Verbunden", "Getrennt", "pill-ok", "pill-error") }}</span></div>
+    <div class="dash-kv"><span class="dk">Firmware</span>
+      <span class="dv">{{ system.update_state | e }}</span></div>
+    <div class="dash-kv"><span class="dk">Duty Cycle</span>
+      <span class="dv mono">{{ "%.1f" | format(system.duty) }} %</span></div>
+    <div class="progress-bar">
+      <div class="fill {{ 'bad' if system.duty > 80 else ('warn' if system.duty > 50 else '') }}"
+           style="width:{{ [system.duty, 100] | min | int }}%"></div>
+    </div>
+  </div>
+
+  {# ── Gerätewarnungen ── #}
+  {% if warn_devs %}
+  <div class="dash-card alarm-active">
+    <h3>Gerätewarnungen <a href="/devices/status" style="font-size:11px;float:right;color:var(--accent)">Alle &rarr;</a></h3>
+    {% for name in warn_devs[:6] %}
+      <div class="dash-kv"><span class="dk">&#9888;</span><span class="dv">{{ name | e }}</span></div>
+    {% endfor %}
+    {% if warn_devs | length > 6 %}
+      <div class="dash-kv" style="color:var(--muted)">... +{{ warn_devs | length - 6 }} weitere</div>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="dash-card alarm-ok">
+    <h3>Gerätewarnungen</h3>
+    <div style="color:var(--green);font-size:13px">Alle Geräte OK</div>
+  </div>
+  {% endif %}
+
+</div>
+
+{# ── Heizung ── #}
+{% if heating_groups %}
+<div class="dash-card wide" style="margin-bottom:24px">
+  <h3>Heizung <a href="/heating" style="font-size:11px;float:right;color:var(--accent)">Alle &rarr;</a></h3>
+  <div class="heating-grid">
+    {% for hg in heating_groups[:6] %}
+    <div class="heat-card">
+      <div class="room">{{ hg.label | e }}</div>
+      <div class="temps">
+        <span class="actual">{{ hg.actual_str }}</span>
+        <span class="setpoint">{{ hg.setp_str }}</span>
+      </div>
+      {% if hg.valve_str %}<div class="valve">{{ hg.valve_str }}</div>{% endif %}
+      {% if hg.mode_str %}<div class="mode-pill">{{ hg.mode_str }}</div>{% endif %}
+    </div>
+    {% endfor %}
+    {% if heating_groups | length > 6 %}
+    <div class="heat-card" style="display:flex;align-items:center;justify-content:center;color:var(--muted)">
+      +{{ heating_groups | length - 6 }} weitere &rarr; <a href="/heating" style="margin-left:6px">Alle</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

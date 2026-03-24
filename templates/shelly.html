@@ -1,0 +1,235 @@
+{# SPDX-License-Identifier: Apache-2.0 #}
+{% from "macros.html" import rssi_html_shelly %}
+{% extends "base.html" %}
+{% block title %}Shelly{% endblock %}
+
+{% block content %}
+{% if not enabled %}
+  <div class="page-header"><h1>Shelly Scanner</h1></div>
+  <div class="dash-card" style="max-width:520px">
+    <h3>Nicht aktiviert</h3>
+    <p style="color:var(--muted);font-size:13px;line-height:1.6">Füge in <code>config/config.yaml</code> folgendes hinzu:</p>
+    <pre class="json-raw" style="margin-top:12px">shelly:
+  enabled: true
+  subnet: "192.168.1.0/24"
+  timeout_sec: 1.5</pre>
+  </div>
+{% else %}
+  <div class="page-header">
+    <h1>Shelly</h1>
+    <div class="sub">
+      Subnet: <strong>{{ subnet | e }}</strong>
+      &nbsp;&middot;&nbsp; {{ online_count }}/{{ devices | length }} online
+      &nbsp;&middot;&nbsp; Auto-Refresh: 60s
+    </div>
+  </div>
+
+  {# Offline-Banner #}
+  {% if offline_names %}
+  <div style="background:#3a1010;border:1px solid var(--red);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px">
+    <strong style="color:var(--red)">&#9888; {{ offline_count }} Gerät{{ "e" if offline_count > 1 else "" }} nicht erreichbar</strong>
+    <span style="color:var(--muted);margin-left:8px">{{ offline_names | e }}</span>
+    <span style="color:var(--muted);font-size:11px;margin-left:12px">– kann temporär sein, wird beim nächsten Scan/Refresh aktualisiert</span>
+  </div>
+  {% endif %}
+
+  {# Update-Banner #}
+  {% if updates_count %}
+  <div style="background:#3a2a00;border:1px solid var(--yellow);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px">
+    <strong style="color:var(--yellow)">&#9650; {{ updates_count }} Firmware-Update{{ "s" if updates_count > 1 else "" }} verfügbar</strong>
+    <span style="color:var(--muted);margin-left:8px">– Update-Button in der Firmware-Spalte</span>
+  </div>
+  {% endif %}
+
+  {# Buttons #}
+  <div style="margin-bottom:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <button id="scan-btn" onclick="startScan()" style="background:var(--accent);color:#0d1117;border:none;padding:8px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Netzwerk scannen</button>
+    <button id="refresh-btn" onclick="refreshStatus()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);padding:8px 14px;border-radius:6px;font-size:13px;cursor:pointer">Status aktualisieren</button>
+    <button id="upd-check-btn" onclick="checkUpdates()" style="background:var(--surface2);color:var(--yellow);border:1px solid var(--yellow);padding:8px 14px;border-radius:6px;font-size:13px;cursor:pointer">&#9650; Auf Updates prüfen</button>
+    <span id="scan-info" style="color:var(--muted);font-size:13px">{{ scan_info | e }}</span>
+  </div>
+
+  {% if not devices %}
+    <div style="color:var(--muted);font-size:13px">Noch keine Geräte gefunden. Starte einen Scan.</div>
+  {% else %}
+    <div class="search-wrap"><input id="search" placeholder="Suchen…"></div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Name</th><th>Modell</th><th>Gen</th><th>IP</th><th>MAC</th>
+          <th>Firmware</th><th>WLAN</th><th>Status / Steuerung</th><th>Gesehen</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for dev in devices %}
+        {% set ip = dev.ip | e %}
+        {% set ip_dash = dev.ip | replace(".", "-") %}
+        <tr{{ ' style="opacity:0.55"' | safe if not dev.online }}>
+          <td class="label-cell">
+            {% if not dev.online %}<span class="status-pill pill-error" style="font-size:10px">offline</span> {% endif %}
+            {{ dev.name | e }}
+          </td>
+          <td><span class="type-pill">{{ dev.model | e }}</span></td>
+          <td class="mono">Gen{{ dev.gen }}</td>
+          <td><a href="/shelly/{{ ip }}/webui/" target="_blank" class="mono">{{ ip }}</a></td>
+          <td class="mono" style="font-size:11px">{{ dev.mac | e }}</td>
+          <td class="mono" style="font-size:11px;color:var(--muted)">
+            {{ dev.fw | e }}
+            {% if dev.update_available %}
+            <br><button id="upd-{{ ip_dash }}" onclick="shellyUpdate('{{ dev.ip }}')"
+              style="background:#3a2a00;color:var(--yellow);border:1px solid var(--yellow);padding:2px 8px;border-radius:4px;font-size:10px;cursor:pointer;margin-top:3px">
+              &#9650; {{ dev.new_fw | e }}</button>
+            {% endif %}
+          </td>
+          <td>{{ rssi_html_shelly(dev.rssi) }}</td>
+          <td>
+            {% if not dev.online %}
+              <span style="color:var(--muted);font-size:12px">nicht erreichbar</span>
+            {% elif dev.emeters %}
+              {# Energie-Monitor #}
+              {% for idx, em in dev.emeters | dictsort %}
+                {% set phase = {"0": "L1", "1": "L2", "2": "L3"}.get(idx, "CH" ~ idx) %}
+                <div style="margin-bottom:4px">
+                  <span style="color:var(--muted);font-size:10px;font-family:var(--mono)">{{ phase }}</span>
+                  <strong class="mono">{{ "%.0f W" | format(em.power_w) if em.power_w is number else "–" }}</strong>
+                  {% set details = [] %}
+                  {% if em.voltage is number %}{% if details.append("%.1f V" | format(em.voltage)) %}{% endif %}{% endif %}
+                  {% if em.current is number %}{% if details.append("%.2f A" | format(em.current)) %}{% endif %}{% endif %}
+                  {% if em.pf is number %}{% if details.append("PF %.2f" | format(em.pf)) %}{% endif %}{% endif %}
+                  {% if details %}
+                    <span style="color:var(--muted);font-size:11px;font-family:var(--mono)">({{ details | join(" &middot; ") }})</span>
+                  {% endif %}
+                  {% set energy = [] %}
+                  {% if em.total_kwh is number %}{% if energy.append("%.1f kWh" | format(em.total_kwh)) %}{% endif %}{% endif %}
+                  {% if em.returned_kwh is number and em.returned_kwh > 0 %}{% if energy.append("&larr; %.1f kWh" | format(em.returned_kwh)) %}{% endif %}{% endif %}
+                  {% if energy %}
+                    <br><span style="color:var(--muted);font-size:11px;font-family:var(--mono)">{{ energy | join(" &middot; ") | safe }}</span>
+                  {% endif %}
+                </div>
+              {% endfor %}
+              {% if dev.emeters | length > 1 %}
+                {% set total_pw = dev.emeters.values() | map(attribute='power_w') | select('number') | sum %}
+                <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:4px;font-family:var(--mono);font-size:11px;color:var(--muted)">
+                  Gesamt: <strong style="color:var(--text)">{{ "%.0f W" | format(total_pw) }}</strong>
+                </div>
+              {% endif %}
+              {% if dev.channels %}
+                <div style="margin-top:6px">
+                  {% for ch_idx, ch in dev.channels | dictsort %}
+                    {% set btn_id = "btn-" ~ ip_dash ~ "-" ~ ch_idx %}
+                    {% set is_on = ch.get("on", false) %}
+                    <button id="{{ btn_id }}"
+                      onclick="shellyRelay('{{ dev.ip }}',{{ dev.gen }},{{ ch_idx }},{{ 'false' if is_on else 'true' }})"
+                      style="background:{{ 'var(--green)' if is_on else 'var(--surface2)' }};border:1px solid var(--border);padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer;margin-right:4px;color:var(--text)">
+                      CH{{ ch_idx }} {{ "EIN" if is_on else "AUS" }}{{ " · %.0f W" | format(ch.power_w) if ch.power_w is number else "" }}
+                    </button>
+                    {% if ch.total_kwh is number %}
+                      <span style="font-size:11px;color:var(--muted);font-family:var(--mono)"> · {{ "%.2f kWh" | format(ch.total_kwh) }}</span>
+                    {% endif %}
+                  {% endfor %}
+                </div>
+              {% endif %}
+            {% elif dev.channels %}
+              {# Nur Schalter #}
+              {% for ch_idx, ch in dev.channels | dictsort %}
+                {% set btn_id = "btn-" ~ ip_dash ~ "-" ~ ch_idx %}
+                {% set is_on = ch.get("on", false) %}
+                <button id="{{ btn_id }}"
+                  onclick="shellyRelay('{{ dev.ip }}',{{ dev.gen }},{{ ch_idx }},{{ 'false' if is_on else 'true' }})"
+                  style="background:{{ 'var(--green)' if is_on else 'var(--surface2)' }};border:1px solid var(--border);padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer;margin-right:4px;color:var(--text)">
+                  CH{{ ch_idx }} {{ "EIN" if is_on else "AUS" }}{{ " · %.0f W" | format(ch.power_w) if ch.power_w is number else "" }}
+                </button>
+                {% if ch.total_kwh is number %}
+                  <span style="font-size:11px;color:var(--muted);font-family:var(--mono)"> · {{ "%.2f kWh" | format(ch.total_kwh) }}</span>
+                {% endif %}
+              {% endfor %}
+            {% else %}
+              <span style="color:var(--muted)">&ndash;</span>
+            {% endif %}
+          </td>
+          <td class="mono" style="color:var(--muted)">{{ dev.age_str }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if enabled %}
+<script>
+document.getElementById('search')?.addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('tbody tr').forEach(r => {
+    r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+});
+
+async function shellyRelay(ip, gen, channel, on) {
+  const btn = document.getElementById('btn-' + ip.replace(/\./g,'-') + '-' + channel);
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const r = await fetch('/shelly/' + ip + '/relay/' + channel, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({on: on})
+    });
+    const d = await r.json();
+    if (d.success) { setTimeout(() => location.reload(), 800); }
+    else { alert('Fehler beim Schalten'); if (btn) btn.disabled = false; }
+  } catch(e) { alert('Netzwerkfehler'); if (btn) btn.disabled = false; }
+}
+
+async function startScan() {
+  const btn = document.getElementById('scan-btn');
+  btn.disabled = true; btn.textContent = 'Scan läuft…';
+  document.getElementById('scan-info').textContent = 'Scan gestartet – bitte warten…';
+  try {
+    const r = await fetch('/shelly/scan', {method: 'POST'});
+    const d = await r.json();
+    if (d.status === 'started' || d.status === 'already_running') { pollScan(); }
+    else { document.getElementById('scan-info').textContent = d.error || 'Fehler'; btn.disabled = false; btn.textContent = 'Netzwerk scannen'; }
+  } catch(e) { document.getElementById('scan-info').textContent = 'Netzwerkfehler'; btn.disabled = false; btn.textContent = 'Netzwerk scannen'; }
+}
+
+function pollScan() {
+  fetch('/shelly/status').then(r => r.json()).then(d => {
+    if (d.running) { document.getElementById('scan-info').textContent = 'Scan läuft…'; setTimeout(pollScan, 2000); }
+    else { location.reload(); }
+  });
+}
+
+async function shellyUpdate(ip) {
+  if (!confirm('Firmware-Update für ' + ip + ' starten?\nDas Gerät ist während des Updates nicht erreichbar.')) return;
+  const btn = document.getElementById('upd-' + ip.replace(/\./g,'-'));
+  if (btn) { btn.disabled = true; btn.textContent = 'Update läuft…'; }
+  try {
+    const r = await fetch('/shelly/' + ip + '/update', {method: 'POST'});
+    const d = await r.json();
+    if (d.success) { if (btn) btn.textContent = 'Neustart…'; setTimeout(() => location.reload(), 15000); }
+    else { alert('Update fehlgeschlagen'); if (btn) { btn.disabled = false; btn.textContent = 'Update'; } }
+  } catch(e) { alert('Netzwerkfehler'); if (btn) { btn.disabled = false; btn.textContent = 'Update'; } }
+}
+
+async function checkUpdates() {
+  const btn = document.getElementById('upd-check-btn');
+  btn.disabled = true; btn.textContent = 'Prüfe…';
+  try {
+    await fetch('/shelly/check-updates', {method: 'POST'});
+    btn.textContent = 'Warte auf Geräte (5s)…';
+    setTimeout(async () => { await fetch('/shelly/refresh-status', {method: 'POST'}); location.reload(); }, 5000);
+  } catch(e) { btn.disabled = false; btn.textContent = 'Auf Updates prüfen'; }
+}
+
+async function refreshStatus() {
+  const btn = document.getElementById('refresh-btn');
+  btn.disabled = true; btn.textContent = 'Aktualisiere…';
+  try { await fetch('/shelly/refresh-status', {method: 'POST'}); location.reload(); }
+  catch(e) { btn.disabled = false; btn.textContent = 'Status aktualisieren'; }
+}
+
+setTimeout(() => { fetch('/shelly/refresh-status', {method:'POST'}).then(() => location.reload()); }, 60000);
+</script>
+{% endif %}
+{% endblock %}

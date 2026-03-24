@@ -31,10 +31,21 @@ app/
     hmip_websocket.py    # HmIP WebSocket-Loop, Pending-Registry, Reconnect
   auth.py                # API-Key, CSRF, Session-Auth Decorators
   routes.py              # Flask Blueprint mit allen HTTP-Routen
-  generate_html.py       # HTML-Generierung für Web-UI
+  view_helpers.py        # Datenvorbereitung für Jinja2-Templates
   state.py               # Shared Runtime State (Locks, Config, Registry)
   utils.py               # Snapshot-Merge, Device-Container-Suche
   loxone_udp.py          # Loxone UDP-Push (eigenständig, kein Adapter)
+templates/               # Jinja2-Templates (HTML)
+  base.html              # Base-Layout (CSS, Navigation)
+  macros.html            # Wiederverwendbare Makros (val_html, bool_pill, rssi_html)
+  dashboard.html         # Dashboard-Seite
+  devices.html           # Geräteübersicht
+  device_detail.html     # Gerätedetail mit Channels + Raw JSON
+  status.html            # Gerätestatus (Batterie, Erreichbarkeit, RSSI)
+  heating.html           # Heizungsseite
+  shelly.html            # Shelly-Geräte mit Steuerung
+  config.html            # Konfigurationseditor
+  login.html             # Login-Seite
 config/
   loader.py              # YAML laden + Validierung
   config_sample.yaml     # Vorlage für config.yaml

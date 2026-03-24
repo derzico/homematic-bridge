@@ -1,0 +1,32 @@
+{# SPDX-License-Identifier: Apache-2.0 #}
+{% extends "base.html" %}
+{% block title %}Konfiguration{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Konfiguration</h1>
+  <div class="sub">config/config.yaml – nach dem Speichern werden Loxone- und Shelly-Einstellungen sofort übernommen. HCU-Verbindungsänderungen erfordern einen Neustart.</div>
+</div>
+
+{% if error %}
+  <div class="login-error" style="margin-bottom:16px">Fehler: {{ error | e }}</div>
+{% elif success %}
+  <div style="background:#1a3a1a;border:1px solid var(--green);color:var(--green);padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:16px">
+    Gespeichert. Verbindungsänderungen (HCU, Token) erfordern einen Neustart.
+  </div>
+{% endif %}
+
+<form method="POST" action="/config">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <textarea name="content" spellcheck="false" style="
+    width:100%;height:520px;background:var(--bg);color:var(--text);
+    border:1px solid var(--border);border-radius:8px;padding:16px;
+    font-family:var(--mono);font-size:13px;line-height:1.6;resize:vertical;outline:none">{{ content | e }}</textarea>
+  <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
+    <button type="submit" style="background:var(--accent);color:#0d1117;border:none;
+      padding:9px 22px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">
+      Speichern</button>
+    <span style="color:var(--muted);font-size:12px">YAML wird vor dem Speichern validiert.</span>
+  </div>
+</form>
+{% endblock %}
