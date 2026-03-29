@@ -216,7 +216,6 @@ def hmip_rgb_post():
             rid = send_hmip_set_switch(state.conn, device_id, False, channel_index)
             _register_pending(rid, "/hmip/device/control/setSwitchState")
             return jsonify({"status": f"{device_id}: off", "request_id": rid}), 200
-        send_hmip_set_switch(state.conn, device_id, True, channel_index)
         rid = send_hmip_set_hue_saturation_dim_level(state.conn, device_id, hue, saturation, dim_level, channel_index)
     _register_pending(rid, "/hmip/device/control/setHueSaturationDimLevel")
     return jsonify({"status": f"{device_id}: hue={hue}° sat={saturation} dim={dim_level}", "request_id": rid}), 200
