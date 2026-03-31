@@ -14,9 +14,23 @@ log = logging.getLogger("bridge-ws")
 # Numerische Felder die direkt als Zahl übertragen werden
 _NUMERIC_FIELDS: Set[str] = {
     "dimLevel", "saturationLevel", "hue", "colorTemperature",
-    "actualTemperature", "humidity", "co2Concentration",
+    "actualTemperature", "setPointTemperature", "humidity", "co2Concentration",
     "illumination", "windSpeed", "shutterLevel", "slatsLevel",
     "currentPowerConsumption", "energyCounter", "ventilationLevel",
+    "valvePosition", "rssiDeviceValue",
+}
+
+# Bool-Felder die als 0/1 übertragen werden
+_BOOL_FIELDS: Set[str] = {
+    "on", "motionDetected", "presenceDetected", "windowOpen",
+    "lowBat", "unreach", "dutyCycle", "sabotage",
+    "smokeDetectorActive", "moistureDetected", "waterlevelDetected",
+}
+
+# String-Felder als Klartext (z.B. als Triggerwert in Loxone Virtual Input)
+_STRING_FIELDS: Set[str] = {
+    "smokeDetectorAlarmType", "windowState", "alarmSignalType",
+    "opticalAlarmSignal", "acousticAlarmSignal",
 }
 
 
@@ -29,9 +43,12 @@ def push_channel_state(host: str, port: int, device_id: str, channel_index: Unio
     lines = []
 
     for key, val in channel.items():
-        if key == "on" and isinstance(val, bool):
-            lines.append(f"{prefix}_on@{1 if val else 0}\r\n")
+        if key in _BOOL_FIELDS and isinstance(val, bool):
+            lines.append(f"{prefix}_{key}@{1 if val else 0}\r\n")
         elif key in _NUMERIC_FIELDS and isinstance(val, (int, float)):
+            lines.append(f"{prefix}_{key}@{val}\r\n")
+        elif key in _STRING_FIELDS and isinstance(val, str):
+            # Loxone Virtual Input akzeptiert Text – nützlich als Triggerwert
             lines.append(f"{prefix}_{key}@{val}\r\n")
 
     if not lines:

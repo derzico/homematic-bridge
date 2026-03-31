@@ -16,7 +16,11 @@ from app.auth import generate_csrf_token, require_api_key, require_csrf, require
 from app.view_helpers import (prepare_dashboard, prepare_device_detail,
                                prepare_device_overview, prepare_device_status,
                                prepare_heating, prepare_shelly)
-from app.adapters.hmip_messages import (send_hmip_set_dim_level, send_hmip_set_hue_saturation_dim_level,
+from app.adapters.hmip_messages import (send_hmip_set_alarm_signal_acoustic,
+                                        send_hmip_set_alarm_signal_optical,
+                                        send_hmip_set_dim_level,
+                                        send_hmip_set_hue_saturation_dim_level,
+                                        send_hmip_set_point_temperature,
                                         send_hmip_set_switch)
 from app.adapters.hmip_websocket import _register_pending
 from app.utils import _find_device_in_list, _locate_devices_container
@@ -219,6 +223,166 @@ def hmip_rgb_post():
         rid = send_hmip_set_hue_saturation_dim_level(state.conn, device_id, hue, saturation, dim_level, channel_index)
     _register_pending(rid, "/hmip/device/control/setHueSaturationDimLevel")
     return jsonify({"status": f"{device_id}: hue={hue}° sat={saturation} dim={dim_level}", "request_id": rid}), 200
+
+
+# ── API: Alarm (Rauchmelder als Sirene) ───────────────────────────────────────
+
+_VALID_ALARM_SIGNALS = {"FULL_ALARM", "INTRUSION_ALARM", "PRE_ALARM", "NO_ALARM"}
+
+
+def _find_alarm_siren_devices(snap: Dict[str, Any]) -> list:
+    """Gibt Liste von (device_id, channel_index) für alle Geräte mit ALARM_SIREN_CHANNEL zurück."""
+    result = []
+    devices_container, _ = _locate_devices_container(snap)
+    devs = {}
+    if isinstance(devices_container, dict):
+        devs = devices_container
+    elif isinstance(devices_container, list):
+        devs = {d.get("id", ""): d for d in devices_container if isinstance(d, dict)}
+    for dev_id, dev in devs.items():
+        if not isinstance(dev, dict):
+            continue
+        for ch_idx, ch in (dev.get("functionalChannels") or {}).items():
+            if isinstance(ch, dict) and ch.get("functionalChannelType") == "ALARM_SIREN_CHANNEL":
+                result.append((str(dev_id), int(ch_idx)))
+    return result
+
+
+@bp.post("/hmipAlarm")
+@require_api_key
+def hmip_alarm_post():
+    """Rauchmelder / Alarmsirene steuern.
+
+    Body:
+      mode         (str)  – "optical" | "acoustic" | "both" | "off"
+      signal       (str)  – "FULL_ALARM" | "INTRUSION_ALARM" | "PRE_ALARM" | "NO_ALARM"
+                            (default: "FULL_ALARM" für mode != "off", "NO_ALARM" für "off")
+      device       (str)  – optional – Device-ID; fehlt → alle Geräte mit ALARM_SIREN_CHANNEL
+      channelIndex (int)  – optional – Standard: automatisch aus Snapshot
+    """
+    if state.conn is None:
+        return jsonify({"error": "WebSocket nicht verbunden"}), 503
+
+    data = request.get_json(silent=True, force=True) or {}
+    mode         = str(data.get("mode", "")).lower()
+    device_id    = data.get("device")
+    channel_override = data.get("channelIndex")
+
+    if mode not in {"optical", "acoustic", "both", "off"}:
+        return jsonify({"error": "mode muss 'optical', 'acoustic', 'both' oder 'off' sein"}), 400
+
+    # Signal ableiten
+    if mode == "off":
+        signal = data.get("signal", "NO_ALARM")
+    else:
+        signal = data.get("signal", "FULL_ALARM")
+
+    if signal not in _VALID_ALARM_SIGNALS:
+        return jsonify({"error": f"signal muss eines von {sorted(_VALID_ALARM_SIGNALS)} sein"}), 400
+
+    # Zielgeräte bestimmen
+    if device_id:
+        # Einzelnes Gerät – channel_index aus Snapshot ableiten oder Override nutzen
+        snap = _load_snapshot()
+        ch_idx = channel_override
+        if ch_idx is None and snap:
+            for _did, _cidx in _find_alarm_siren_devices(snap):
+                if _did == device_id:
+                    ch_idx = _cidx
+                    break
+        if ch_idx is None:
+            ch_idx = 2  # HmIP-Konvention: Kanal 2 = ALARM_SIREN_CHANNEL
+        targets = [(device_id, int(ch_idx))]
+    else:
+        # Alle Rauchmelder / Sirenen im Snapshot
+        snap = _load_snapshot()
+        if snap is None:
+            return jsonify({"error": "Kein Snapshot vorhanden – Gerätliste unbekannt"}), 503
+        targets = _find_alarm_siren_devices(snap)
+        if not targets:
+            return jsonify({"error": "Keine Geräte mit ALARM_SIREN_CHANNEL im Snapshot gefunden"}), 404
+
+    sent = []
+    with state.send_lock:
+        for did, cidx in targets:
+            if mode in {"optical", "both", "off"}:
+                rid = send_hmip_set_alarm_signal_optical(state.conn, did, signal, cidx)
+                _register_pending(rid, "/hmip/device/control/setAlarmSignalOptical")
+                sent.append({"device": did, "type": "optical", "request_id": rid})
+            if mode in {"acoustic", "both", "off"}:
+                rid = send_hmip_set_alarm_signal_acoustic(state.conn, did, signal, cidx)
+                _register_pending(rid, "/hmip/device/control/setAlarmSignalAcoustic")
+                sent.append({"device": did, "type": "acoustic", "request_id": rid})
+
+    log.info("Alarm %s / %s → %d Gerät(e)", mode, signal, len(targets))
+    return jsonify({"status": "ok", "mode": mode, "signal": signal, "sent": sent}), 200
+
+
+# ── API: Thermostat ────────────────────────────────────────────────────────────
+
+@bp.post("/hmipThermostat")
+@require_api_key
+def hmip_thermostat_post():
+    """Solltemperatur eines Heizkörperthermostats oder Wandthermostats setzen.
+
+    Body:
+      device        (str)   – Device-ID
+      temperature   (float) – Zieltemperatur in °C (4.5–30.5)
+      channelIndex  (int)   – optional, Standard: 1
+    """
+    if state.conn is None:
+        return jsonify({"error": "WebSocket nicht verbunden"}), 503
+
+    data = request.get_json(silent=True, force=True) or {}
+    device_id     = data.get("device")
+    temperature   = data.get("temperature")
+    channel_index = data.get("channelIndex", 1)
+
+    if not device_id or temperature is None:
+        return jsonify({"error": "Pflichtfelder: device (str), temperature (float)"}), 400
+    try:
+        temperature = float(temperature)
+    except (TypeError, ValueError):
+        return jsonify({"error": "temperature muss eine Zahl sein"}), 400
+    if not 4.5 <= temperature <= 30.5:
+        return jsonify({"error": "temperature muss zwischen 4.5 und 30.5 °C liegen"}), 400
+
+    with state.send_lock:
+        rid = send_hmip_set_point_temperature(state.conn, device_id, temperature, int(channel_index))
+    _register_pending(rid, "/hmip/device/control/setSetPointTemperature")
+    return jsonify({"status": f"{device_id}: setpoint={temperature:.1f}°C", "request_id": rid}), 200
+
+
+# ── API: Bewässerung ───────────────────────────────────────────────────────────
+
+@bp.post("/hmipIrrigation")
+@require_api_key
+def hmip_irrigation_post():
+    """Bewässerungsaktor schalten (HMIP-WHS2 o.ä.).
+
+    Body:
+      device        (str)  – Device-ID
+      on            (bool) – true = Ventil öffnen, false = schließen
+      channelIndex  (int)  – optional, Standard: 1
+    """
+    if state.conn is None:
+        return jsonify({"error": "WebSocket nicht verbunden"}), 503
+
+    data = request.get_json(silent=True, force=True) or {}
+    device_id     = data.get("device")
+    on            = data.get("on")
+    channel_index = data.get("channelIndex", 1)
+
+    if not device_id or not isinstance(on, bool):
+        return jsonify({"error": "Pflichtfelder: device (str), on (bool)"}), 400
+
+    with state.send_lock:
+        rid = send_hmip_set_switch(state.conn, device_id, on, int(channel_index))
+    _register_pending(rid, "/hmip/device/control/setSwitchState")
+    return jsonify({
+        "status": f"{device_id}: {'geöffnet' if on else 'geschlossen'}",
+        "request_id": rid,
+    }), 200
 
 
 # ── API: State ────────────────────────────────────────────────────────────────

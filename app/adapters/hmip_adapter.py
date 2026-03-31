@@ -15,23 +15,38 @@ log = logging.getLogger("bridge-ws")
 
 # HmIP functionalChannelType → DeviceCapability Mapping
 _CHANNEL_TYPE_MAP: Dict[str, DeviceCapability] = {
+    # Schalten / Dimmen / Farbe
     "SWITCH_CHANNEL": DeviceCapability.SWITCH,
     "SWITCH_MEASURING_CHANNEL": DeviceCapability.SWITCH,
+    "MULTI_MODE_INPUT_SWITCH_CHANNEL": DeviceCapability.SWITCH,
     "DIMMER_CHANNEL": DeviceCapability.DIMMER,
+    "NOTIFICATION_LIGHT_CHANNEL": DeviceCapability.COLOR,
+    # Rollläden / Jalousien
     "SHUTTER_CHANNEL": DeviceCapability.SHUTTER,
     "BLIND_CHANNEL": DeviceCapability.SHUTTER,
+    # Temperatur / Klima
     "TEMPERATURE_SENSOR_2_OUTDOOR_CHANNEL": DeviceCapability.TEMPERATURE,
     "WALL_MOUNTED_THERMOSTAT_WITHOUT_DISPLAY_CHANNEL": DeviceCapability.TEMPERATURE,
     "WALL_MOUNTED_THERMOSTAT_PRO_CHANNEL": DeviceCapability.TEMPERATURE,
     "CLIMATE_SENSOR_CHANNEL": DeviceCapability.TEMPERATURE,
+    "HEATING_THERMOSTAT_CHANNEL": DeviceCapability.TEMPERATURE,        # eTRV (HmIP-eTRV-*)
+    "HEATING_THERMOSTAT_EVO_CHANNEL": DeviceCapability.TEMPERATURE,
+    # Luftfeuchtigkeit
     "HUMIDITY_SENSOR_CHANNEL": DeviceCapability.HUMIDITY,
+    # Rauch / Wasser / Alarm
     "SMOKE_DETECTOR_CHANNEL": DeviceCapability.SMOKE,
+    "ALARM_SIREN_CHANNEL": DeviceCapability.SMOKE,                     # Sirenen-Kanal desselben Geräts
     "WATER_SENSOR_CHANNEL": DeviceCapability.WATER,
+    # Bewegung / Präsenz
     "MOTION_DETECTION_CHANNEL": DeviceCapability.MOTION,
+    "PRESENCE_DETECTION_CHANNEL": DeviceCapability.MOTION,
+    # Tür- / Fensterkontakt
     "CONTACT_INTERFACE_CHANNEL": DeviceCapability.CONTACT,
     "SHUTTER_CONTACT_CHANNEL": DeviceCapability.CONTACT,
-    "MULTI_MODE_INPUT_SWITCH_CHANNEL": DeviceCapability.SWITCH,
-    "NOTIFICATION_LIGHT_CHANNEL": DeviceCapability.COLOR,
+    "ROTARY_HANDLE_CHANNEL": DeviceCapability.CONTACT,                 # Fenstergriff-Sensor
+    "TILT_VIBRATION_SENSOR_CHANNEL": DeviceCapability.CONTACT,
+    # Energie
+    "ENERGY_SENSORS_INTERFACE_CHANNEL": DeviceCapability.ENERGY_METER,
 }
 
 

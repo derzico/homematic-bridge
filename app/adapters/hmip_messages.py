@@ -149,3 +149,60 @@ def send_hmip_set_switch(ws: WebSocket, device_id: str, state: bool, channel_ind
     except Exception as e:
         log.exception("Fehler beim Senden von HMIP_SYSTEM_REQUEST")
         return rid
+
+
+def send_hmip_set_alarm_signal_optical(ws: WebSocket, device_id: str, signal: str, channel_index: int = 2) -> str:
+    """Optisches Alarmsignal eines Rauchmelders / Alarmsirene setzen.
+
+    signal: "FULL_ALARM" | "INTRUSION_ALARM" | "PRE_ALARM" | "NO_ALARM"
+    """
+    body = {
+        "opticalAlarmSignal": signal,
+        "channelIndex": channel_index,
+        "deviceId": device_id,
+    }
+    rid, payload = _build_hmip_request("/hmip/device/control/setAlarmSignalOptical", body)
+    try:
+        ws.send(json.dumps(payload))
+        log.info("HMIP_SYSTEM_REQUEST → setAlarmSignalOptical device=%s signal=%s (id=%s)", device_id, signal, rid)
+        return rid
+    except Exception:
+        log.exception("Fehler beim Senden von setAlarmSignalOptical")
+        return rid
+
+
+def send_hmip_set_alarm_signal_acoustic(ws: WebSocket, device_id: str, signal: str, channel_index: int = 2) -> str:
+    """Akustisches Alarmsignal eines Rauchmelders / Alarmsirene setzen.
+
+    signal: "FULL_ALARM" | "INTRUSION_ALARM" | "PRE_ALARM" | "NO_ALARM"
+    """
+    body = {
+        "acousticAlarmSignal": signal,
+        "channelIndex": channel_index,
+        "deviceId": device_id,
+    }
+    rid, payload = _build_hmip_request("/hmip/device/control/setAlarmSignalAcoustic", body)
+    try:
+        ws.send(json.dumps(payload))
+        log.info("HMIP_SYSTEM_REQUEST → setAlarmSignalAcoustic device=%s signal=%s (id=%s)", device_id, signal, rid)
+        return rid
+    except Exception:
+        log.exception("Fehler beim Senden von setAlarmSignalAcoustic")
+        return rid
+
+
+def send_hmip_set_point_temperature(ws: WebSocket, device_id: str, temperature: float, channel_index: int = 1) -> str:
+    """Solltemperatur eines Heizkörperthermostats oder Wandthermostats setzen."""
+    body = {
+        "setPointTemperature": round(float(temperature), 1),
+        "channelIndex": channel_index,
+        "deviceId": device_id,
+    }
+    rid, payload = _build_hmip_request("/hmip/device/control/setSetPointTemperature", body)
+    try:
+        ws.send(json.dumps(payload))
+        log.info("HMIP_SYSTEM_REQUEST → setSetPointTemperature device=%s temp=%.1f (id=%s)", device_id, temperature, rid)
+        return rid
+    except Exception:
+        log.exception("Fehler beim Senden von setSetPointTemperature")
+        return rid
