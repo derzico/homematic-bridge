@@ -595,13 +595,26 @@ def shelly_webui_proxy(ip: str, subpath: str):
     is automatically logged in without having to enter the password manually."""
     import re
     import requests as _req
+    from requests.auth import HTTPDigestAuth
 
-    target = f"http://{ip}/{subpath}"
+    # Gen ermitteln – Gen 1 braucht Digest Auth, Gen 2+ benötigt keine HTTP-Auth
+    cached = {d["ip"]: d for d in shelly_mod.load_cached()}
+    gen = cached.get(ip, {}).get("gen", 1)
+
+    # Gen 1: Root-Pfad direkt auf index.html zeigen (Gen 1 hat keine Root-Seite)
+    effective_subpath = subpath
+    if gen == 1 and not subpath:
+        effective_subpath = "index.html"
+
+    target = f"http://{ip}/{effective_subpath}"
     if request.query_string:
         target += "?" + request.query_string.decode("utf-8", errors="replace")
 
     creds = shelly_mod._credentials
-    auth = creds if (creds and creds[0]) else None
+    if creds and creds[0]:
+        auth = HTTPDigestAuth(creds[0], creds[1] or "") if gen == 1 else creds
+    else:
+        auth = None
 
     try:
         if request.method == "POST":
