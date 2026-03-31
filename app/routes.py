@@ -601,12 +601,7 @@ def shelly_webui_proxy(ip: str, subpath: str):
     cached = {d["ip"]: d for d in shelly_mod.load_cached()}
     gen = cached.get(ip, {}).get("gen", 1)
 
-    # Gen 1: Root-Pfad direkt auf index.html zeigen (Gen 1 hat keine Root-Seite)
-    effective_subpath = subpath
-    if gen == 1 and not subpath:
-        effective_subpath = "index.html"
-
-    target = f"http://{ip}/{effective_subpath}"
+    target = f"http://{ip}/{subpath}"
     if request.query_string:
         target += "?" + request.query_string.decode("utf-8", errors="replace")
 
@@ -629,9 +624,18 @@ def shelly_webui_proxy(ip: str, subpath: str):
     except Exception as exc:
         return f"<h3 style='font-family:sans-serif;padding:24px'>Shelly nicht erreichbar: {exc}</h3>", 502
 
-    # Redirect → rewrite Location so it stays within the proxy
+    # Redirect → immer durch den Proxy umleiten.
+    # Gen 1 Shellies liefern absolute URLs (http://192.168.x.x/path), nicht nur /path.
     if r.status_code in (301, 302, 303, 307, 308):
+        from urllib.parse import urlparse
         loc = r.headers.get("Location", "/")
+        parsed_loc = urlparse(loc)
+        # Absolute URL vom Gerät → nur Path+Query extrahieren
+        if parsed_loc.scheme in ("http", "https") and parsed_loc.netloc:
+            loc = parsed_loc.path
+            if parsed_loc.query:
+                loc += "?" + parsed_loc.query
+        # Relativen Pfad durch den Proxy leiten
         if loc.startswith("/") and not loc.startswith("//"):
             loc = f"/shelly/{ip}/webui{loc}"
         return redirect(loc, r.status_code)
