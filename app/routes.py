@@ -596,9 +596,7 @@ def shelly_webui_proxy(ip: str, subpath: str):
     import re
     import requests as _req
 
-    log.error("SHELLY-PROXY-ENTRY ip=%s subpath=%r method=%s", ip, subpath, request.method)
-
-    # Gen ermitteln – Gen 1 braucht Digest Auth, Gen 2+ benötigt keine HTTP-Auth
+    # Gen ermitteln
     cached = {d["ip"]: d for d in shelly_mod.load_cached()}
     gen = cached.get(ip, {}).get("gen", 1)
 
@@ -624,14 +622,6 @@ def shelly_webui_proxy(ip: str, subpath: str):
             r = _req.get(target, auth=auth, timeout=10, allow_redirects=False)
     except Exception as exc:
         return f"<h3 style='font-family:sans-serif;padding:24px'>Shelly nicht erreichbar: {exc}</h3>", 502
-
-    log.error(
-        "SHELLY-PROXY-DIAG [gen%s] %s %s → %d | CT=%s | Location=%s | body_start=%.200r",
-        gen, request.method, target, r.status_code,
-        r.headers.get("Content-Type", "-"),
-        r.headers.get("Location", "-"),
-        r.content[:300],
-    )
 
     # Redirect → immer durch den Proxy umleiten.
     # Gen 1 Shellies liefern absolute URLs (http://192.168.x.x/path), nicht nur /path.
