@@ -25,7 +25,7 @@
   {# ── Alarm ── #}
   <div class="dash-card {{ 'alarm-active' if alarm.any_active else 'alarm-ok' }}">
     <h3>Alarm / Sicherheit</h3>
-    <div style="margin-bottom:12px">
+    <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       {% if alarm.any_active %}
         <span class="status-pill pill-error">&#9888; ALARM AKTIV</span>
       {% else %}
@@ -40,6 +40,15 @@
       <span class="dv">{{ alarm.last_event_type | replace("_", " ") | e }}</span></div>
     <div class="dash-kv"><span class="dk">Zeitpunkt</span>
       <span class="dv">{{ alarm.last_event_ts }}</span></div>
+    <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+      <button id="btn-clear-smoke"
+        onclick="clearSmokeAlarm()"
+        style="background:var(--surface2);color:var(--red);border:1px solid var(--red);
+               padding:5px 12px;border-radius:5px;font-size:12px;cursor:pointer">
+        &#128684; Rauchmelder-Alarm löschen
+      </button>
+    </div>
+    <div id="alarm-msg" style="margin-top:8px;font-size:12px;display:none"></div>
   </div>
 
   {# ── System ── #}
@@ -101,4 +110,46 @@
   </div>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function clearSmokeAlarm() {
+  const ok = confirm(
+    'Rauchmelder-Alarm löschen?\n\n' +
+    'Dies schaltet das optische und akustische Alarmsignal auf allen\n' +
+    'Rauchmeldern ab. Nur ausführen wenn der Alarm bereits erledigt ist.'
+  );
+  if (!ok) return;
+
+  const btn = document.getElementById('btn-clear-smoke');
+  const msg = document.getElementById('alarm-msg');
+  btn.disabled = true;
+  btn.textContent = 'Wird gesendet…';
+  msg.style.display = 'none';
+
+  try {
+    const r = await fetch('/alarm/clear-smoke', { method: 'POST' });
+    const d = await r.json();
+    if (r.ok) {
+      msg.style.color = 'var(--green)';
+      msg.textContent = d.cleared > 0
+        ? `✓ Alarm-Signal auf ${d.cleared} Gerät(en) gelöscht.`
+        : `ℹ ${d.info || 'Keine Rauchmelder gefunden.'}`;
+      btn.textContent = '✓ Gesendet';
+    } else {
+      msg.style.color = 'var(--red)';
+      msg.textContent = `Fehler: ${d.error || r.status}`;
+      btn.disabled = false;
+      btn.textContent = '🔔 Rauchmelder-Alarm löschen';
+    }
+  } catch (e) {
+    msg.style.color = 'var(--red)';
+    msg.textContent = 'Netzwerkfehler – bitte erneut versuchen.';
+    btn.disabled = false;
+    btn.textContent = '🔔 Rauchmelder-Alarm löschen';
+  }
+  msg.style.display = 'block';
+}
+</script>
 {% endblock %}
