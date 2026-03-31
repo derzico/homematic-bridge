@@ -417,6 +417,28 @@ def hmip_state_get():
 
 # ── Web-UI: Alarm löschen ─────────────────────────────────────────────────────
 
+@bp.post("/alarm/test-smoke")
+@require_web_auth
+def alarm_test_smoke():
+    """Löst auf allen Rauchmeldern kurz das Testsignal aus (Web-UI Aktion)."""
+    if state.conn is None:
+        return jsonify({"error": "WebSocket nicht verbunden"}), 503
+    snap = _load_snapshot()
+    if snap is None:
+        return jsonify({"error": "Kein Snapshot vorhanden"}), 503
+    targets = _find_alarm_siren_devices(snap)
+    if not targets:
+        return jsonify({"error": "Keine Rauchmelder mit Sirenenfunktion gefunden"}), 404
+    with state.send_lock:
+        for did, cidx in targets:
+            rid = send_hmip_set_alarm_signal_optical(state.conn, did, "FULL_ALARM", cidx)
+            _register_pending(rid, "/hmip/device/control/setAlarmSignalOptical")
+            rid = send_hmip_set_alarm_signal_acoustic(state.conn, did, "FULL_ALARM", cidx)
+            _register_pending(rid, "/hmip/device/control/setAlarmSignalAcoustic")
+    log.info("Alarm-Test durch Web-UI: %d Gerät(e)", len(targets))
+    return jsonify({"triggered": len(targets)}), 200
+
+
 @bp.post("/alarm/clear-smoke")
 @require_web_auth
 def alarm_clear_smoke():

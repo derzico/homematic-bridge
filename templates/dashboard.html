@@ -41,11 +41,17 @@
     <div class="dash-kv"><span class="dk">Zeitpunkt</span>
       <span class="dv">{{ alarm.last_event_ts }}</span></div>
     <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+      <button id="btn-test-smoke"
+        onclick="testSmokeAlarm()"
+        style="background:var(--surface2);color:var(--yellow);border:1px solid var(--yellow);
+               padding:5px 12px;border-radius:5px;font-size:12px;cursor:pointer">
+        &#128276; Rauchmelder testen
+      </button>
       <button id="btn-clear-smoke"
         onclick="clearSmokeAlarm()"
         style="background:var(--surface2);color:var(--red);border:1px solid var(--red);
                padding:5px 12px;border-radius:5px;font-size:12px;cursor:pointer">
-        &#128684; Rauchmelder-Alarm löschen
+        &#128684; Alarm löschen
       </button>
     </div>
     <div id="alarm-msg" style="margin-top:8px;font-size:12px;display:none"></div>
@@ -114,19 +120,70 @@
 
 {% block scripts %}
 <script>
-async function clearSmokeAlarm() {
+async function testSmokeAlarm() {
+  const TEST_SEC = 5;
   const ok = confirm(
-    'Rauchmelder-Alarm löschen?\n\n' +
-    'Dies schaltet das optische und akustische Alarmsignal auf allen\n' +
-    'Rauchmeldern ab. Nur ausführen wenn der Alarm bereits erledigt ist.'
+    `Rauchmelder-Test starten?\n\n` +
+    `Alle Rauchmelder piepen und blinken für ${TEST_SEC} Sekunden,\n` +
+    `dann wird das Signal automatisch gestoppt.`
   );
   if (!ok) return;
 
-  const btn = document.getElementById('btn-clear-smoke');
-  const msg = document.getElementById('alarm-msg');
+  const btn  = document.getElementById('btn-test-smoke');
+  const btnC = document.getElementById('btn-clear-smoke');
+  const msg  = document.getElementById('alarm-msg');
   btn.disabled = true;
-  btn.textContent = 'Wird gesendet…';
+  btnC.disabled = true;
   msg.style.display = 'none';
+
+  try {
+    const r = await fetch('/alarm/test-smoke', { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) {
+      msg.style.color = 'var(--red)';
+      msg.textContent = `Fehler: ${d.error || r.status}`;
+      msg.style.display = 'block';
+      btn.disabled = false; btnC.disabled = false;
+      return;
+    }
+    // Countdown
+    let remaining = TEST_SEC;
+    msg.style.color = 'var(--yellow)';
+    msg.style.display = 'block';
+    const tick = setInterval(() => {
+      remaining--;
+      btn.textContent = `🔔 Test läuft… ${remaining}s`;
+      msg.textContent = `Test aktiv auf ${d.triggered} Gerät(en) – stoppt in ${remaining}s`;
+      if (remaining <= 0) {
+        clearInterval(tick);
+        clearSmokeAlarm(true);  // automatisch löschen
+      }
+    }, 1000);
+    btn.textContent = `🔔 Test läuft… ${TEST_SEC}s`;
+    msg.textContent = `Test aktiv auf ${d.triggered} Gerät(en) – stoppt in ${TEST_SEC}s`;
+  } catch (e) {
+    msg.style.color = 'var(--red)';
+    msg.textContent = 'Netzwerkfehler – bitte erneut versuchen.';
+    msg.style.display = 'block';
+    btn.disabled = false; btnC.disabled = false;
+  }
+}
+
+async function clearSmokeAlarm(auto = false) {
+  if (!auto) {
+    const ok = confirm(
+      'Rauchmelder-Alarm löschen?\n\n' +
+      'Dies schaltet das optische und akustische Alarmsignal auf allen\n' +
+      'Rauchmeldern ab. Nur ausführen wenn der Alarm bereits erledigt ist.'
+    );
+    if (!ok) return;
+  }
+
+  const btn  = document.getElementById('btn-clear-smoke');
+  const btnT = document.getElementById('btn-test-smoke');
+  const msg  = document.getElementById('alarm-msg');
+  btn.disabled = true;
+  if (!auto) msg.style.display = 'none';
 
   try {
     const r = await fetch('/alarm/clear-smoke', { method: 'POST' });
@@ -136,18 +193,24 @@ async function clearSmokeAlarm() {
       msg.textContent = d.cleared > 0
         ? `✓ Alarm-Signal auf ${d.cleared} Gerät(en) gelöscht.`
         : `ℹ ${d.info || 'Keine Rauchmelder gefunden.'}`;
-      btn.textContent = '✓ Gesendet';
+      btn.textContent  = '✓ Gesendet';
+      btnT.textContent = '🔔 Rauchmelder testen';
+      btnT.disabled    = false;
     } else {
-      msg.style.color = 'var(--red)';
-      msg.textContent = `Fehler: ${d.error || r.status}`;
-      btn.disabled = false;
-      btn.textContent = '🔔 Rauchmelder-Alarm löschen';
+      msg.style.color  = 'var(--red)';
+      msg.textContent  = `Fehler: ${d.error || r.status}`;
+      btn.disabled     = false;
+      btn.textContent  = '🔔 Alarm löschen';
+      btnT.disabled    = false;
+      btnT.textContent = '🔔 Rauchmelder testen';
     }
   } catch (e) {
-    msg.style.color = 'var(--red)';
-    msg.textContent = 'Netzwerkfehler – bitte erneut versuchen.';
-    btn.disabled = false;
-    btn.textContent = '🔔 Rauchmelder-Alarm löschen';
+    msg.style.color  = 'var(--red)';
+    msg.textContent  = 'Netzwerkfehler – bitte erneut versuchen.';
+    btn.disabled     = false;
+    btn.textContent  = '🔔 Alarm löschen';
+    btnT.disabled    = false;
+    btnT.textContent = '🔔 Rauchmelder testen';
   }
   msg.style.display = 'block';
 }
