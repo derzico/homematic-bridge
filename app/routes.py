@@ -595,7 +595,6 @@ def shelly_webui_proxy(ip: str, subpath: str):
     is automatically logged in without having to enter the password manually."""
     import re
     import requests as _req
-    from requests.auth import HTTPDigestAuth
 
     log.error("SHELLY-PROXY-ENTRY ip=%s subpath=%r method=%s", ip, subpath, request.method)
 
@@ -609,7 +608,7 @@ def shelly_webui_proxy(ip: str, subpath: str):
 
     creds = shelly_mod._credentials
     if creds and creds[0]:
-        auth = HTTPDigestAuth(creds[0], creds[1] or "") if gen == 1 else creds
+        auth = creds
     else:
         auth = None
 
