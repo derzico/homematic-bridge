@@ -644,37 +644,70 @@ def shelly_webui_proxy(ip: str, subpath: str):
     proxy_base = f"/shelly/{ip}/webui"
 
     if "text/html" in content_type:
-        # JS interceptor: rewrites absolute-path XHR / fetch calls through our proxy
+        device_origin = f"http://{ip}"
+
+        # JS interceptor: rewrites root-relative XHR/fetch/location through proxy
         interceptor = (
             "<script>"
             "(function(){"
             f"var B='{proxy_base}';"
+            f"var O='{device_origin}';"
+            # Root-relative URL helper
+            "function rw(u){{"
+            "if(typeof u!=='string')return u;"
+            "if(u.startsWith(O))u=u.slice(O.length)||'/';"
+            "if(u.charAt(0)==='/'&&u.charAt(1)!=='/')u=B+u;"
+            "return u;}};"
+            # XHR
             "var oX=XMLHttpRequest.prototype.open;"
-            "XMLHttpRequest.prototype.open=function(m,u){"
-            "if(typeof u==='string'&&u.charAt(0)==='/'&&u.charAt(1)!=='/')u=B+u;"
-            "return oX.apply(this,arguments);};"
-            "if(window.fetch){var oF=window.fetch;window.fetch=function(u,o){"
-            "if(typeof u==='string'&&u.charAt(0)==='/'&&u.charAt(1)!=='/')u=B+u;"
-            "return oF.call(window,u,o);};"
-            "}"
+            "XMLHttpRequest.prototype.open=function(m,u){return oX.apply(this,[m,rw(u)].concat([].slice.call(arguments,2)));};"
+            # fetch
+            "if(window.fetch){var oF=window.fetch;window.fetch=function(u,o){return oF.call(window,rw(u),o);};};"
+            # location.href setter
+            "try{var lD=Object.getOwnPropertyDescriptor(Location.prototype,'href');"
+            "if(lD&&lD.set){Object.defineProperty(Location.prototype,'href',{"
+            "get:lD.get,set:function(v){lD.set.call(this,rw(v));}});}}catch(e){};"
+            # history.pushState / replaceState
+            "['pushState','replaceState'].forEach(function(fn){var o=history[fn];"
+            "history[fn]=function(s,t,u){return o.call(history,s,t,u?rw(u):u);};});"
             "})();"
             "</script>"
         )
         html_text = r.text
 
-        # Rewrite absolute paths in src / href / action attributes
+        # Rewrite absolute paths in src / href / action / data attributes
         def _rewrite(m: re.Match) -> str:
             attr, path = m.group(1), m.group(2)
+            # Absolute URL pointing to the device
+            if path.startswith(device_origin):
+                path = path[len(device_origin):] or "/"
+            # Root-relative path
             if path.startswith("/") and not path.startswith("//"):
                 return f'{attr}="{proxy_base}{path}"'
             return m.group(0)
 
-        html_text = re.sub(r'(src|href|action)="(/[^"]*)"', _rewrite, html_text)
+        html_text = re.sub(r'(src|href|action|data)="((?:' + re.escape(device_origin) + r')?/[^"]*)"', _rewrite, html_text)
+
+        # Rewrite <meta http-equiv="refresh" content="N; url=...">
+        def _rewrite_meta(m: re.Match) -> str:
+            content = m.group(1)
+            def _sub_url(mu: re.Match) -> str:
+                url = mu.group(1)
+                if url.startswith(device_origin):
+                    url = url[len(device_origin):] or "/"
+                if url.startswith("/") and not url.startswith("//"):
+                    url = proxy_base + url
+                return f"url={url}"
+            return 'content="' + re.sub(r"url=([^\s;\"']+)", _sub_url, content, flags=re.IGNORECASE) + '"'
+
+        html_text = re.sub(r'content="([^"]*url=[^"]*)"', _rewrite_meta, html_text, flags=re.IGNORECASE)
 
         # Inject base href (helps with truly relative URLs like "js/app.js")
         base_tag = f'<base href="{proxy_base}/">'
         if "<head>" in html_text:
             html_text = html_text.replace("<head>", f"<head>{base_tag}{interceptor}", 1)
+        elif "<HEAD>" in html_text:
+            html_text = html_text.replace("<HEAD>", f"<HEAD>{base_tag}{interceptor}", 1)
         else:
             html_text = base_tag + interceptor + html_text
 
