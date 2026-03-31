@@ -624,6 +624,14 @@ def shelly_webui_proxy(ip: str, subpath: str):
     except Exception as exc:
         return f"<h3 style='font-family:sans-serif;padding:24px'>Shelly nicht erreichbar: {exc}</h3>", 502
 
+    log.warning(
+        "Shelly proxy [gen%s] %s %s → %d | CT=%s | Location=%s | body_start=%.200r",
+        gen, request.method, target, r.status_code,
+        r.headers.get("Content-Type", "-"),
+        r.headers.get("Location", "-"),
+        r.content[:300],
+    )
+
     # Redirect → immer durch den Proxy umleiten.
     # Gen 1 Shellies liefern absolute URLs (http://192.168.x.x/path), nicht nur /path.
     if r.status_code in (301, 302, 303, 307, 308):
@@ -632,12 +640,16 @@ def shelly_webui_proxy(ip: str, subpath: str):
         parsed_loc = urlparse(loc)
         # Absolute URL vom Gerät → nur Path+Query extrahieren
         if parsed_loc.scheme in ("http", "https") and parsed_loc.netloc:
-            loc = parsed_loc.path
+            loc = parsed_loc.path or "/"
             if parsed_loc.query:
                 loc += "?" + parsed_loc.query
-        # Relativen Pfad durch den Proxy leiten
+        # Relative Pfade ohne führenden Slash normalisieren
+        if loc and not loc.startswith("/"):
+            loc = "/" + loc
+        # Pfad durch den Proxy leiten
         if loc.startswith("/") and not loc.startswith("//"):
             loc = f"/shelly/{ip}/webui{loc}"
+        log.debug("Shelly proxy redirect → %s", loc)
         return redirect(loc, r.status_code)
 
     content_type = r.headers.get("Content-Type", "application/octet-stream")
