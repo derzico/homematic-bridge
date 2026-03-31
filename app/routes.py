@@ -597,6 +597,8 @@ def shelly_webui_proxy(ip: str, subpath: str):
     import requests as _req
     from requests.auth import HTTPDigestAuth
 
+    log.error("SHELLY-PROXY-ENTRY ip=%s subpath=%r method=%s", ip, subpath, request.method)
+
     # Gen ermitteln – Gen 1 braucht Digest Auth, Gen 2+ benötigt keine HTTP-Auth
     cached = {d["ip"]: d for d in shelly_mod.load_cached()}
     gen = cached.get(ip, {}).get("gen", 1)
