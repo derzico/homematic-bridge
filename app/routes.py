@@ -587,7 +587,7 @@ def shelly_relay(ip: str, channel: int):
     return jsonify({"success": ok, "ip": ip, "channel": channel, "on": on}), 200 if ok else 502
 
 
-@bp.route("/shelly/<ip>/webui", defaults={"subpath": ""}, methods=["GET", "POST"])
+@bp.route("/shelly/<ip>/webui", defaults={"subpath": ""}, methods=["GET", "POST"], strict_slashes=False)
 @bp.route("/shelly/<ip>/webui/<path:subpath>", methods=["GET", "POST"])
 @require_web_auth
 def shelly_webui_proxy(ip: str, subpath: str):
