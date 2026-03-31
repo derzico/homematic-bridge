@@ -624,8 +624,8 @@ def shelly_webui_proxy(ip: str, subpath: str):
     except Exception as exc:
         return f"<h3 style='font-family:sans-serif;padding:24px'>Shelly nicht erreichbar: {exc}</h3>", 502
 
-    log.warning(
-        "Shelly proxy [gen%s] %s %s → %d | CT=%s | Location=%s | body_start=%.200r",
+    log.error(
+        "SHELLY-PROXY-DIAG [gen%s] %s %s → %d | CT=%s | Location=%s | body_start=%.200r",
         gen, request.method, target, r.status_code,
         r.headers.get("Content-Type", "-"),
         r.headers.get("Location", "-"),
