@@ -1,15 +1,40 @@
 # homematic-bridge
 
-Python-Bridge zwischen **Homematic IP (HCU)** und externen Smarthome-Systemen (Shelly, Loxone).
+> Python-Bridge zwischen **Homematic IP (HCU)** und externen Smarthome-Systemen – gebaut weil kein System von Haus aus mit dem anderen redet.
 
-- Echtzeit-Gerätestatus via WebSocket + Delta-Merge
-- HTTP-API zur Steuerung (Schalten, Dimmen, RGB, Rollläden, Thermostat, Alarm, Bewässerung)
-- Shelly-Integration: Auto-Scan (Gen1 + Gen2), Steuerung, Web-UI-Proxy
-- Loxone UDP-Push bei jedem HmIP-Event
-- Web-Interface: Dashboard, Heizung, Geräteübersicht, Konfigurationseditor
-- Docker-Deployment
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![Docker](https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white)](./docker-compose.yml)
 
-> Nicht offiziell von eQ-3/Homematic. Marken gehören ihren jeweiligen Inhabern.
+---
+
+## Was ist das?
+
+Die `homematic-bridge` ist ein kleiner Python-Server, der als Vermittler zwischen Homematic IP, Loxone und Shelly fungiert. Er verbindet sich per WebSocket direkt mit der **Homematic IP Control Unit (HCU)** und empfängt in Echtzeit alle Gerätezustände.
+
+```
+HCU (WebSocket) ──► homematic-bridge ──► Loxone Miniserver (UDP)
+                          │
+                          ├──► HTTP-API (Steuerung)
+                          ├──► Shelly-Integration
+                          └──► Web-Interface :8080
+```
+
+---
+
+## Features
+
+| Feature | Beschreibung |
+|---|---|
+| **Echtzeit-Events** | WebSocket-Verbindung zur HCU mit Delta-Merge |
+| **Loxone UDP-Push** | Jede HmIP-Zustandsänderung als UDP-Paket an den Miniserver |
+| **HTTP-API** | Schalten, Dimmen, RGB, Rollläden, Thermostat, Alarm, Bewässerung |
+| **Shelly-Integration** | Auto-Scan (Gen1 + Gen2), Steuerung, Web-UI-Proxy |
+| **Web-Interface** | Dashboard, Heizung, Geräteübersicht, Konfigurationseditor |
+| **API-Key-Auth** | Optionale Absicherung aller Endpunkte |
+| **Docker-Deployment** | Ein Befehl, sofort einsatzbereit |
+
+---
 
 ## Schnellstart
 
@@ -23,9 +48,36 @@ docker compose up -d --build
 
 Web-Interface: `http://<host>:8080`
 
+---
+
+## Konfiguration
+
+Alle Einstellungen in `config/config.yaml` (Vorlage: `config/config_sample.yaml`):
+
+```yaml
+homematic_hcu: hcu1-E461.local   # Hostname oder IP der HCU
+homematic_token:                  # API-Token (über /api/token abrufen)
+
+# Loxone UDP-Push (optional)
+loxone:
+  miniserver_ip:   # z.B. 192.168.1.100 (leer = deaktiviert)
+  udp_port: 7777
+
+# Shelly-Scanner (optional)
+shelly:
+  enabled: false
+  subnet: "192.168.1.0/24"
+
+# API-Absicherung
+api_key:
+require_api_key: true
+```
+
+---
+
 ## Dokumentation
 
-Die vollständige Dokumentation befindet sich im **[GitHub Wiki](https://github.com/derzico/homematic-bridge/wiki)**:
+Vollständige Dokumentation im **[GitHub Wiki](https://github.com/derzico/homematic-bridge/wiki)**:
 
 | Seite | Inhalt |
 |---|---|
@@ -37,6 +89,12 @@ Die vollständige Dokumentation befindet sich im **[GitHub Wiki](https://github.
 | [API-Referenz](https://github.com/derzico/homematic-bridge/wiki/API-Referenz) | Alle Endpunkte mit Beispielen |
 | [Web-Interface](https://github.com/derzico/homematic-bridge/wiki/Web-Interface) | Dashboard, Seiten, Features |
 
+Weitere Infos: **[schnellniclas.de/homematic-bridge](https://schnellniclas.de/homematic-bridge)**
+
+---
+
 ## Lizenz
 
 Apache-2.0 – siehe [LICENSE](./LICENSE)
+
+> Nicht offiziell von eQ-3/Homematic IP. Alle Markennamen gehören ihren jeweiligen Inhabern.
