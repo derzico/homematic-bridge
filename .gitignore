@@ -8,3 +8,6 @@ static/
 data/
 logs/
 .claude/
+.coverage
+.pytest_cache/
+htmlcov/
