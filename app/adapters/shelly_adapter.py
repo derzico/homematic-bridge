@@ -21,16 +21,24 @@ log = logging.getLogger("bridge-ws")
 _SHELLY_CACHE = "data/shelly_devices.json"
 _WORKERS = 64
 
-# Globale Credentials (aus config.yaml geladen)
+# Globale Credentials (aus config.yaml geladen) – durch _credentials_lock geschützt
 _credentials: Optional[tuple] = None  # (username, password) oder None
+_credentials_lock = threading.Lock()
 
 
 def set_credentials(username: Optional[str], password: Optional[str]) -> None:
     global _credentials
-    if username and password:
-        _credentials = (username, password)
-    else:
-        _credentials = None
+    with _credentials_lock:
+        if username and password:
+            _credentials = (username, password)
+        else:
+            _credentials = None
+
+
+def get_credentials() -> Optional[tuple]:
+    """Liest die aktuellen Credentials thread-safe."""
+    with _credentials_lock:
+        return _credentials
 
 
 # ── Scan-Status (thread-safe) ─────────────────────────────────────────────────
@@ -55,26 +63,28 @@ def scan_status() -> Dict[str, Any]:
 def _get(ip: str, path: str, timeout: float) -> Optional[Dict]:
     """GET mit optionaler Auth. Bei 401 wird ohne Auth wiederholt (gemischte Umgebungen)."""
     url = f"http://{ip}{path}"
+    creds = get_credentials()
     try:
-        r = requests.get(url, auth=_credentials, timeout=timeout)
+        r = requests.get(url, auth=creds, timeout=timeout)
         if r.status_code == 200:
             return r.json()
-        if r.status_code == 401 and _credentials:
+        if r.status_code == 401 and creds:
             # Gerät hat kein Passwort – ohne Auth nochmals versuchen
             r2 = requests.get(url, timeout=timeout)
             if r2.status_code == 200:
                 return r2.json()
     except Exception:
-        pass
+        log.debug("Shelly GET %s fehlgeschlagen", url, exc_info=True)
     return None
 
 
 def _post(ip: str, path: str, timeout: float, **kwargs) -> Optional[requests.Response]:
     """POST mit optionaler Auth."""
     url = f"http://{ip}{path}"
+    creds = get_credentials()
     try:
-        r = requests.post(url, auth=_credentials, timeout=timeout, **kwargs)
-        if r.status_code == 401 and _credentials:
+        r = requests.post(url, auth=creds, timeout=timeout, **kwargs)
+        if r.status_code == 401 and creds:
             r = requests.post(url, timeout=timeout, **kwargs)
         return r
     except Exception:
@@ -475,8 +485,11 @@ class ShellyAdapter(BaseAdapter):
             self._scan_thread.start()
 
     def _periodic_scan(self, subnet: str, timeout: float, interval_h: float) -> None:
-        while True:
-            time.sleep(interval_h * 3600)
+        while not state.stop_event.is_set():
+            # state.stop_event.wait gibt True zurück wenn gesetzt → Loop verlassen
+            if state.stop_event.wait(timeout=interval_h * 3600):
+                log.info("Shelly: Zyklischer Scan beendet (stop_event)")
+                return
             with state.config_lock:
                 cfg = dict(state.config.get("shelly") or {})
             set_credentials(cfg.get("username"), cfg.get("password"))
@@ -484,7 +497,8 @@ class ShellyAdapter(BaseAdapter):
             start_scan(subnet, timeout_sec=timeout)
 
     def stop(self) -> None:
-        pass  # Scan-Threads sind Daemons, beenden sich mit dem Prozess
+        # stop_event wird global gesetzt – periodischer Scan-Thread beendet sich.
+        state.stop_event.set()
 
     def is_connected(self) -> bool:
         return self._config.get("enabled", False)

@@ -99,11 +99,13 @@ def ws_loop() -> None:
         log.warning("[SSL] Verbindung ohne Zertifikatsprüfung (unsicher)")
 
     backoff = 1.0
-    while True:
+    while not state.stop_event.is_set():
         try:
             log.info("Verbinde zu WebSocket (Port 9001)...")
-            state.conn = websocket.create_connection(url, header=headers, sslopt=sslopt, timeout=10)
-            state.conn.settimeout(30)
+            new_conn = websocket.create_connection(url, header=headers, sslopt=sslopt, timeout=10)
+            new_conn.settimeout(30)
+            with state.send_lock:
+                state.conn = new_conn
             log.info("WebSocket-Verbindung hergestellt.")
             backoff = 1.0
 
@@ -112,7 +114,7 @@ def ws_loop() -> None:
                 rid = send_get_system_state(state.conn)
             _register_pending(rid, "/hmip/home/getSystemState")
 
-            while True:
+            while not state.stop_event.is_set():
                 try:
                     msg = state.conn.recv()
                 except websocket.WebSocketTimeoutException:
@@ -183,17 +185,24 @@ def ws_loop() -> None:
                 _cleanup_pending()
 
         except Exception:
+            if state.stop_event.is_set():
+                log.info("WebSocket-Loop beendet (stop_event).")
+                break
             log.exception("WebSocket Fehler")
             try:
-                if state.conn:
-                    state.conn.close()
+                with state.send_lock:
+                    if state.conn:
+                        state.conn.close()
+                    state.conn = None
             except Exception:
-                pass
-            finally:
-                state.conn = None
+                with state.send_lock:
+                    state.conn = None
             with state.pending_lock:
                 state.pending.clear()
             sleep_for = backoff + random.uniform(0, 0.3 * backoff)
             log.info("Reconnect in %.1fs (Backoff: %.1fs)", sleep_for, backoff)
-            time.sleep(sleep_for)
+            # Mit stop_event warten – ermöglicht sofortige Beendigung
+            if state.stop_event.wait(timeout=sleep_for):
+                log.info("WebSocket-Loop beendet (stop_event).")
+                break
             backoff = min(backoff * 2.0, 60.0)

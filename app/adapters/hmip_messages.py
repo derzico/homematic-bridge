@@ -8,24 +8,30 @@ from typing import Any, Dict, Optional, Tuple
 
 from websocket import WebSocket
 
-from config.loader import load_config
+import app.state as state
 
-# Konfiguration laden (inkl. Token sicherstellen)
-config: Dict[str, Any] = load_config()
 log = logging.getLogger("bridge-ws")
 
-PLUGIN_ID: Optional[str] = config.get("plugin_id")
-FRIENDLY_NAME: Optional[Dict[str, str]] = config.get("friendly_name")
+
+def _plugin_id() -> Optional[str]:
+    """Aktuelle plugin_id aus dem Shared State (thread-safe gelesen)."""
+    with state.config_lock:
+        return state.config.get("plugin_id")
+
+
+def _friendly_name() -> Optional[Dict[str, str]]:
+    with state.config_lock:
+        return state.config.get("friendly_name")
 
 
 def send_plugin_state(ws: WebSocket, msg_id: Optional[str] = None) -> None:
     response = {
-        "pluginId": PLUGIN_ID,
+        "pluginId": _plugin_id(),
         "id": msg_id or str(uuid.uuid4()),
         "type": "PLUGIN_STATE_RESPONSE",
         "body": {
             "pluginReadinessStatus": "READY",
-            "friendlyName": FRIENDLY_NAME
+            "friendlyName": _friendly_name()
         }
     }
 
@@ -38,7 +44,7 @@ def send_plugin_state(ws: WebSocket, msg_id: Optional[str] = None) -> None:
 def _build_hmip_request(path: str, body: Optional[Dict[str, Any]] = None) -> Tuple[str, Dict[str, Any]]:
     rid = str(uuid.uuid4())
     payload = {
-        "pluginId": PLUGIN_ID,
+        "pluginId": _plugin_id(),
         "id": rid,
         "type": "HMIP_SYSTEM_REQUEST",
         "body": {
@@ -60,7 +66,7 @@ def send_get_system_state(ws: WebSocket) -> str:
 
 def send_config_template_response(ws: WebSocket, msg_id: str, current_log_level: str) -> None:
     response = {
-        "pluginId": PLUGIN_ID,
+        "pluginId": _plugin_id(),
         "id": msg_id or str(uuid.uuid4()),
         "type": "CONFIG_TEMPLATE_RESPONSE",
         "body": {
@@ -89,7 +95,7 @@ def send_config_update_response(ws: WebSocket, msg_id: str, status: str = "APPLI
     if message:
         body["message"] = message
     response = {
-        "pluginId": PLUGIN_ID,
+        "pluginId": _plugin_id(),
         "id": msg_id,
         "type": "CONFIG_UPDATE_RESPONSE",
         "body": body,
@@ -135,18 +141,18 @@ def send_hmip_set_hue_saturation_dim_level(ws: WebSocket, device_id: str, hue: i
         return rid
 
 
-def send_hmip_set_switch(ws: WebSocket, device_id: str, state: bool, channel_index: int = 0) -> str:
+def send_hmip_set_switch(ws: WebSocket, device_id: str, on: bool, channel_index: int = 0) -> str:
     body = {
-        "on": state,
+        "on": on,
         "channelIndex": channel_index,
         "deviceId": device_id
     }
     rid, payload = _build_hmip_request("/hmip/device/control/setSwitchState", body)
     try:
         ws.send(json.dumps(payload))
-        log.info(f"HMIP_SYSTEM_REQUEST gesendet für device {device_id} → {'ON' if state else 'OFF'} (id={rid})")
+        log.info(f"HMIP_SYSTEM_REQUEST gesendet für device {device_id} → {'ON' if on else 'OFF'} (id={rid})")
         return rid
-    except Exception as e:
+    except Exception:
         log.exception("Fehler beim Senden von HMIP_SYSTEM_REQUEST")
         return rid
 

@@ -1,12 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 # state.py – Gemeinsamer Laufzeitzustand (wird von main.py initialisiert)
 
-from threading import Lock
+from threading import Event, Lock
 from typing import Dict, Any, Optional
 
-# WebSocket-Verbindung
+# WebSocket-Verbindung (gelesen/geschrieben unter send_lock)
 conn = None
 send_lock = Lock()
+
+# Globales Stop-Flag für daemon-Threads (ws_loop, Shelly-Periodic-Scan)
+stop_event = Event()
 
 # Pending-Requests: id -> {"path": str, "ts": float}
 pending: Dict[str, Dict[str, Any]] = {}

@@ -71,12 +71,14 @@ class HmIPAdapter(BaseAdapter):
         log.info("HmIP-Adapter: WebSocket-Thread gestartet")
 
     def stop(self) -> None:
-        if state.conn:
-            try:
-                state.conn.close()
-            except Exception:
-                pass
-            state.conn = None
+        state.stop_event.set()
+        with state.send_lock:
+            if state.conn:
+                try:
+                    state.conn.close()
+                except Exception:
+                    log.debug("conn.close() Fehler ignoriert", exc_info=True)
+                state.conn = None
 
     def is_connected(self) -> bool:
         return state.conn is not None

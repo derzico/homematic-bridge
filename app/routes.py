@@ -8,14 +8,13 @@ import os
 import time
 from typing import Any, Dict, Optional
 
+import yaml
 from flask import Blueprint, jsonify, redirect, render_template, request, session
 from werkzeug.security import check_password_hash
 
+import app.adapters.shelly_adapter as shelly_mod
+import app.shelly_proxy as shelly_proxy
 import app.state as state
-from app.auth import generate_csrf_token, require_api_key, require_csrf, require_web_auth
-from app.view_helpers import (prepare_dashboard, prepare_device_detail,
-                               prepare_device_overview, prepare_device_status,
-                               prepare_heating, prepare_shelly)
 from app.adapters.hmip_messages import (send_hmip_set_alarm_signal_acoustic,
                                         send_hmip_set_alarm_signal_optical,
                                         send_hmip_set_dim_level,
@@ -23,7 +22,12 @@ from app.adapters.hmip_messages import (send_hmip_set_alarm_signal_acoustic,
                                         send_hmip_set_point_temperature,
                                         send_hmip_set_switch)
 from app.adapters.hmip_websocket import _register_pending
+from app.auth import generate_csrf_token, require_api_key, require_csrf, require_web_auth
 from app.utils import _find_device_in_list, _locate_devices_container
+from app.view_helpers import (prepare_dashboard, prepare_device_detail,
+                               prepare_device_overview, prepare_device_status,
+                               prepare_heating, prepare_shelly)
+from config.loader import validate_config
 
 bp = Blueprint("bridge", __name__)
 log = logging.getLogger("bridge-ws")
@@ -72,9 +76,8 @@ def login():
         if pw_hash:
             ok = check_password_hash(pw_hash, password)
         else:
-            # Fallback: Klartext-Passwort oder API-Key
-            expected = state.config_internal.get("web_password") or state.API_KEY
-            ok = bool(expected and password == expected)
+            # Fallback: API-Key (kein Klartext-Passwort mehr unterstützt)
+            ok = bool(state.API_KEY and password == state.API_KEY)
         if ok:
             session.permanent = True
             session["authenticated"] = True
@@ -123,46 +126,46 @@ def serve_device_detail(device_id):
 
 # ── API: Switch ───────────────────────────────────────────────────────────────
 
-@bp.post("/hmipSwitch")
-@require_api_key
-def hmip_switch_post():
+def _do_switch(device_id: Optional[str], on: Optional[bool], channel_index: Any):
+    """Gemeinsamer Code für GET/POST hmipSwitch.
+
+    Validiert Parameter, sendet Schaltbefehl und liefert Flask-Response zurück.
+    """
     if state.conn is None:
         return jsonify({"error": "WebSocket nicht verbunden"}), 503
-    data = request.get_json(silent=True, force=True) or {}
-    device_id     = data.get("device")
-    on            = data.get("on")
-    channel_index = data.get("channelIndex", 0)
     if not device_id or not isinstance(on, bool):
         return jsonify({"error": "Ungültige Parameter: device (str), on (bool), optional channelIndex (int)"}), 400
+    try:
+        channel_index = int(channel_index)
+    except (TypeError, ValueError):
+        return jsonify({"error": "channelIndex muss eine ganze Zahl sein"}), 400
     with state.send_lock:
         rid = send_hmip_set_switch(state.conn, device_id, on, channel_index)
     _register_pending(rid, "/hmip/device/control/setSwitchState")
     return jsonify({"status": f"{device_id}: {'ON' if on else 'OFF'}", "request_id": rid}), 200
 
 
+@bp.post("/hmipSwitch")
+@require_api_key
+def hmip_switch_post():
+    data = request.get_json(silent=True, force=True) or {}
+    return _do_switch(data.get("device"), data.get("on"), data.get("channelIndex", 0))
+
+
 @bp.get("/hmipSwitch")
 def hmip_switch_get():
+    # Lokale Aufrufe (127.0.0.1) sind ohne API-Key erlaubt – komfortable Steuerung
+    # vom selben Host (z.B. cron). Externe Aufrufe brauchen X-API-Key.
     local = request.remote_addr in {"127.0.0.1", "::1"}
     if not local:
         if not state.REQUIRE_API_KEY or not state.API_KEY:
             return jsonify({"error": "Nur lokal erlaubt oder X-API-Key erforderlich"}), 403
         if request.headers.get("X-API-Key") != state.API_KEY:
             return jsonify({"error": "unauthorized"}), 401
-    if state.conn is None:
-        return jsonify({"error": "WebSocket nicht verbunden"}), 503
-    device_id = request.args.get("device")
-    on_param  = request.args.get("on")
-    try:
-        channel_index = int(request.args.get("channelIndex", "0"))
-    except ValueError:
-        return jsonify({"error": "channelIndex muss eine Zahl sein"}), 400
-    if not device_id or on_param not in {"true", "false"}:
-        return jsonify({"error": "Ungültige Parameter"}), 400
-    on = on_param == "true"
-    with state.send_lock:
-        rid = send_hmip_set_switch(state.conn, device_id, on, channel_index)
-    _register_pending(rid, "/hmip/device/control/setSwitchState")
-    return jsonify({"status": f"{device_id}: {'ON' if on else 'OFF'}", "request_id": rid}), 200
+    on_param = request.args.get("on")
+    if on_param not in {"true", "false"}:
+        return jsonify({"error": "Parameter 'on' muss 'true' oder 'false' sein"}), 400
+    return _do_switch(request.args.get("device"), on_param == "true", request.args.get("channelIndex", "0"))
 
 
 # ── API: Dimmer ───────────────────────────────────────────────────────────────
@@ -184,6 +187,10 @@ def hmip_dimmer_post():
         return jsonify({"error": "dimLevel muss eine Zahl sein"}), 400
     if not 0 <= dim_level <= 100:
         return jsonify({"error": "dimLevel muss zwischen 0 und 100 liegen"}), 400
+    try:
+        channel_index = int(channel_index)
+    except (TypeError, ValueError):
+        return jsonify({"error": "channelIndex muss eine ganze Zahl sein"}), 400
     with state.send_lock:
         rid = send_hmip_set_dim_level(state.conn, device_id, round(dim_level / 100.0, 2), channel_index)
     _register_pending(rid, "/hmip/device/control/setDimLevel")
@@ -203,6 +210,10 @@ def hmip_rgb_post():
     channel_index = data.get("channelIndex", 1)
     if not device_id or not rgb_str:
         return jsonify({"error": "Ungültige Parameter: device (str), rgb (str, z.B. 'R=50%,G=30%,B=100%'), optional channelIndex (int, default 1)"}), 400
+    try:
+        channel_index = int(channel_index)
+    except (TypeError, ValueError):
+        return jsonify({"error": "channelIndex muss eine ganze Zahl sein"}), 400
     try:
         parts = {}
         for part in rgb_str.replace(" ", "").split(","):
@@ -292,7 +303,10 @@ def hmip_alarm_post():
                     break
         if ch_idx is None:
             ch_idx = 2  # HmIP-Konvention: Kanal 2 = ALARM_SIREN_CHANNEL
-        targets = [(device_id, int(ch_idx))]
+        try:
+            targets = [(device_id, int(ch_idx))]
+        except (TypeError, ValueError):
+            return jsonify({"error": "channelIndex muss eine ganze Zahl sein"}), 400
     else:
         # Alle Rauchmelder / Sirenen im Snapshot
         snap = _load_snapshot()
@@ -346,9 +360,13 @@ def hmip_thermostat_post():
         return jsonify({"error": "temperature muss eine Zahl sein"}), 400
     if not 4.5 <= temperature <= 30.5:
         return jsonify({"error": "temperature muss zwischen 4.5 und 30.5 °C liegen"}), 400
+    try:
+        ch_idx = int(channel_index)
+    except (TypeError, ValueError):
+        return jsonify({"error": "channelIndex muss eine ganze Zahl sein"}), 400
 
     with state.send_lock:
-        rid = send_hmip_set_point_temperature(state.conn, device_id, temperature, int(channel_index))
+        rid = send_hmip_set_point_temperature(state.conn, device_id, temperature, ch_idx)
     _register_pending(rid, "/hmip/device/control/setSetPointTemperature")
     return jsonify({"status": f"{device_id}: setpoint={temperature:.1f}°C", "request_id": rid}), 200
 
@@ -375,9 +393,13 @@ def hmip_irrigation_post():
 
     if not device_id or not isinstance(on, bool):
         return jsonify({"error": "Pflichtfelder: device (str), on (bool)"}), 400
+    try:
+        ch_idx = int(channel_index)
+    except (TypeError, ValueError):
+        return jsonify({"error": "channelIndex muss eine ganze Zahl sein"}), 400
 
     with state.send_lock:
-        rid = send_hmip_set_switch(state.conn, device_id, on, int(channel_index))
+        rid = send_hmip_set_switch(state.conn, device_id, on, ch_idx)
     _register_pending(rid, "/hmip/device/control/setSwitchState")
     return jsonify({
         "status": f"{device_id}: {'geöffnet' if on else 'geschlossen'}",
@@ -415,7 +437,24 @@ def hmip_state_get():
     return jsonify(channel), 200
 
 
-# ── Web-UI: Alarm löschen ─────────────────────────────────────────────────────
+# ── Web-UI: Alarm Test/Clear ──────────────────────────────────────────────────
+
+def _broadcast_alarm_signal(signal: str) -> int:
+    """Sendet optisches+akustisches Alarmsignal an alle Rauchmelder. Liefert Anzahl."""
+    snap = _load_snapshot()
+    if snap is None:
+        return -1  # Sentinel: kein Snapshot
+    targets = _find_alarm_siren_devices(snap)
+    if not targets:
+        return 0
+    with state.send_lock:
+        for did, cidx in targets:
+            rid = send_hmip_set_alarm_signal_optical(state.conn, did, signal, cidx)
+            _register_pending(rid, "/hmip/device/control/setAlarmSignalOptical")
+            rid = send_hmip_set_alarm_signal_acoustic(state.conn, did, signal, cidx)
+            _register_pending(rid, "/hmip/device/control/setAlarmSignalAcoustic")
+    return len(targets)
+
 
 @bp.post("/alarm/test-smoke")
 @require_web_auth
@@ -423,20 +462,13 @@ def alarm_test_smoke():
     """Löst auf allen Rauchmeldern kurz das Testsignal aus (Web-UI Aktion)."""
     if state.conn is None:
         return jsonify({"error": "WebSocket nicht verbunden"}), 503
-    snap = _load_snapshot()
-    if snap is None:
+    n = _broadcast_alarm_signal("FULL_ALARM")
+    if n < 0:
         return jsonify({"error": "Kein Snapshot vorhanden"}), 503
-    targets = _find_alarm_siren_devices(snap)
-    if not targets:
+    if n == 0:
         return jsonify({"error": "Keine Rauchmelder mit Sirenenfunktion gefunden"}), 404
-    with state.send_lock:
-        for did, cidx in targets:
-            rid = send_hmip_set_alarm_signal_optical(state.conn, did, "FULL_ALARM", cidx)
-            _register_pending(rid, "/hmip/device/control/setAlarmSignalOptical")
-            rid = send_hmip_set_alarm_signal_acoustic(state.conn, did, "FULL_ALARM", cidx)
-            _register_pending(rid, "/hmip/device/control/setAlarmSignalAcoustic")
-    log.info("Alarm-Test durch Web-UI: %d Gerät(e)", len(targets))
-    return jsonify({"triggered": len(targets)}), 200
+    log.info("Alarm-Test durch Web-UI: %d Gerät(e)", n)
+    return jsonify({"triggered": n}), 200
 
 
 @bp.post("/alarm/clear-smoke")
@@ -445,27 +477,16 @@ def alarm_clear_smoke():
     """Löscht alle aktiven Alarmsignale auf allen Rauchmeldern (Web-UI Aktion)."""
     if state.conn is None:
         return jsonify({"error": "WebSocket nicht verbunden"}), 503
-    snap = _load_snapshot()
-    if snap is None:
+    n = _broadcast_alarm_signal("NO_ALARM")
+    if n < 0:
         return jsonify({"error": "Kein Snapshot vorhanden"}), 503
-    targets = _find_alarm_siren_devices(snap)
-    if not targets:
+    if n == 0:
         return jsonify({"cleared": 0, "info": "Keine Rauchmelder mit Sirenenfunktion gefunden"}), 200
-    with state.send_lock:
-        for did, cidx in targets:
-            rid = send_hmip_set_alarm_signal_optical(state.conn, did, "NO_ALARM", cidx)
-            _register_pending(rid, "/hmip/device/control/setAlarmSignalOptical")
-            rid = send_hmip_set_alarm_signal_acoustic(state.conn, did, "NO_ALARM", cidx)
-            _register_pending(rid, "/hmip/device/control/setAlarmSignalAcoustic")
-    log.info("Alarm-Clear durch Web-UI: %d Gerät(e)", len(targets))
-    return jsonify({"cleared": len(targets)}), 200
+    log.info("Alarm-Clear durch Web-UI: %d Gerät(e)", n)
+    return jsonify({"cleared": n}), 200
 
 
-# ── Shelly ───────────────────────────────────────────────────────────────────
-
-import yaml
-import app.adapters.shelly_adapter as shelly_mod
-from config.loader import validate_config
+# ── Shelly / Config-Editor ───────────────────────────────────────────────────
 
 _CONFIG_PATH = "config/config.yaml"
 
@@ -591,133 +612,11 @@ def shelly_relay(ip: str, channel: int):
 @bp.route("/shelly/<ip>/webui/<path:subpath>", methods=["GET", "POST"])
 @require_web_auth
 def shelly_webui_proxy(ip: str, subpath: str):
-    """Proxied Shelly web-UI – forwards requests with credentials so the user
-    is automatically logged in without having to enter the password manually."""
-    import re
-    import requests as _req
+    """Proxy für die Web-UI eines Shelly-Geräts – Auto-Login, URL-Rewriting.
 
-    # Gen ermitteln
-    cached = {d["ip"]: d for d in shelly_mod.load_cached()}
-    gen = cached.get(ip, {}).get("gen", 1)
-
-    target = f"http://{ip}/{subpath}"
-    if request.query_string:
-        target += "?" + request.query_string.decode("utf-8", errors="replace")
-
-    creds = shelly_mod._credentials
-    if creds and creds[0]:
-        auth = creds
-    else:
-        auth = None
-
-    try:
-        if request.method == "POST":
-            r = _req.post(
-                target, auth=auth,
-                data=request.get_data(),
-                headers={"Content-Type": request.content_type or "application/x-www-form-urlencoded"},
-                timeout=10, allow_redirects=False,
-            )
-        else:
-            r = _req.get(target, auth=auth, timeout=10, allow_redirects=False)
-    except Exception as exc:
-        return f"<h3 style='font-family:sans-serif;padding:24px'>Shelly nicht erreichbar: {exc}</h3>", 502
-
-    # Redirect → immer durch den Proxy umleiten.
-    # Gen 1 Shellies liefern absolute URLs (http://192.168.x.x/path), nicht nur /path.
-    if r.status_code in (301, 302, 303, 307, 308):
-        from urllib.parse import urlparse
-        loc = r.headers.get("Location", "/")
-        parsed_loc = urlparse(loc)
-        # Absolute URL vom Gerät → nur Path+Query extrahieren
-        if parsed_loc.scheme in ("http", "https") and parsed_loc.netloc:
-            loc = parsed_loc.path or "/"
-            if parsed_loc.query:
-                loc += "?" + parsed_loc.query
-        # Relative Pfade ohne führenden Slash normalisieren
-        if loc and not loc.startswith("/"):
-            loc = "/" + loc
-        # Pfad durch den Proxy leiten
-        if loc.startswith("/") and not loc.startswith("//"):
-            loc = f"/shelly/{ip}/webui{loc}"
-        log.debug("Shelly proxy redirect → %s", loc)
-        return redirect(loc, r.status_code)
-
-    content_type = r.headers.get("Content-Type", "application/octet-stream")
-    proxy_base = f"/shelly/{ip}/webui"
-
-    if "text/html" in content_type:
-        device_origin = f"http://{ip}"
-
-        # JS interceptor: rewrites root-relative XHR/fetch/location through proxy
-        interceptor = (
-            "<script>"
-            "(function(){"
-            f"var B='{proxy_base}';"
-            f"var O='{device_origin}';"
-            # Root-relative URL helper
-            "function rw(u){{"
-            "if(typeof u!=='string')return u;"
-            "if(u.startsWith(O))u=u.slice(O.length)||'/';"
-            "if(u.charAt(0)==='/'&&u.charAt(1)!=='/')u=B+u;"
-            "return u;}};"
-            # XHR
-            "var oX=XMLHttpRequest.prototype.open;"
-            "XMLHttpRequest.prototype.open=function(m,u){return oX.apply(this,[m,rw(u)].concat([].slice.call(arguments,2)));};"
-            # fetch
-            "if(window.fetch){var oF=window.fetch;window.fetch=function(u,o){return oF.call(window,rw(u),o);};};"
-            # location.href setter
-            "try{var lD=Object.getOwnPropertyDescriptor(Location.prototype,'href');"
-            "if(lD&&lD.set){Object.defineProperty(Location.prototype,'href',{"
-            "get:lD.get,set:function(v){lD.set.call(this,rw(v));}});}}catch(e){};"
-            # history.pushState / replaceState
-            "['pushState','replaceState'].forEach(function(fn){var o=history[fn];"
-            "history[fn]=function(s,t,u){return o.call(history,s,t,u?rw(u):u);};});"
-            "})();"
-            "</script>"
-        )
-        html_text = r.text
-
-        # Rewrite absolute paths in src / href / action / data attributes
-        def _rewrite(m: re.Match) -> str:
-            attr, path = m.group(1), m.group(2)
-            # Absolute URL pointing to the device
-            if path.startswith(device_origin):
-                path = path[len(device_origin):] or "/"
-            # Root-relative path
-            if path.startswith("/") and not path.startswith("//"):
-                return f'{attr}="{proxy_base}{path}"'
-            return m.group(0)
-
-        html_text = re.sub(r'(src|href|action|data)="((?:' + re.escape(device_origin) + r')?/[^"]*)"', _rewrite, html_text)
-
-        # Rewrite <meta http-equiv="refresh" content="N; url=...">
-        def _rewrite_meta(m: re.Match) -> str:
-            content = m.group(1)
-            def _sub_url(mu: re.Match) -> str:
-                url = mu.group(1)
-                if url.startswith(device_origin):
-                    url = url[len(device_origin):] or "/"
-                if url.startswith("/") and not url.startswith("//"):
-                    url = proxy_base + url
-                return f"url={url}"
-            return 'content="' + re.sub(r"url=([^\s;\"']+)", _sub_url, content, flags=re.IGNORECASE) + '"'
-
-        html_text = re.sub(r'content="([^"]*url=[^"]*)"', _rewrite_meta, html_text, flags=re.IGNORECASE)
-
-        # Inject base href (helps with truly relative URLs like "js/app.js")
-        base_tag = f'<base href="{proxy_base}/">'
-        if "<head>" in html_text:
-            html_text = html_text.replace("<head>", f"<head>{base_tag}{interceptor}", 1)
-        elif "<HEAD>" in html_text:
-            html_text = html_text.replace("<HEAD>", f"<HEAD>{base_tag}{interceptor}", 1)
-        else:
-            html_text = base_tag + interceptor + html_text
-
-        return html_text, r.status_code, {"Content-Type": "text/html; charset=utf-8"}
-
-    # All other content (JS, CSS, images, JSON) – pass through as-is
-    return r.content, r.status_code, {"Content-Type": content_type}
+    Logik in app/shelly_proxy.py – siehe dort für SSRF/CSRF-Hinweise.
+    """
+    return shelly_proxy.proxy_request(ip, subpath)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
