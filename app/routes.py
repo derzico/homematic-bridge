@@ -70,8 +70,10 @@ def login():
     if not state.REQUIRE_API_KEY:
         return redirect("/")
     next_url = request.args.get("next") or "/"
+    from app import __version__ as app_version
     if request.method == "POST":
         password = request.form.get("password", "")
+        remember = request.form.get("remember") == "1"
         pw_hash = state.config_internal.get("web_password_hash")
         if pw_hash:
             ok = check_password_hash(pw_hash, password)
@@ -79,11 +81,14 @@ def login():
             # Fallback: API-Key (kein Klartext-Passwort mehr unterstützt)
             ok = bool(state.API_KEY and password == state.API_KEY)
         if ok:
-            session.permanent = True
+            # remember=False ⇒ Session-Cookie (verfällt bei Browser-Schluss)
+            session.permanent = remember
             session["authenticated"] = True
             return redirect(next_url)
-        return render_template("login.html", error=True, next_url=next_url, csrf_token=generate_csrf_token())
-    return render_template("login.html", error=False, next_url=next_url, csrf_token=generate_csrf_token())
+        return render_template("login.html", error=True, next_url=next_url,
+                               csrf_token=generate_csrf_token(), app_version=app_version)
+    return render_template("login.html", error=False, next_url=next_url,
+                           csrf_token=generate_csrf_token(), app_version=app_version)
 
 
 @bp.route("/logout")
@@ -489,6 +494,7 @@ def alarm_clear_smoke():
 # ── Shelly / Config-Editor ───────────────────────────────────────────────────
 
 _CONFIG_PATH = "config/config.yaml"
+_CONFIG_SAMPLE_PATH = "config/config_sample.yaml"
 
 
 @bp.route("/config", methods=["GET", "POST"])
@@ -524,6 +530,40 @@ def serve_config():
         content = ""
     return render_template("config.html", content=content, error=error, success=success,
                            csrf_token=generate_csrf_token(), active_nav="config")
+
+
+@bp.post("/config/validate")
+@require_web_auth
+@require_csrf
+def validate_config_endpoint():
+    """Validiert YAML ohne zu speichern. Liefert {ok, errors, lines, bytes}."""
+    raw = request.get_json(silent=True, force=True) or {}
+    content = raw.get("content", "")
+    try:
+        parsed = yaml.safe_load(content)
+        if not isinstance(parsed, dict):
+            return jsonify({"ok": False, "errors": ["Ungültiges YAML – muss ein Mapping sein"]}), 200
+        errors = validate_config(parsed)
+        return jsonify({
+            "ok": not errors,
+            "errors": errors,
+            "lines": content.count("\n") + (1 if content and not content.endswith("\n") else 0),
+            "bytes": len(content.encode("utf-8")),
+        }), 200
+    except yaml.YAMLError as e:
+        return jsonify({"ok": False, "errors": [f"YAML-Syntaxfehler: {e}"]}), 200
+
+
+@bp.get("/config/sample")
+@require_web_auth
+def serve_config_sample():
+    """Gibt den Inhalt der Beispiel-Konfiguration zurück."""
+    try:
+        with open(_CONFIG_SAMPLE_PATH, "r", encoding="utf-8") as f:
+            return jsonify({"content": f.read()}), 200
+    except FileNotFoundError:
+        return jsonify({"error": "config_sample.yaml nicht gefunden"}), 404
+
 
 @bp.route("/shelly")
 @require_web_auth

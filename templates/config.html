@@ -5,27 +5,224 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <div class="eyebrow">System</div>
+    <div class="eyebrow">Einstellungen</div>
     <h1>Konfiguration</h1>
-    <div class="sub">config/config.yaml – Loxone- und Shelly-Einstellungen werden sofort übernommen. HCU-Verbindungsänderungen erfordern einen Neustart.</div>
+    <div class="sub">config/config.yaml — nach dem Speichern werden Loxone- und Shelly-Einstellungen sofort übernommen. HCU-Verbindungsänderungen erfordern einen Neustart.</div>
+  </div>
+  <div class="actions">
+    <button type="button" class="btn ghost" id="loadSampleBtn">Beispiel laden</button>
+    <button type="button" class="btn" id="validateBtn">Validieren</button>
+    <button type="submit" form="configForm" class="btn primary">Speichern</button>
   </div>
 </div>
 
 {% if error %}
-  <div class="alert error">Fehler: {{ error | e }}</div>
+  <div class="alert error" id="banner">{{ error | e }}</div>
 {% elif success %}
-  <div class="alert ok">Gespeichert. Verbindungsänderungen (HCU, Token) erfordern einen Neustart.</div>
+  <div class="alert ok" id="banner">
+    <strong>✓ Gespeichert.</strong> Verbindungsänderungen (HCU, Token) erfordern einen Neustart.
+  </div>
+{% else %}
+  <div class="alert" id="banner" style="display:none"></div>
 {% endif %}
 
-<form method="POST" action="/config">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <textarea name="content" spellcheck="false" style="
-    width:100%;height:520px;background:var(--surface);color:var(--text);
-    border:1px solid var(--border);border-radius:10px;padding:16px;
-    font-family:var(--mono);font-size:13px;line-height:1.6;resize:vertical;outline:none">{{ content | e }}</textarea>
-  <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
-    <button type="submit" class="btn primary">Speichern</button>
-    <span style="color:var(--muted);font-size:12.5px">YAML wird vor dem Speichern validiert.</span>
+<div class="config-layout">
+  <aside class="config-side">
+    <div class="side-section">
+      <div class="side-head">Abschnitte</div>
+      <a href="#" class="side-link active" data-jump=""><span>Allgemein</span></a>
+      <a href="#" class="side-link" data-jump="homematic_hcu"><span>HCU-Verbindung</span><span class="pill warn">restart</span></a>
+      <a href="#" class="side-link" data-jump="loxone:"><span>Loxone Push</span></a>
+      <a href="#" class="side-link" data-jump="shelly:"><span>Shelly</span></a>
+      <a href="#" class="side-link" data-jump="ssl_"><span>SSL / Sicherheit</span></a>
+      <a href="#" class="side-link" data-jump="logging"><span>Logging</span></a>
+    </div>
+    <div class="side-section">
+      <div class="side-head">Hilfe</div>
+      <a href="https://github.com/derzico/homematic-bridge/wiki" target="_blank" rel="noopener" class="side-link"><span>YAML-Referenz</span></a>
+      <a href="https://github.com/derzico/homematic-bridge/wiki" target="_blank" rel="noopener" class="side-link"><span>HCU Token erstellen</span></a>
+      <a href="https://github.com/derzico/homematic-bridge/wiki" target="_blank" rel="noopener" class="side-link"><span>Loxone-Variablen Namensschema</span></a>
+    </div>
+  </aside>
+
+  <div class="editor-card">
+    <div class="editor-head">
+      <span class="filename">config/config.yaml</span>
+      <span class="meta" id="editorMeta">UTF-8 · – Zeilen · – B</span>
+    </div>
+    <form id="configForm" method="POST" action="/config" class="editor-body">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <pre class="line-gutter" id="lineGutter" aria-hidden="true"></pre>
+      <textarea id="configEditor" name="content" spellcheck="false" wrap="off">{{ content | e }}</textarea>
+    </form>
   </div>
-</form>
+</div>
+
+<style>
+.config-layout {
+  display: grid; grid-template-columns: 240px 1fr; gap: 18px;
+  align-items: flex-start;
+}
+@media (max-width: 880px) { .config-layout { grid-template-columns: 1fr; } }
+
+.config-side {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 8px 0;
+  display: flex; flex-direction: column; gap: 4px;
+  position: sticky; top: 78px;
+}
+.side-section { padding: 6px 0; }
+.side-section + .side-section { border-top: 1px solid var(--border-soft); margin-top: 4px; }
+.side-head {
+  font-size: 11px; color: var(--muted-2); text-transform: uppercase;
+  letter-spacing: .07em; font-weight: 600;
+  padding: 8px 16px 6px;
+}
+.side-link {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 16px; color: var(--text-soft); font-size: 13.5px;
+  text-decoration: none; border-left: 3px solid transparent;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.side-link:hover { background: var(--surface-alt); text-decoration: none; }
+.side-link.active {
+  background: var(--accent-soft); color: var(--accent);
+  border-left-color: var(--accent); font-weight: 600;
+}
+.side-link .pill.warn { font-size: 10.5px; padding: 1px 7px; }
+
+.editor-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-sm);
+}
+.editor-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; background: var(--surface-alt);
+  border-bottom: 1px solid var(--border-soft);
+  font-family: var(--mono); font-size: 12.5px; color: var(--text-soft);
+}
+.editor-head .meta { color: var(--muted); }
+
+.editor-body {
+  display: grid; grid-template-columns: auto 1fr;
+  background: var(--surface);
+}
+.line-gutter {
+  margin: 0; padding: 14px 12px 14px 14px;
+  background: var(--surface-alt);
+  color: var(--muted-2); font-family: var(--mono); font-size: 13px;
+  line-height: 1.6; text-align: right; user-select: none;
+  border-right: 1px solid var(--border-soft);
+  white-space: pre; overflow: hidden;
+  min-width: 44px;
+}
+#configEditor {
+  border: none; outline: none; resize: vertical;
+  background: var(--surface); color: var(--text);
+  padding: 14px 18px; min-height: 540px;
+  font-family: var(--mono); font-size: 13px; line-height: 1.6;
+  width: 100%; tab-size: 2;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const ed = document.getElementById('configEditor');
+  const gutter = document.getElementById('lineGutter');
+  const meta = document.getElementById('editorMeta');
+  const banner = document.getElementById('banner');
+  const validateBtn = document.getElementById('validateBtn');
+  const sampleBtn = document.getElementById('loadSampleBtn');
+  const csrf = document.querySelector('input[name="csrf_token"]').value;
+
+  function updateGutter() {
+    const lines = ed.value.split('\n').length;
+    let g = '';
+    for (let i = 1; i <= lines; i++) g += i + '\n';
+    gutter.textContent = g;
+    const bytes = new Blob([ed.value]).size;
+    const kb = bytes >= 1024 ? (bytes / 1024).toFixed(2) + ' KB' : bytes + ' B';
+    meta.textContent = `UTF-8 · ${lines} Zeilen · ${kb}`;
+  }
+
+  function syncScroll() { gutter.scrollTop = ed.scrollTop; }
+
+  function showBanner(type, html) {
+    banner.className = 'alert ' + type;
+    banner.innerHTML = html;
+    banner.style.display = '';
+  }
+
+  ed.addEventListener('input', updateGutter);
+  ed.addEventListener('scroll', syncScroll);
+  updateGutter();
+
+  // Sidebar-Links: zum ersten Treffer im Editor scrollen
+  document.querySelectorAll('.side-link[data-jump]').forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.querySelectorAll('.side-link').forEach(x => x.classList.remove('active'));
+      link.classList.add('active');
+      const needle = link.dataset.jump;
+      if (!needle) { ed.scrollTop = 0; ed.focus(); ed.setSelectionRange(0, 0); return; }
+      const idx = ed.value.indexOf(needle);
+      if (idx >= 0) {
+        ed.focus();
+        ed.setSelectionRange(idx, idx + needle.length);
+        // grobes Scroll: Textarea-Höhe pro Zeile abschätzen
+        const lineHeight = 21; // 13px * 1.6 ≈ 21
+        const lineNo = ed.value.slice(0, idx).split('\n').length - 1;
+        ed.scrollTop = Math.max(0, lineNo * lineHeight - 80);
+        syncScroll();
+      }
+    });
+  });
+
+  // Validieren
+  validateBtn.addEventListener('click', async () => {
+    validateBtn.disabled = true;
+    const oldText = validateBtn.textContent;
+    validateBtn.textContent = 'Prüfe…';
+    try {
+      const r = await fetch('/config/validate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrf},
+        body: JSON.stringify({content: ed.value, csrf_token: csrf}),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        const stamp = new Date().toLocaleTimeString('de-DE');
+        showBanner('ok', `<strong>✓ YAML gültig</strong><br><span style="color:var(--muted);font-size:12.5px">Letzte erfolgreiche Validierung um ${stamp}</span>`);
+      } else {
+        showBanner('error', '<strong>YAML ungültig</strong><br>• ' + (d.errors || []).join('<br>• '));
+      }
+    } catch (e) {
+      showBanner('error', 'Netzwerkfehler bei Validierung');
+    } finally {
+      validateBtn.disabled = false;
+      validateBtn.textContent = oldText;
+    }
+  });
+
+  // Beispiel laden
+  sampleBtn.addEventListener('click', async () => {
+    if (ed.value.trim() && !confirm('Aktuellen Inhalt durch Beispiel ersetzen?')) return;
+    try {
+      const r = await fetch('/config/sample');
+      const d = await r.json();
+      if (d.content) {
+        ed.value = d.content;
+        updateGutter();
+        showBanner('ok', 'Beispiel geladen. Vor dem Speichern bitte anpassen.');
+      } else {
+        showBanner('error', d.error || 'Beispiel konnte nicht geladen werden');
+      }
+    } catch (e) {
+      showBanner('error', 'Netzwerkfehler beim Laden des Beispiels');
+    }
+  });
+})();
+</script>
 {% endblock %}

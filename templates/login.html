@@ -1,25 +1,117 @@
 {# SPDX-License-Identifier: Apache-2.0 #}
 {% extends "base.html" %}
-{% block title %}Login – Homematic Bridge{% endblock %}
+{% block title %}Anmelden – Homematic Bridge{% endblock %}
 
 {% block body %}
-<div class="login-wrap">
+<div class="login-bg">
   <div class="login-card">
     <div class="logo">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h7l-1 8 11-13h-7l1-7z"/></svg>
-      Homematic <em style="color:var(--muted);font-style:normal;font-weight:500">Bridge</em>
+      <span>Homematic <span class="brand-light">Bridge</span></span>
     </div>
+
+    <h1 class="login-title">Anmelden</h1>
+    <div class="login-subtitle">Gib deinen API-Key ein, um auf das Bridge-Dashboard zuzugreifen.</div>
+
     {% if error %}
       <div class="login-error">Falsches Passwort. Bitte erneut versuchen.</div>
     {% endif %}
+
     <form method="POST" action="/login?next={{ next_url | e }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="login-field">
-        <label>Passwort (API-Key)</label>
-        <input type="password" name="password" autofocus autocomplete="current-password" placeholder="API-Key eingeben">
+        <label for="pw">Passwort (API-Key)</label>
+        <input id="pw" type="password" name="password" autofocus autocomplete="current-password" placeholder="API-Key eingeben">
       </div>
+      <label class="login-remember">
+        <input type="checkbox" name="remember" value="1">
+        <span>Auf diesem Gerät angemeldet bleiben</span>
+      </label>
       <button class="login-btn" type="submit">Anmelden</button>
     </form>
+
+    <div class="login-foot">
+      <span class="version">v{{ app_version | e }}</span>
+      <a href="https://github.com/derzico/homematic-bridge/wiki" target="_blank" rel="noopener">API-Key vergessen?</a>
+    </div>
   </div>
 </div>
+
+<style>
+.login-bg {
+  min-height: 100vh; width: 100%;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 12% 30%, #dbe7ff 0%, transparent 45%),
+    radial-gradient(circle at 88% 75%, #ead7ff 0%, transparent 45%),
+    radial-gradient(circle at 50% 50%, #f8f5ff 0%, #f5f6f8 100%);
+}
+.login-card {
+  background: #fff; border-radius: 16px;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, .12), 0 1px 3px rgba(15, 23, 42, .06);
+  padding: 32px 36px 24px; width: 100%; max-width: 420px;
+}
+.login-card .logo {
+  display: flex; align-items: center; gap: 9px;
+  font-size: 16px; font-weight: 700; color: var(--text);
+  margin-bottom: 28px; justify-content: flex-start;
+}
+.login-card .logo svg { color: var(--accent); width: 22px; height: 22px; }
+.login-card .brand-light { color: var(--muted); font-weight: 500; }
+
+.login-title {
+  font-size: 26px; font-weight: 700; color: var(--text);
+  letter-spacing: -.01em; margin-bottom: 8px;
+}
+.login-subtitle {
+  color: var(--muted); font-size: 13.5px; line-height: 1.55;
+  margin-bottom: 22px;
+}
+
+.login-field { margin-bottom: 16px; }
+.login-field label {
+  display: block; font-size: 13px; color: var(--text-soft);
+  margin-bottom: 6px; font-weight: 500;
+}
+.login-field input {
+  width: 100%; background: var(--surface-alt); border: 1px solid var(--border);
+  color: var(--text); padding: 12px 14px; border-radius: 10px;
+  font-size: 14px; outline: none;
+  transition: background .15s, border-color .15s, box-shadow .15s;
+}
+.login-field input:focus {
+  background: #fff; border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .15);
+}
+
+.login-remember {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin: 4px 0 18px; color: var(--muted); font-size: 13px; cursor: pointer;
+  user-select: none;
+}
+.login-remember input { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; }
+
+.login-btn {
+  width: 100%; background: var(--accent); color: #fff; border: none;
+  padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: background .12s;
+}
+.login-btn:hover { background: var(--accent-hover); }
+
+.login-foot {
+  margin-top: 20px; padding-top: 16px;
+  border-top: 1px solid var(--border-soft);
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12.5px;
+}
+.login-foot .version { color: var(--muted); font-family: var(--mono); }
+.login-foot a { color: var(--accent); }
+
+.login-error {
+  background: var(--red-soft); color: var(--red);
+  padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px;
+  border: 1px solid #fecaca;
+}
+</style>
 {% endblock %}
