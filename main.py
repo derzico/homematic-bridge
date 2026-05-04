@@ -91,6 +91,10 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.register_blueprint(routes_bp)
 
+# i18n (Flask-Babel) – kompiliert .po → .mo beim Start, Cookie ``lang`` schaltet um
+from app import i18n  # noqa: E402
+i18n.init_app(app)
+
 # ── Adapter-Registry ─────────────────────────────────────────────────────────
 registry = AdapterRegistry()
 

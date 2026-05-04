@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import socket
+import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -20,6 +21,7 @@ log = logging.getLogger("bridge-ws")
 
 _SHELLY_CACHE = "data/shelly_devices.json"
 _WORKERS = 64
+_cache_lock = threading.Lock()
 
 # Globale Credentials (aus config.yaml geladen) – durch _credentials_lock geschützt
 _credentials: Optional[tuple] = None  # (username, password) oder None
@@ -345,17 +347,30 @@ def _mdns_scan(timeout_sec: float = 3.0) -> List[Dict[str, Any]]:
 # ── Cache ─────────────────────────────────────────────────────────────────────
 
 def load_cached() -> List[Dict[str, Any]]:
-    try:
-        with open(_SHELLY_CACHE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
+    with _cache_lock:
+        try:
+            with open(_SHELLY_CACHE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return []
 
 
 def save_cache(devices: List[Dict[str, Any]]) -> None:
-    os.makedirs(os.path.dirname(_SHELLY_CACHE), exist_ok=True)
-    with open(_SHELLY_CACHE, "w", encoding="utf-8") as f:
-        json.dump(devices, f, indent=2)
+    cache_dir = os.path.dirname(_SHELLY_CACHE) or "."
+    os.makedirs(cache_dir, exist_ok=True)
+    data = json.dumps(devices, indent=2)
+    with _cache_lock:
+        fd, tmp = tempfile.mkstemp(prefix=".shelly_", suffix=".json", dir=cache_dir)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(data)
+            os.replace(tmp, _SHELLY_CACHE)
+        except Exception:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            raise
 
 
 def refresh_device(ip: str, gen: int) -> Optional[Dict]:
@@ -412,6 +427,9 @@ def refresh_all_devices() -> int:
 def check_updates_all() -> None:
     """Fordert alle Geräte auf, nach Firmware-Updates zu suchen (fire & forget)."""
     devices = load_cached()
+    if not devices:
+        log.info("Shelly: Keine Geräte im Cache für Update-Check")
+        return
 
     def _check_one(dev):
         ip, gen = dev["ip"], dev.get("gen", 1)
@@ -450,6 +468,7 @@ class ShellyAdapter(BaseAdapter):
 
     def __init__(self, config: Dict[str, Any]) -> None:
         self._config = config
+        self._config_lock = threading.Lock()
         self._scan_thread: Optional[threading.Thread] = None
 
     @property
@@ -460,8 +479,18 @@ class ShellyAdapter(BaseAdapter):
     def display_name(self) -> str:
         return "Shelly"
 
+    def _get_config(self) -> Dict[str, Any]:
+        with self._config_lock:
+            return dict(self._config)
+
+    def update_config(self, config: Dict[str, Any]) -> None:
+        """Aktualisiert die Adapter-Konfiguration zur Laufzeit."""
+        with self._config_lock:
+            self._config = dict(config)
+        set_credentials(config.get("username"), config.get("password"))
+
     def start(self) -> None:
-        cfg = self._config
+        cfg = self._get_config()
         if not cfg.get("enabled"):
             return
 
@@ -477,21 +506,32 @@ class ShellyAdapter(BaseAdapter):
             start_scan(subnet, timeout_sec=timeout)
 
         interval_h = float(cfg.get("scan_interval_hours", 0))
-        if interval_h > 0:
+        if interval_h > 0 and (self._scan_thread is None or not self._scan_thread.is_alive()):
             self._scan_thread = threading.Thread(
-                target=self._periodic_scan, args=(subnet, timeout, interval_h),
+                target=self._periodic_scan,
                 daemon=True,
             )
             self._scan_thread.start()
 
-    def _periodic_scan(self, subnet: str, timeout: float, interval_h: float) -> None:
+    def _periodic_scan(self) -> None:
         while not state.stop_event.is_set():
+            cfg = self._get_config()
+            if not cfg.get("enabled"):
+                log.info("Shelly: Zyklischer Scan deaktiviert")
+                return
+            interval_h = float(cfg.get("scan_interval_hours", 0))
+            if interval_h <= 0:
+                log.info("Shelly: Zyklischer Scan ohne Intervall beendet")
+                return
             # state.stop_event.wait gibt True zurück wenn gesetzt → Loop verlassen
             if state.stop_event.wait(timeout=interval_h * 3600):
                 log.info("Shelly: Zyklischer Scan beendet (stop_event)")
                 return
-            with state.config_lock:
-                cfg = dict(state.config.get("shelly") or {})
+            cfg = self._get_config()
+            subnet = cfg.get("subnet", "")
+            timeout = float(cfg.get("timeout_sec", 1.5))
+            if not cfg.get("enabled") or not subnet:
+                continue
             set_credentials(cfg.get("username"), cfg.get("password"))
             log.info("Shelly: Zyklischer Scan gestartet (%s)", subnet)
             start_scan(subnet, timeout_sec=timeout)
@@ -501,7 +541,7 @@ class ShellyAdapter(BaseAdapter):
         state.stop_event.set()
 
     def is_connected(self) -> bool:
-        return self._config.get("enabled", False)
+        return self._get_config().get("enabled", False)
 
     def get_devices(self) -> List[Device]:
         raw_devices = load_cached()

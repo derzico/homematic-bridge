@@ -1,36 +1,33 @@
 {# SPDX-License-Identifier: Apache-2.0 #}
 {% extends "base.html" %}
-{% block title %}HmIP Dashboard{% endblock %}
+{% block title %}{{ _("Dashboard") }} – Homematic Bridge{% endblock %}
 
 {% block content %}
-<div class="eyebrow">Übersicht</div>
+<div class="eyebrow">{{ _("Overview") }}</div>
 <div class="page-head">
   <div>
-    <h1>Dashboard</h1>
+    <h1>{{ _("Dashboard") }}</h1>
     <div class="sub">
-      Snapshot von {{ snapshot_time_str }} ·
-      {{ hmip_count }} HmIP-Geräte ·
-      {{ shelly_count }} Shellys ·
-      letzter Sync vor {{ snapshot_age_str }}
+      {{ _("Snapshot from %(t)s · %(h)s HmIP devices · %(s)s Shellys · last sync %(a)s ago",
+            t=snapshot_time_str, h=hmip_count, s=shelly_count, a=snapshot_age_str) }}
     </div>
   </div>
   <div class="actions">
     <button class="btn ghost" onclick="location.reload()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-      Sync
+      {{ _("Sync") }}
     </button>
   </div>
 </div>
 
-{# ── Status-Pills-Row ── #}
 <div class="status-row">
   <div class="status-cell">
     <span class="icon">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
     </span>
     <div>
-      <div class="label">Alarm {{ 'aktiv' if alarm.any_active else 'unscharf' }}</div>
-      <div class="desc">{{ 'Aktuell aktiv' if alarm.any_active else 'Aktuell unscharf' }}</div>
+      <div class="label">{{ _("Alarm active") if alarm.any_active else _("Alarm disarmed") }}</div>
+      <div class="desc">{{ _("Currently active") if alarm.any_active else _("Currently disarmed") }}</div>
     </div>
   </div>
   <div class="status-cell">
@@ -38,8 +35,8 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
     </span>
     <div>
-      <div class="label">Anwesenheit</div>
-      <div class="desc">Anwesend</div>
+      <div class="label">{{ _("Presence") }}</div>
+      <div class="desc">{{ _("At home") }}</div>
     </div>
   </div>
   <div class="status-cell">
@@ -47,8 +44,8 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
     </span>
     <div>
-      <div class="label">Nachtmodus</div>
-      <div class="desc">Inaktiv</div>
+      <div class="label">{{ _("Night mode") }}</div>
+      <div class="desc">{{ _("Inactive") }}</div>
     </div>
   </div>
   <div class="status-cell">
@@ -56,20 +53,18 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     </span>
     <div>
-      <div class="label">Beleuchtung</div>
-      <div class="desc">{{ heating_count }} Heizgruppen aktiv</div>
+      <div class="label">{{ _("Lighting") }}</div>
+      <div class="desc">{{ _("%(n)s heating zones active", n=heating_count) }}</div>
     </div>
   </div>
 </div>
 
-{# ── 3 Karten: Wetter / Innenklima / System ── #}
 <div class="three-col">
 
-  {# Wetter #}
   <div class="card">
     <div class="card-head">
-      <span class="title">Wetter</span>
-      <span class="meta">aktualisiert · {{ snapshot_time_str }}</span>
+      <span class="title">{{ _("Weather") }}</span>
+      <span class="meta">{{ _("updated") }} · {{ snapshot_time_str }}</span>
     </div>
     <div class="card-body">
       <div class="weather-row">
@@ -83,42 +78,40 @@
         <div class="weather-icon">{{ weather.icon }}</div>
       </div>
       <div class="weather-meta">
-        <div><div class="k">Luftfeuchte</div><div class="v">{{ weather.humidity if weather.humidity is not none else '–' }} %</div></div>
-        <div><div class="k">Wind</div><div class="v">{{ weather.wind_str | e }}</div></div>
-        <div><div class="k">Druck</div><div class="v">– hPa</div></div>
+        <div><div class="k">{{ _("Humidity") }}</div><div class="v">{{ weather.humidity if weather.humidity is not none else '–' }} %</div></div>
+        <div><div class="k">{{ _("Wind") }}</div><div class="v">{{ weather.wind_str | e }}</div></div>
+        <div><div class="k">{{ _("Pressure") }}</div><div class="v">– hPa</div></div>
       </div>
     </div>
   </div>
 
-  {# Innenklima #}
   <div class="card">
     <div class="card-head">
-      <span class="title">Innenklima</span>
+      <span class="title">{{ _("Indoor climate") }}</span>
       <span class="pill info">Ø {{ indoor_avg_str }} °C</span>
     </div>
     <div class="card-body">
       <div class="climate-big">{{ indoor_avg_str }} <span style="font-size:18px;color:var(--muted)">°C</span></div>
-      <div class="climate-sub">Mittel über {{ heating_count }} Heizgruppen · letzte 12 h</div>
+      <div class="climate-sub">{{ _("Average across %(n)s heating zones · last 12 h", n=heating_count) }}</div>
       <div class="legend">
-        <span class="ist">— Ist</span>
-        <span class="soll">— Soll</span>
+        <span class="ist">— {{ _("Actual") }}</span>
+        <span class="soll">— {{ _("Target") }}</span>
       </div>
     </div>
   </div>
 
-  {# System #}
   <div class="card">
     <div class="card-head">
-      <span class="title">System</span>
+      <span class="title">{{ _("System") }}</span>
       <span class="pill {{ 'ok' if system.connected else 'error' }}">
-        <span class="dot"></span>{{ 'Verbunden' if system.connected else 'Getrennt' }}
+        <span class="dot"></span>{{ _("Connected") if system.connected else _("Disconnected") }}
       </span>
     </div>
     <div class="card-body">
-      <div class="kv-row"><span class="k">HCU</span><span class="v mono">hcu1-E461.local</span></div>
-      <div class="kv-row"><span class="k">Firmware</span><span class="v">{{ system.update_state | replace('_',' ') | title }}</span></div>
+      <div class="kv-row"><span class="k">{{ _("HCU") }}</span><span class="v mono">hcu1-E461.local</span></div>
+      <div class="kv-row"><span class="k">{{ _("Firmware") }}</span><span class="v">{{ system.update_state | replace('_',' ') | title }}</span></div>
       <div class="kv-row" style="border-bottom:none">
-        <span class="k">Duty Cycle</span>
+        <span class="k">{{ _("Duty cycle") }}</span>
         <span class="v mono">{{ "%.1f" | format(system.duty) }} %</span>
       </div>
       <div class="progress">
@@ -130,13 +123,11 @@
 
 </div>
 
-{# ── Alarm + Aktivität ── #}
 <div class="two-col">
 
-  {# Alarm #}
   <div class="card">
     <div class="card-head">
-      <span class="title">Alarm & Sicherheit</span>
+      <span class="title">{{ _("Alarm & Security") }}</span>
     </div>
     <div class="card-body">
       <div class="alarm-head">
@@ -144,57 +135,56 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         </span>
         <div>
-          <div class="alarm-title">{{ 'Alarm aktiv' if alarm.any_active else 'Kein Alarm' }}</div>
+          <div class="alarm-title">{{ _("Alarm active") if alarm.any_active else _("No alarm") }}</div>
           <div class="alarm-sub">
             {% if alarm.any_active %}
-              Auslöser: {{ alarm.last_event_type | replace('_',' ') | e }}
+              {{ _("Trigger: %(t)s", t=(alarm.last_event_type | replace('_',' '))) }}
             {% else %}
-              Keine Auslösungen seit {{ alarm.last_event_ts }}
+              {{ _("No triggers since %(t)s", t=alarm.last_event_ts) }}
             {% endif %}
           </div>
         </div>
       </div>
 
       <div class="alarm-grid">
-        <div class="kv-row"><span class="k">Einbruch</span>
+        <div class="kv-row"><span class="k">{{ _("Intrusion") }}</span>
           {% if alarm.intrusion %}
-            <span class="pill error">AKTIV</span>
+            <span class="pill error">{{ _("ACTIVE") }}</span>
           {% else %}
-            <span class="pill ok">OK</span>
+            <span class="pill ok">{{ _("OK") }}</span>
           {% endif %}
         </div>
-        <div class="kv-row"><span class="k">Sicherheit</span>
+        <div class="kv-row"><span class="k">{{ _("Safety") }}</span>
           {% if alarm.safety %}
-            <span class="pill error">AKTIV</span>
+            <span class="pill error">{{ _("ACTIVE") }}</span>
           {% else %}
-            <span class="pill ok">OK</span>
+            <span class="pill ok">{{ _("OK") }}</span>
           {% endif %}
         </div>
-        <div class="kv-row"><span class="k">Letztes Ereignis</span>
+        <div class="kv-row"><span class="k">{{ _("Last event") }}</span>
           <span class="v mono" style="font-size:11.5px">{{ alarm.last_event_type | e or '–' }}</span>
         </div>
-        <div class="kv-row"><span class="k">Zeitpunkt</span>
+        <div class="kv-row"><span class="k">{{ _("Time") }}</span>
           <span class="v mono" style="font-size:11.5px">{{ alarm.last_event_ts }}</span>
         </div>
       </div>
 
       <div style="margin-top:18px;display:flex;gap:8px;flex-wrap:wrap">
         <button id="btn-test-smoke" class="btn" onclick="testSmokeAlarm()">
-          <span style="color:#d97706">⚠</span> Rauchmelder testen
+          <span style="color:#d97706">⚠</span> {{ _("Test smoke detectors") }}
         </button>
         <button id="btn-clear-smoke" class="btn ghost" onclick="clearSmokeAlarm()">
-          Alarm löschen
+          {{ _("Clear alarm") }}
         </button>
       </div>
       <div id="alarm-msg" style="margin-top:10px;font-size:12.5px;display:none"></div>
     </div>
   </div>
 
-  {# Gerätewarnungen / Aktivität #}
   <div class="card">
     <div class="card-head">
-      <span class="title">Gerätewarnungen</span>
-      <a href="/devices/status" style="font-size:12px">Alle Ereignisse →</a>
+      <span class="title">{{ _("Device warnings") }}</span>
+      <a href="/devices/status" style="font-size:12px">{{ _("All events →") }}</a>
     </div>
     <div class="card-body">
       {% if warn_devs %}
@@ -203,14 +193,14 @@
             <li>
               <span class="ts">–</span>
               <span class="dot warn"></span>
-              <span><b>{{ name | e }}</b> Warnung</span>
+              <span><b>{{ name | e }}</b> {{ _("warning") }}</span>
               <span class="room">–</span>
             </li>
           {% endfor %}
         </ul>
         {% if warn_devs | length > 7 %}
           <div style="color:var(--muted);font-size:12.5px;margin-top:6px">
-            +{{ warn_devs | length - 7 }} weitere Warnungen
+            {{ _("+%(n)s more warnings", n=(warn_devs | length - 7)) }}
           </div>
         {% endif %}
       {% else %}
@@ -219,8 +209,8 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><polyline points="20 6 9 17 4 12"/></svg>
           </span>
           <div>
-            <div style="font-weight:600;color:var(--text)">Alle Geräte OK</div>
-            <div style="color:var(--muted);font-size:12.5px">Keine Warnungen im aktuellen Snapshot</div>
+            <div style="font-weight:600;color:var(--text)">{{ _("All devices OK") }}</div>
+            <div style="color:var(--muted);font-size:12.5px">{{ _("No warnings in the current snapshot") }}</div>
           </div>
         </div>
       {% endif %}
@@ -229,12 +219,11 @@
 
 </div>
 
-{# ── Heizung-Zeile ── #}
 {% if heating_groups %}
 <div class="card">
   <div class="card-head">
-    <span class="title">Heizung</span>
-    <a href="/heating" style="font-size:12px">Alle {{ heating_count }} Räume →</a>
+    <span class="title">{{ _("Heating") }}</span>
+    <a href="/heating" style="font-size:12px">{{ _("All %(n)s rooms →", n=heating_count) }}</a>
   </div>
   <div class="card-body">
     <div class="heat-grid">
@@ -244,7 +233,7 @@
           <div class="room">{{ hg.label | e }}</div>
           <div class="info">{{ hg.actual_str }} · {{ hg.setp_str }}</div>
         </div>
-        <span class="mode">{{ hg.mode_str or 'Auto' }}</span>
+        <span class="mode">{{ hg.mode_str or _("Auto") }}</span>
       </div>
       {% endfor %}
     </div>
@@ -256,19 +245,39 @@
 
 {% block scripts %}
 <script>
+const CSRF_TOKEN = {{ csrf_token | tojson }};
+const I18N = {
+  test_confirm: {{ _("Start smoke detector test?\n\nAll smoke detectors will beep and flash for %(s)s seconds,\nthen the signal stops automatically.") | tojson }},
+  test_running: {{ _("Test running…") | tojson }},
+  test_active:  {{ _("Test active on %(n)s device(s) – stops in %(s)ss") | tojson }},
+  test_error:   {{ _("Error:") | tojson }},
+  net_error:    {{ _("Network error – please try again.") | tojson }},
+  clear_confirm:{{ _("Clear smoke alarm?\n\nThis turns off the optical and acoustic alarm signal\non all smoke detectors.") | tojson }},
+  cleared_n:    {{ _("✓ Alarm signal cleared on %(n)s device(s).") | tojson }},
+  no_smoke:     {{ _("No smoke detectors found.") | tojson }},
+  sent:         {{ _("✓ Sent") | tojson }},
+  test_btn:     {{ _("Test smoke detectors") | tojson }},
+  clear_btn:    {{ _("Clear alarm") | tojson }},
+};
+
+function fmt(t, vars) { return t.replace(/%\((\w+)\)s/g, (_, k) => vars[k]); }
+
 async function testSmokeAlarm() {
   const TEST_SEC = 5;
-  if (!confirm(`Rauchmelder-Test starten?\n\nAlle Rauchmelder piepen und blinken für ${TEST_SEC} Sekunden,\ndann wird das Signal automatisch gestoppt.`)) return;
+  if (!confirm(fmt(I18N.test_confirm, {s: TEST_SEC}))) return;
   const btn  = document.getElementById('btn-test-smoke');
   const btnC = document.getElementById('btn-clear-smoke');
   const msg  = document.getElementById('alarm-msg');
   btn.disabled = true; btnC.disabled = true; msg.style.display = 'none';
   try {
-    const r = await fetch('/alarm/test-smoke', { method: 'POST' });
+    const r = await fetch('/alarm/test-smoke', {
+      method: 'POST',
+      headers: {'X-CSRF-Token': CSRF_TOKEN},
+    });
     const d = await r.json();
     if (!r.ok) {
       msg.style.color = 'var(--red)';
-      msg.textContent = `Fehler: ${d.error || r.status}`;
+      msg.textContent = `${I18N.test_error} ${d.error || r.status}`;
       msg.style.display = 'block';
       btn.disabled = false; btnC.disabled = false; return;
     }
@@ -276,50 +285,53 @@ async function testSmokeAlarm() {
     msg.style.color = '#d97706'; msg.style.display = 'block';
     const tick = setInterval(() => {
       remaining--;
-      btn.innerHTML = `🔔 Test läuft… ${remaining}s`;
-      msg.textContent = `Test aktiv auf ${d.triggered} Gerät(en) – stoppt in ${remaining}s`;
+      btn.innerHTML = `🔔 ${I18N.test_running} ${remaining}s`;
+      msg.textContent = fmt(I18N.test_active, {n: d.triggered, s: remaining});
       if (remaining <= 0) { clearInterval(tick); clearSmokeAlarm(true); }
     }, 1000);
-    btn.innerHTML = `🔔 Test läuft… ${TEST_SEC}s`;
-    msg.textContent = `Test aktiv auf ${d.triggered} Gerät(en) – stoppt in ${TEST_SEC}s`;
+    btn.innerHTML = `🔔 ${I18N.test_running} ${TEST_SEC}s`;
+    msg.textContent = fmt(I18N.test_active, {n: d.triggered, s: TEST_SEC});
   } catch (e) {
     msg.style.color = 'var(--red)';
-    msg.textContent = 'Netzwerkfehler – bitte erneut versuchen.';
+    msg.textContent = I18N.net_error;
     msg.style.display = 'block';
     btn.disabled = false; btnC.disabled = false;
   }
 }
 
 async function clearSmokeAlarm(auto = false) {
-  if (!auto && !confirm('Rauchmelder-Alarm löschen?\n\nDies schaltet das optische und akustische Alarmsignal auf allen\nRauchmeldern ab.')) return;
+  if (!auto && !confirm(I18N.clear_confirm)) return;
   const btn  = document.getElementById('btn-clear-smoke');
   const btnT = document.getElementById('btn-test-smoke');
   const msg  = document.getElementById('alarm-msg');
   btn.disabled = true; if (!auto) msg.style.display = 'none';
   try {
-    const r = await fetch('/alarm/clear-smoke', { method: 'POST' });
+    const r = await fetch('/alarm/clear-smoke', {
+      method: 'POST',
+      headers: {'X-CSRF-Token': CSRF_TOKEN},
+    });
     const d = await r.json();
     if (r.ok) {
       msg.style.color = 'var(--green)';
       msg.textContent = d.cleared > 0
-        ? `✓ Alarm-Signal auf ${d.cleared} Gerät(en) gelöscht.`
-        : `ℹ ${d.info || 'Keine Rauchmelder gefunden.'}`;
-      btn.textContent  = '✓ Gesendet';
-      btnT.innerHTML   = '<span style="color:#d97706">⚠</span> Rauchmelder testen';
+        ? fmt(I18N.cleared_n, {n: d.cleared})
+        : `ℹ ${d.info || I18N.no_smoke}`;
+      btn.textContent  = I18N.sent;
+      btnT.innerHTML   = '<span style="color:#d97706">⚠</span> ' + I18N.test_btn;
       btnT.disabled    = false;
     } else {
       msg.style.color = 'var(--red)';
-      msg.textContent = `Fehler: ${d.error || r.status}`;
-      btn.disabled = false; btn.textContent = 'Alarm löschen';
+      msg.textContent = `${I18N.test_error} ${d.error || r.status}`;
+      btn.disabled = false; btn.textContent = I18N.clear_btn;
       btnT.disabled = false;
-      btnT.innerHTML = '<span style="color:#d97706">⚠</span> Rauchmelder testen';
+      btnT.innerHTML = '<span style="color:#d97706">⚠</span> ' + I18N.test_btn;
     }
   } catch (e) {
     msg.style.color = 'var(--red)';
-    msg.textContent = 'Netzwerkfehler – bitte erneut versuchen.';
-    btn.disabled = false; btn.textContent = 'Alarm löschen';
+    msg.textContent = I18N.net_error;
+    btn.disabled = false; btn.textContent = I18N.clear_btn;
     btnT.disabled = false;
-    btnT.innerHTML = '<span style="color:#d97706">⚠</span> Rauchmelder testen';
+    btnT.innerHTML = '<span style="color:#d97706">⚠</span> ' + I18N.test_btn;
   }
   msg.style.display = 'block';
 }

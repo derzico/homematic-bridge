@@ -10,4 +10,6 @@ logs/
 .claude/
 .coverage
 .pytest_cache/
+.pytest-tmp/
+pytest-basetemp-*/
 htmlcov/

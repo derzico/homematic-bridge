@@ -180,6 +180,8 @@
 {% block scripts %}
 {% if enabled %}
 <script>
+const CSRF_TOKEN = {{ csrf_token | tojson }};
+
 (function() {
   let currentCat = 'all';
   const searchEl = document.getElementById('search');
@@ -216,7 +218,7 @@ async function shellyRelay(ip, gen, channel, on) {
   try {
     const r = await fetch('/shelly/' + ip + '/relay/' + channel, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN},
       body: JSON.stringify({on: on})
     });
     const d = await r.json();
@@ -230,7 +232,7 @@ async function startScan() {
   btn.disabled = true; btn.textContent = 'Scan läuft…';
   document.getElementById('scan-info').textContent = 'Scan gestartet – bitte warten…';
   try {
-    const r = await fetch('/shelly/scan', {method: 'POST'});
+    const r = await fetch('/shelly/scan', {method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN}});
     const d = await r.json();
     if (d.status === 'started' || d.status === 'already_running') { pollScan(); }
     else { document.getElementById('scan-info').textContent = d.error || 'Fehler'; btn.disabled = false; btn.textContent = 'Netzwerk scannen'; }
@@ -249,7 +251,7 @@ async function shellyUpdate(ip) {
   const btn = document.getElementById('upd-' + ip.replace(/\./g,'-'));
   if (btn) { btn.disabled = true; btn.textContent = 'Update läuft…'; }
   try {
-    const r = await fetch('/shelly/' + ip + '/update', {method: 'POST'});
+    const r = await fetch('/shelly/' + ip + '/update', {method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN}});
     const d = await r.json();
     if (d.success) { if (btn) btn.textContent = 'Neustart…'; setTimeout(() => location.reload(), 15000); }
     else { alert('Update fehlgeschlagen'); if (btn) { btn.disabled = false; btn.textContent = 'Update'; } }
@@ -260,20 +262,29 @@ async function checkUpdates() {
   const btn = document.getElementById('upd-check-btn');
   btn.disabled = true; btn.textContent = 'Prüfe…';
   try {
-    await fetch('/shelly/check-updates', {method: 'POST'});
+    await fetch('/shelly/check-updates', {method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN}});
     btn.textContent = 'Warte auf Geräte (5s)…';
-    setTimeout(async () => { await fetch('/shelly/refresh-status', {method: 'POST'}); location.reload(); }, 5000);
+    setTimeout(async () => {
+      await fetch('/shelly/refresh-status', {method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN}});
+      location.reload();
+    }, 5000);
   } catch(e) { btn.disabled = false; btn.textContent = 'Auf Updates prüfen'; }
 }
 
 async function refreshStatus() {
   const btn = document.getElementById('refresh-btn');
   btn.disabled = true; btn.textContent = 'Aktualisiere…';
-  try { await fetch('/shelly/refresh-status', {method: 'POST'}); location.reload(); }
+  try {
+    await fetch('/shelly/refresh-status', {method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN}});
+    location.reload();
+  }
   catch(e) { btn.disabled = false; btn.textContent = 'Status aktualisieren'; }
 }
 
-setTimeout(() => { fetch('/shelly/refresh-status', {method:'POST'}).then(() => location.reload()); }, 60000);
+setTimeout(() => {
+  fetch('/shelly/refresh-status', {method:'POST', headers: {'X-CSRF-Token': CSRF_TOKEN}})
+    .then(() => location.reload());
+}, 60000);
 </script>
 {% endif %}
 {% endblock %}

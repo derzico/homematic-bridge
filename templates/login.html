@@ -1,6 +1,6 @@
 {# SPDX-License-Identifier: Apache-2.0 #}
 {% extends "base.html" %}
-{% block title %}Anmelden – Homematic Bridge{% endblock %}
+{% block title %}{{ _("Sign in") }} – Homematic Bridge{% endblock %}
 
 {% block body %}
 <div class="login-bg">
@@ -10,29 +10,29 @@
       <span>Homematic <span class="brand-light">Bridge</span></span>
     </div>
 
-    <h1 class="login-title">Anmelden</h1>
-    <div class="login-subtitle">Gib deinen API-Key ein, um auf das Bridge-Dashboard zuzugreifen.</div>
+    <h1 class="login-title">{{ _("Sign in") }}</h1>
+    <div class="login-subtitle">{{ _("Enter your API key to access the Bridge dashboard.") }}</div>
 
     {% if error %}
-      <div class="login-error">Falsches Passwort. Bitte erneut versuchen.</div>
+      <div class="login-error">{{ _("Wrong password. Please try again.") }}</div>
     {% endif %}
 
     <form method="POST" action="/login?next={{ next_url | e }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="login-field">
-        <label for="pw">Passwort (API-Key)</label>
-        <input id="pw" type="password" name="password" autofocus autocomplete="current-password" placeholder="API-Key eingeben">
+        <label for="pw">{{ _("Password (API key)") }}</label>
+        <input id="pw" type="password" name="password" autofocus autocomplete="current-password" placeholder="{{ _('Enter API key') }}">
       </div>
       <label class="login-remember">
         <input type="checkbox" name="remember" value="1">
-        <span>Auf diesem Gerät angemeldet bleiben</span>
+        <span>{{ _("Stay signed in on this device") }}</span>
       </label>
-      <button class="login-btn" type="submit">Anmelden</button>
+      <button class="login-btn" type="submit">{{ _("Sign in") }}</button>
     </form>
 
     <div class="login-foot">
       <span class="version">v{{ app_version | e }}</span>
-      <a href="https://github.com/derzico/homematic-bridge/wiki" target="_blank" rel="noopener">API-Key vergessen?</a>
+      <a href="https://github.com/derzico/homematic-bridge/wiki" target="_blank" rel="noopener">{{ _("Forgot API key?") }}</a>
     </div>
   </div>
 </div>

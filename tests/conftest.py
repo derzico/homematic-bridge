@@ -61,6 +61,7 @@ def _reset_state():
         "config": state.config,
         "config_internal": state.config_internal,
         "pending": state.pending.copy(),
+        "conn": state.conn,
     }
     yield
     state.API_KEY = saved["API_KEY"]
@@ -68,6 +69,7 @@ def _reset_state():
     state.API_KEY_FILE = saved["API_KEY_FILE"]
     state.config = saved["config"]
     state.config_internal = saved["config_internal"]
+    state.conn = saved["conn"]
     with state.pending_lock:
         state.pending.clear()
         state.pending.update(saved["pending"])

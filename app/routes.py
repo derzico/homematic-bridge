@@ -7,6 +7,7 @@ import logging
 import os
 import time
 from typing import Any, Dict, Optional
+from urllib.parse import urlsplit
 
 import yaml
 from flask import Blueprint, jsonify, redirect, render_template, request, session
@@ -22,7 +23,7 @@ from app.adapters.hmip_messages import (send_hmip_set_alarm_signal_acoustic,
                                         send_hmip_set_point_temperature,
                                         send_hmip_set_switch)
 from app.adapters.hmip_websocket import _register_pending
-from app.auth import generate_csrf_token, require_api_key, require_csrf, require_web_auth
+from app.auth import _ensure_api_key, generate_csrf_token, require_api_key, require_csrf, require_web_auth
 from app.utils import _find_device_in_list, _locate_devices_container
 from app.view_helpers import (prepare_dashboard, prepare_device_detail,
                                prepare_device_overview, prepare_device_status,
@@ -61,6 +62,53 @@ def _snapshot_age_ms(path: str) -> Optional[int]:
         return None
 
 
+def _safe_redirect_target(target: Optional[str]) -> str:
+    """Normalisiert Redirect-Ziele auf interne Pfade."""
+    if not target:
+        return "/"
+    parsed = urlsplit(target)
+    if parsed.scheme or parsed.netloc:
+        if parsed.netloc != request.host or parsed.scheme not in {"http", "https"}:
+            return "/"
+        target = parsed.path or "/"
+        if parsed.query:
+            target += "?" + parsed.query
+    if not target.startswith("/") or target.startswith("//") or "\\" in target:
+        return "/"
+    return target
+
+
+def _apply_runtime_config(parsed: Dict[str, Any]) -> None:
+    """Übernimmt runtime-relevante Config-Werte nach dem Speichern."""
+    with state.config_lock:
+        state.config = parsed
+        _lox = parsed.get("loxone") or {}
+        state.LOXONE_HOST = _lox.get("miniserver_ip") or ""
+        state.LOXONE_UDP_PORT = int(_lox.get("udp_port") or 7777)
+        state.REQUIRE_API_KEY = bool(
+            state.config_internal.get("require_api_key", parsed.get("require_api_key", True))
+        )
+        state.API_KEY_FILE = state.config_internal.get("api_key_file", parsed.get("api_key_file", "data/api_key.txt"))
+        state.API_KEY = os.getenv("BRIDGE_API_KEY") or state.config_internal.get("api_key") or parsed.get("api_key")
+
+    _ensure_api_key()
+
+    shelly_cfg = dict(parsed.get("shelly") or {})
+    shelly_mod.set_credentials(shelly_cfg.get("username"), shelly_cfg.get("password"))
+    registry = state.adapter_registry
+    if registry is None:
+        return
+    adapter = registry.get("shelly")
+    if adapter is not None and hasattr(adapter, "update_config"):
+        adapter.update_config(shelly_cfg)
+    elif shelly_cfg.get("enabled"):
+        from app.adapters.shelly_adapter import ShellyAdapter
+        adapter = ShellyAdapter(shelly_cfg)
+        registry.register(adapter)
+    if shelly_cfg.get("enabled") and adapter is not None:
+        adapter.start()
+
+
 
 # ── Auth-Routen ───────────────────────────────────────────────────────────────
 
@@ -69,7 +117,7 @@ def _snapshot_age_ms(path: str) -> Optional[int]:
 def login():
     if not state.REQUIRE_API_KEY:
         return redirect("/")
-    next_url = request.args.get("next") or "/"
+    next_url = _safe_redirect_target(request.args.get("next"))
     from app import __version__ as app_version
     if request.method == "POST":
         password = request.form.get("password", "")
@@ -97,12 +145,29 @@ def logout():
     return redirect("/login")
 
 
+@bp.get("/lang/<code>")
+def set_language(code: str):
+    """Setzt das Sprach-Cookie und leitet zurück zur Quellseite."""
+    from app.i18n import COOKIE_NAME, LANGUAGES
+    next_url = _safe_redirect_target(request.args.get("next") or request.referrer)
+    if code not in LANGUAGES:
+        return redirect(next_url)
+    resp = redirect(next_url)
+    resp.set_cookie(COOKIE_NAME, code, max_age=365 * 24 * 3600,
+                    httponly=False, samesite="Lax")
+    return resp
+
+
 # ── Web-Oberfläche ────────────────────────────────────────────────────────────
 
 @bp.route("/")
 @require_web_auth
 def serve_dashboard():
-    return render_template("dashboard.html", **prepare_dashboard(state.config_internal["system_state_path"]))
+    return render_template(
+        "dashboard.html",
+        **prepare_dashboard(state.config_internal["system_state_path"]),
+        csrf_token=generate_csrf_token(),
+    )
 
 
 @bp.route("/heating")
@@ -463,6 +528,7 @@ def _broadcast_alarm_signal(signal: str) -> int:
 
 @bp.post("/alarm/test-smoke")
 @require_web_auth
+@require_csrf
 def alarm_test_smoke():
     """Löst auf allen Rauchmeldern kurz das Testsignal aus (Web-UI Aktion)."""
     if state.conn is None:
@@ -478,6 +544,7 @@ def alarm_test_smoke():
 
 @bp.post("/alarm/clear-smoke")
 @require_web_auth
+@require_csrf
 def alarm_clear_smoke():
     """Löscht alle aktiven Alarmsignale auf allen Rauchmeldern (Web-UI Aktion)."""
     if state.conn is None:
@@ -514,12 +581,7 @@ def serve_config():
                 raise ValueError("Validierung fehlgeschlagen:\n• " + "\n• ".join(cfg_errors))
             with open(_CONFIG_PATH, "w", encoding="utf-8") as f:
                 f.write(raw)
-            # State neu laden (unter Lock, da andere Threads config lesen)
-            with state.config_lock:
-                state.config = parsed
-                _lox = parsed.get("loxone") or {}
-                state.LOXONE_HOST = _lox.get("miniserver_ip") or ""
-                state.LOXONE_UDP_PORT = int(_lox.get("udp_port") or 7777)
+            _apply_runtime_config(parsed)
             success = True
         except Exception as e:
             error = str(e)
@@ -568,11 +630,12 @@ def serve_config_sample():
 @bp.route("/shelly")
 @require_web_auth
 def serve_shelly():
-    return render_template("shelly.html", **prepare_shelly())
+    return render_template("shelly.html", **prepare_shelly(), csrf_token=generate_csrf_token())
 
 
 @bp.post("/shelly/scan")
 @require_web_auth
+@require_csrf
 def shelly_scan():
     cfg = state.config.get("shelly", {})
     if not cfg.get("enabled", False):
@@ -602,6 +665,7 @@ def shelly_devices():
 
 @bp.post("/shelly/refresh-status")
 @require_web_auth
+@require_csrf
 def shelly_refresh_status():
     cfg = state.config.get("shelly", {})
     shelly_mod.set_credentials(cfg.get("username"), cfg.get("password"))
@@ -611,6 +675,7 @@ def shelly_refresh_status():
 
 @bp.post("/shelly/check-updates")
 @require_web_auth
+@require_csrf
 def shelly_check_updates():
     shelly_mod.check_updates_all()
     return jsonify({"status": "triggered"}), 200
@@ -618,6 +683,7 @@ def shelly_check_updates():
 
 @bp.post("/shelly/<ip>/update")
 @require_web_auth
+@require_csrf
 def shelly_update(ip: str):
     cached = {d["ip"]: d for d in shelly_mod.load_cached()}
     device = cached.get(ip)
@@ -629,6 +695,7 @@ def shelly_update(ip: str):
 
 @bp.post("/shelly/<ip>/relay/<int:channel>")
 @require_web_auth
+@require_csrf
 def shelly_relay(ip: str, channel: int):
     data = request.get_json(silent=True, force=True) or {}
     on = data.get("on")
