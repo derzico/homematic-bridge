@@ -1,12 +1,19 @@
 {# SPDX-License-Identifier: Apache-2.0 #}
 {% extends "base.html" %}
-{% block title %}HmIP Heizung{% endblock %}
+{% block title %}Heizung – Homematic Bridge{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1>Heizung</h1>
-  <div class="sub">Abwesenheitsmodus: <strong>{{ absence | e }}</strong></div>
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Heizung</div>
+    <h1>Heizung</h1>
+    <div class="sub">Abwesenheitsmodus: <strong style="color:var(--text)">{{ absence | e }}</strong></div>
+  </div>
+  <div class="actions">
+    <a class="btn primary" href="/heating">Aktualisieren</a>
+  </div>
 </div>
+
 <table class="data-table">
   <thead>
     <tr>
@@ -21,13 +28,14 @@
       <td class="mono">{{ hg.setp_str }}</td>
       <td class="mono">{{ hg.hum_str }}</td>
       <td class="mono">{{ hg.valve_str }}</td>
-      <td>{{ hg.mode_str | e }}
-        {% if hg.boost %} <span class="status-pill pill-warn">Boost</span>{% endif %}
-        {% if hg.party %} <span class="status-pill pill-warn">Party</span>{% endif %}
+      <td>
+        <span class="pill">{{ hg.mode_str | e }}</span>
+        {% if hg.boost %} <span class="pill warn">Boost</span>{% endif %}
+        {% if hg.party %} <span class="pill warn">Party</span>{% endif %}
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px">Keine Heizgruppen gefunden.</td></tr>
+    <tr><td colspan="6" class="empty-cell">Keine Heizgruppen gefunden.</td></tr>
     {% endfor %}
   </tbody>
 </table>

@@ -9,9 +9,11 @@ einfache Dicts/Listen für render_template() auf.
 import datetime
 import html
 import json
+import os
 import time
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+import app.state as state
 from app.utils import _get_nested, _locate_devices_container, _find_device_in_list
 
 
@@ -112,7 +114,50 @@ def _age_str(last_seen: Any) -> str:
     return f"{age // 3600}h"
 
 
+def _common_context(system_state_path: str, hmip_count: int = 0) -> Dict[str, Any]:
+    """Header-Kontext: WS-Status, Snapshot-Alter, Geräte-Counts.
+
+    Wird von allen Seiten in den Template-Context gemerged, damit das
+    Layout (Header, Status-Pill) konsistent gerendert werden kann.
+    """
+    try:
+        snap_mtime = os.path.getmtime(system_state_path)
+    except OSError:
+        snap_mtime = 0
+
+    try:
+        shelly_count = len(__import__("app.adapters.shelly_adapter", fromlist=["load_cached"]).load_cached())
+    except Exception:
+        shelly_count = 0
+
+    return {
+        "ws_connected": state.conn is not None,
+        "snapshot_time_str": (datetime.datetime.fromtimestamp(snap_mtime).strftime("%H:%M")
+                              if snap_mtime else "–"),
+        "snapshot_age_str": _age_str(snap_mtime) if snap_mtime else "–",
+        "hmip_count": hmip_count,
+        "shelly_count": shelly_count,
+        "device_count": hmip_count,  # für Header-Badge
+    }
+
+
 # ── Datenvorbereitung pro Seite ──────────────────────────────────────────────
+
+def _categorize(dev_type: str) -> str:
+    """Grobe Kategorie für Filter-Tabs (heating/sensor/actor/other)."""
+    t = dev_type.upper()
+    if "THERMOSTAT" in t or "HEATING" in t or "RADIATOR" in t:
+        return "heating"
+    sensor_kw = ("SENSOR", "DETECTOR", "CONTACT", "SMOKE", "WATER", "MOTION",
+                 "PRESENCE", "WEATHER", "TILT", "VIBRATION", "BUTTON", "REMOTE")
+    if any(k in t for k in sensor_kw):
+        return "sensor"
+    actor_kw = ("SWITCH", "DIMMER", "PLUG", "ACTUATOR", "SHUTTER", "BLIND",
+                "RGB", "LIGHT", "SIREN", "ALARM", "VALVE", "PUSH")
+    if any(k in t for k in actor_kw):
+        return "actor"
+    return "other"
+
 
 def prepare_device_overview(system_state_path: str) -> Dict[str, Any]:
     """Daten für die Geräteübersicht."""
@@ -120,15 +165,27 @@ def prepare_device_overview(system_state_path: str) -> Dict[str, Any]:
         data = json.load(f)
     room_map = _build_room_map(data)
     devices = []
+    counts = {"heating": 0, "sensor": 0, "actor": 0, "other": 0}
     for dev_id, dev in _iter_devices(data):
+        dtype = str(dev.get("type", "–"))
+        category = _categorize(dtype)
+        counts[category] += 1
         devices.append({
             "id": dev_id,
             "label": str(dev.get("label", "–")),
-            "type": str(dev.get("type", "–")),
+            "type": dtype,
             "model": str(dev.get("modelType", "–")),
             "room": room_map.get(dev_id, "–"),
+            "category": category,
         })
-    return {"devices": devices, "device_count": len(devices), "active_nav": "devices"}
+    devices.sort(key=lambda d: (d["room"].lower(), d["label"].lower()))
+    ctx = {
+        "devices": devices,
+        "cat_counts": counts,
+        "active_nav": "devices",
+    }
+    ctx.update(_common_context(system_state_path, hmip_count=len(devices)))
+    return ctx
 
 
 def prepare_device_detail(system_state_path: str, device_id: str) -> Dict[str, Any]:
@@ -148,7 +205,7 @@ def prepare_device_detail(system_state_path: str, device_id: str) -> Dict[str, A
             if isinstance(ch, dict):
                 channels.append((str(ch_idx), ch))
 
-    return {
+    ctx = {
         "dev": {
             "id": device_id,
             "label": str(dev_raw.get("label", "–")),
@@ -163,6 +220,8 @@ def prepare_device_detail(system_state_path: str, device_id: str) -> Dict[str, A
                        "permanentlyReachable", "firmwareVersion"],
         "active_nav": "devices",
     }
+    ctx.update(_common_context(system_state_path))
+    return ctx
 
 
 def prepare_device_status(system_state_path: str) -> Dict[str, Any]:
@@ -197,12 +256,13 @@ def prepare_device_status(system_state_path: str) -> Dict[str, Any]:
         })
     entries.sort(key=lambda e: (-e["sev"], str(e["label"]).lower()))
     warn_count = sum(1 for e in entries if e["sev"] >= 2)
-    return {
+    ctx = {
         "entries": entries,
         "warn_count": warn_count,
-        "device_count": len(entries),
         "active_nav": "status",
     }
+    ctx.update(_common_context(system_state_path, hmip_count=len(entries)))
+    return ctx
 
 
 def prepare_dashboard(system_state_path: str) -> Dict[str, Any]:
@@ -281,14 +341,26 @@ def prepare_dashboard(system_state_path: str) -> Dict[str, Any]:
         if ch0.get("lowBat") or ch0.get("unreach") or ch0.get("dutyCycle") or ch0.get("sabotage"):
             warn_devs.append(dev.get("label", dev_id))
 
-    return {
+    # Innenklima-Mittelwert über alle Heizgruppen
+    actuals = [g.get("actualTemperature") for g in heating_groups_raw
+               if isinstance(g.get("actualTemperature"), (int, float))]
+    indoor_avg = sum(actuals) / len(actuals) if actuals else None
+
+    # HmIP-Geräte zählen
+    hmip_total = sum(1 for _ in _iter_devices(data))
+
+    ctx = {
         "weather": weather,
         "alarm": alarm,
         "system": system,
         "heating_groups": heating_groups,
+        "heating_count": len(heating_groups_raw),
+        "indoor_avg_str": f"{indoor_avg:.1f}" if indoor_avg is not None else "–",
         "warn_devs": warn_devs,
         "active_nav": "dashboard",
     }
+    ctx.update(_common_context(system_state_path, hmip_count=hmip_total))
+    return ctx
 
 
 def prepare_heating(system_state_path: str) -> Dict[str, Any]:
@@ -326,11 +398,13 @@ def prepare_heating(system_state_path: str) -> Dict[str, Any]:
             "boost": hg.get("boostMode", False),
             "party": hg.get("partyMode", False),
         })
-    return {
+    ctx = {
         "absence": absence,
         "heating_groups": heating_groups,
         "active_nav": "heating",
     }
+    ctx.update(_common_context(system_state_path))
+    return ctx
 
 
 def prepare_shelly() -> Dict[str, Any]:

@@ -17,13 +17,13 @@
   {%- endif -%}
 {% endmacro %}
 
-{% macro bool_pill(val, label_true, label_false, cls_true="pill-error", cls_false="pill-ok") %}
+{% macro bool_pill(val, label_true, label_false, cls_true="error", cls_false="ok") %}
   {%- if val is sameas true -%}
-    <span class="status-pill {{ cls_true }}">{{ label_true }}</span>
+    <span class="pill {{ cls_true }}">{{ label_true }}</span>
   {%- elif val is sameas false -%}
-    <span class="status-pill {{ cls_false }}">{{ label_false }}</span>
+    <span class="pill {{ cls_false }}">{{ label_false }}</span>
   {%- else -%}
-    <span class="status-pill pill-muted">&ndash;</span>
+    <span class="pill">&ndash;</span>
   {%- endif -%}
 {% endmacro %}
 
@@ -85,11 +85,50 @@
   {%- endif -%}
 {% endmacro %}
 
+{% macro channel_pills(ch) %}
+  {%- if ch.get("unreach") is sameas true -%}
+    <span class="pill error"><span class="dot"></span>nicht erreichbar</span>
+  {%- elif ch.get("unreach") is sameas false -%}
+    <span class="pill ok"><span class="dot"></span>erreichbar</span>
+  {%- endif -%}
+  {%- if ch.get("lowBat") is sameas true -%}
+    <span class="pill warn">Batterie schwach</span>
+  {%- endif -%}
+  {%- if ch.get("sabotage") is sameas true -%}
+    <span class="pill error">Sabotage</span>
+  {%- endif -%}
+  {%- if ch.get("on") is sameas true -%}
+    <span class="pill ok">An</span>
+  {%- elif ch.get("on") is sameas false -%}
+    <span class="pill">Aus</span>
+  {%- endif -%}
+  {%- if ch.get("dimLevel") is number and ch.get("dimLevel") > 0 -%}
+    <span class="pill info">{{ (ch.get("dimLevel") * 100) | round | int }}%</span>
+  {%- endif -%}
+  {%- if ch.get("actualTemperature") is number -%}
+    <span class="pill info">{{ "%.1f"|format(ch.get("actualTemperature")) }} °C</span>
+  {%- endif -%}
+  {%- if ch.get("setPointTemperature") is number -%}
+    <span class="pill">Soll {{ "%.1f"|format(ch.get("setPointTemperature")) }} °C</span>
+  {%- endif -%}
+  {%- if ch.get("humidity") is number -%}
+    <span class="pill">{{ ch.get("humidity") }}% rH</span>
+  {%- endif -%}
+  {%- if ch.get("windowState") -%}
+    {%- if ch.get("windowState") == "OPEN" -%}
+      <span class="pill warn">Fenster offen</span>
+    {%- elif ch.get("windowState") == "CLOSED" -%}
+      <span class="pill ok">Fenster zu</span>
+    {%- endif -%}
+  {%- endif -%}
+{% endmacro %}
+
 {% macro channel_card(ch_idx, ch, open_default=false) %}
-  <details{{ " open" if open_default else "" }}>
+  <details class="channel"{{ " open" if open_default else "" }}>
     <summary>
-      <span class="summary-title">Kanal {{ ch_idx }}</span>
-      <span class="summary-sub">{{ ch.get("functionalChannelType", "") | e }}</span>
+      <span>Kanal {{ ch_idx }}</span>
+      <span class="sub">{{ ch.get("functionalChannelType", "") | e }}</span>
+      <span class="pills">{{ channel_pills(ch) }}</span>
       <span class="chevron">&#9660;</span>
     </summary>
     <table class="kv-table"><tbody>{{ kv_rows(ch) }}</tbody></table>

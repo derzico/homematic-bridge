@@ -1,58 +1,70 @@
 {# SPDX-License-Identifier: Apache-2.0 #}
 {% from "macros.html" import rssi_html_shelly %}
 {% extends "base.html" %}
-{% block title %}Shelly{% endblock %}
+{% block title %}Shelly – Homematic Bridge{% endblock %}
 
 {% block content %}
 {% if not enabled %}
-  <div class="page-header"><h1>Shelly Scanner</h1></div>
-  <div class="dash-card" style="max-width:520px">
-    <h3>Nicht aktiviert</h3>
-    <p style="color:var(--muted);font-size:13px;line-height:1.6">Füge in <code>config/config.yaml</code> folgendes hinzu:</p>
-    <pre class="json-raw" style="margin-top:12px">shelly:
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">Shelly</div>
+      <h1>Shelly Scanner</h1>
+      <div class="sub">Nicht aktiviert – siehe Konfigurationshinweis unten.</div>
+    </div>
+  </div>
+  <div class="card" style="max-width:560px">
+    <div class="card-body">
+      <p style="color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:10px">Füge in <code class="mono">config/config.yaml</code> hinzu:</p>
+      <pre class="json-raw" style="border-radius:8px;border:1px solid var(--border-soft)">shelly:
   enabled: true
   subnet: "192.168.1.0/24"
   timeout_sec: 1.5</pre>
+    </div>
   </div>
 {% else %}
-  <div class="page-header">
-    <h1>Shelly</h1>
-    <div class="sub">
-      Subnet: <strong>{{ subnet | e }}</strong>
-      &nbsp;&middot;&nbsp; {{ online_count }}/{{ devices | length }} online
-      &nbsp;&middot;&nbsp; Auto-Refresh: 60s
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">Shelly</div>
+      <h1>Shelly</h1>
+      <div class="sub">
+        Subnet: <strong style="color:var(--text)">{{ subnet | e }}</strong>
+        · {{ online_count }}/{{ devices | length }} online · Auto-Refresh: 60s
+      </div>
+    </div>
+    <div class="actions">
+      <button id="upd-check-btn" class="btn ghost" onclick="checkUpdates()">Auf Updates prüfen</button>
+      <button id="refresh-btn" class="btn" onclick="refreshStatus()">Status aktualisieren</button>
+      <button id="scan-btn" class="btn primary" onclick="startScan()">Netzwerk scannen</button>
     </div>
   </div>
 
-  {# Offline-Banner #}
   {% if offline_names %}
-  <div style="background:#3a1010;border:1px solid var(--red);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px">
-    <strong style="color:var(--red)">&#9888; {{ offline_count }} Gerät{{ "e" if offline_count > 1 else "" }} nicht erreichbar</strong>
-    <span style="color:var(--muted);margin-left:8px">{{ offline_names | e }}</span>
-    <span style="color:var(--muted);font-size:11px;margin-left:12px">– kann temporär sein, wird beim nächsten Scan/Refresh aktualisiert</span>
+  <div class="alert error" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <strong>⚠ {{ offline_count }} Gerät{{ "e" if offline_count > 1 else "" }} nicht erreichbar</strong>
+    <span style="color:var(--muted)">{{ offline_names | e }}</span>
+    <span style="color:var(--muted-2);font-size:11.5px">– kann temporär sein, wird beim nächsten Scan/Refresh aktualisiert</span>
   </div>
   {% endif %}
 
-  {# Update-Banner #}
   {% if updates_count %}
-  <div style="background:#3a2a00;border:1px solid var(--yellow);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px">
-    <strong style="color:var(--yellow)">&#9650; {{ updates_count }} Firmware-Update{{ "s" if updates_count > 1 else "" }} verfügbar</strong>
-    <span style="color:var(--muted);margin-left:8px">– Update-Button in der Firmware-Spalte</span>
+  <div class="alert" style="background:var(--yellow-soft);color:var(--yellow);border-color:transparent;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <strong>▲ {{ updates_count }} Firmware-Update{{ "s" if updates_count > 1 else "" }} verfügbar</strong>
+    <span style="color:var(--muted)">– Update-Button in der Firmware-Spalte</span>
   </div>
   {% endif %}
 
-  {# Buttons #}
-  <div style="margin-bottom:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <button id="scan-btn" onclick="startScan()" style="background:var(--accent);color:#0d1117;border:none;padding:8px 18px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Netzwerk scannen</button>
-    <button id="refresh-btn" onclick="refreshStatus()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);padding:8px 14px;border-radius:6px;font-size:13px;cursor:pointer">Status aktualisieren</button>
-    <button id="upd-check-btn" onclick="checkUpdates()" style="background:var(--surface2);color:var(--yellow);border:1px solid var(--yellow);padding:8px 14px;border-radius:6px;font-size:13px;cursor:pointer">&#9650; Auf Updates prüfen</button>
+  <div class="toolbar">
+    <div class="search-pill">
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="search" placeholder="Suchen…" autocomplete="off">
+      <span class="kbd">⌘K</span>
+    </div>
     <span id="scan-info" style="color:var(--muted);font-size:13px">{{ scan_info | e }}</span>
   </div>
 
   {% if not devices %}
-    <div style="color:var(--muted);font-size:13px">Noch keine Geräte gefunden. Starte einen Scan.</div>
+    <div class="card"><div class="card-body" style="color:var(--muted)">Noch keine Geräte gefunden. Starte einen Scan.</div></div>
   {% else %}
-    <div class="search-wrap"><input id="search" placeholder="Suchen…"></div>
     <table class="data-table">
       <thead>
         <tr>
@@ -64,21 +76,21 @@
         {% for dev in devices %}
         {% set ip = dev.ip | e %}
         {% set ip_dash = dev.ip | replace(".", "-") %}
-        <tr{{ ' style="opacity:0.55"' | safe if not dev.online }}>
+        <tr{{ ' style="opacity:0.6"' | safe if not dev.online }}>
           <td class="label-cell">
-            {% if not dev.online %}<span class="status-pill pill-error" style="font-size:10px">offline</span> {% endif %}
+            {% if not dev.online %}<span class="pill error">offline</span> {% endif %}
             {{ dev.name | e }}
           </td>
-          <td><span class="type-pill">{{ dev.model | e }}</span></td>
+          <td><span class="type-badge">{{ dev.model | e }}</span></td>
           <td class="mono">Gen{{ dev.gen }}</td>
-          <td><a href="/shelly/{{ ip }}/webui/" target="_blank" class="mono">{{ ip }}</a></td>
-          <td class="mono" style="font-size:11px">{{ dev.mac | e }}</td>
-          <td class="mono" style="font-size:11px;color:var(--muted)">
+          <td><a href="/shelly/{{ ip }}/webui/" target="_blank" class="mono mono-link">{{ ip }}</a></td>
+          <td class="mono muted">{{ dev.mac | e }}</td>
+          <td class="mono muted">
             {{ dev.fw | e }}
             {% if dev.update_available %}
-            <br><button id="upd-{{ ip_dash }}" onclick="shellyUpdate('{{ dev.ip }}')"
-              style="background:#3a2a00;color:var(--yellow);border:1px solid var(--yellow);padding:2px 8px;border-radius:4px;font-size:10px;cursor:pointer;margin-top:3px">
-              &#9650; {{ dev.new_fw | e }}</button>
+            <br><button id="upd-{{ ip_dash }}" class="btn" onclick="shellyUpdate('{{ dev.ip }}')"
+              style="margin-top:4px;padding:3px 9px;font-size:11px;color:var(--yellow);border-color:var(--yellow)">
+              ▲ {{ dev.new_fw | e }}</button>
             {% endif %}
           </td>
           <td>{{ rssi_html_shelly(dev.rssi) }}</td>
@@ -86,7 +98,6 @@
             {% if not dev.online %}
               <span style="color:var(--muted);font-size:12px">nicht erreichbar</span>
             {% elif dev.emeters %}
-              {# Energie-Monitor #}
               {% for idx, em in dev.emeters | dictsort %}
                 {% set phase = {"0": "L1", "1": "L2", "2": "L3"}.get(idx, "CH" ~ idx) %}
                 <div style="margin-bottom:4px">
@@ -97,57 +108,58 @@
                   {% if em.current is number %}{% if details.append("%.2f A" | format(em.current)) %}{% endif %}{% endif %}
                   {% if em.pf is number %}{% if details.append("PF %.2f" | format(em.pf)) %}{% endif %}{% endif %}
                   {% if details %}
-                    <span style="color:var(--muted);font-size:11px;font-family:var(--mono)">({{ details | join(" &middot; ") }})</span>
+                    <span style="color:var(--muted);font-size:11px;font-family:var(--mono)">({{ details | join(" · ") }})</span>
                   {% endif %}
                   {% set energy = [] %}
                   {% if em.total_kwh is number %}{% if energy.append("%.1f kWh" | format(em.total_kwh)) %}{% endif %}{% endif %}
-                  {% if em.returned_kwh is number and em.returned_kwh > 0 %}{% if energy.append("&larr; %.1f kWh" | format(em.returned_kwh)) %}{% endif %}{% endif %}
+                  {% if em.returned_kwh is number and em.returned_kwh > 0 %}{% if energy.append("← %.1f kWh" | format(em.returned_kwh)) %}{% endif %}{% endif %}
                   {% if energy %}
-                    <br><span style="color:var(--muted);font-size:11px;font-family:var(--mono)">{{ energy | join(" &middot; ") | safe }}</span>
+                    <br><span style="color:var(--muted);font-size:11px;font-family:var(--mono)">{{ energy | join(" · ") }}</span>
                   {% endif %}
                 </div>
               {% endfor %}
               {% if dev.emeters | length > 1 %}
                 {% set total_pw = dev.emeters.values() | map(attribute='power_w') | select('number') | sum %}
-                <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:4px;font-family:var(--mono);font-size:11px;color:var(--muted)">
+                <div style="border-top:1px solid var(--border-soft);margin-top:4px;padding-top:4px;font-family:var(--mono);font-size:11px;color:var(--muted)">
                   Gesamt: <strong style="color:var(--text)">{{ "%.0f W" | format(total_pw) }}</strong>
                 </div>
               {% endif %}
               {% if dev.channels %}
-                <div style="margin-top:6px">
+                <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;align-items:center">
                   {% for ch_idx, ch in dev.channels | dictsort %}
                     {% set btn_id = "btn-" ~ ip_dash ~ "-" ~ ch_idx %}
                     {% set is_on = ch.get("on", false) %}
-                    <button id="{{ btn_id }}"
+                    <button id="{{ btn_id }}" class="btn {{ 'primary' if is_on else '' }}"
                       onclick="shellyRelay('{{ dev.ip }}',{{ dev.gen }},{{ ch_idx }},{{ 'false' if is_on else 'true' }})"
-                      style="background:{{ 'var(--green)' if is_on else 'var(--surface2)' }};border:1px solid var(--border);padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer;margin-right:4px;color:var(--text)">
+                      style="padding:3px 10px;font-size:11px">
                       CH{{ ch_idx }} {{ "EIN" if is_on else "AUS" }}{{ " · %.0f W" | format(ch.power_w) if ch.power_w is number else "" }}
                     </button>
                     {% if ch.total_kwh is number %}
-                      <span style="font-size:11px;color:var(--muted);font-family:var(--mono)"> · {{ "%.2f kWh" | format(ch.total_kwh) }}</span>
+                      <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">· {{ "%.2f kWh" | format(ch.total_kwh) }}</span>
                     {% endif %}
                   {% endfor %}
                 </div>
               {% endif %}
             {% elif dev.channels %}
-              {# Nur Schalter #}
+              <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">
               {% for ch_idx, ch in dev.channels | dictsort %}
                 {% set btn_id = "btn-" ~ ip_dash ~ "-" ~ ch_idx %}
                 {% set is_on = ch.get("on", false) %}
-                <button id="{{ btn_id }}"
+                <button id="{{ btn_id }}" class="btn {{ 'primary' if is_on else '' }}"
                   onclick="shellyRelay('{{ dev.ip }}',{{ dev.gen }},{{ ch_idx }},{{ 'false' if is_on else 'true' }})"
-                  style="background:{{ 'var(--green)' if is_on else 'var(--surface2)' }};border:1px solid var(--border);padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer;margin-right:4px;color:var(--text)">
+                  style="padding:3px 10px;font-size:11px">
                   CH{{ ch_idx }} {{ "EIN" if is_on else "AUS" }}{{ " · %.0f W" | format(ch.power_w) if ch.power_w is number else "" }}
                 </button>
                 {% if ch.total_kwh is number %}
-                  <span style="font-size:11px;color:var(--muted);font-family:var(--mono)"> · {{ "%.2f kWh" | format(ch.total_kwh) }}</span>
+                  <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">· {{ "%.2f kWh" | format(ch.total_kwh) }}</span>
                 {% endif %}
               {% endfor %}
+              </div>
             {% else %}
-              <span style="color:var(--muted)">&ndash;</span>
+              <span style="color:var(--muted)">–</span>
             {% endif %}
           </td>
-          <td class="mono" style="color:var(--muted)">{{ dev.age_str }}</td>
+          <td class="mono muted">{{ dev.age_str }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -164,6 +176,14 @@ document.getElementById('search')?.addEventListener('input', function() {
   document.querySelectorAll('tbody tr').forEach(r => {
     r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
   });
+});
+
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    const s = document.getElementById('search');
+    if (s) { s.focus(); s.select(); }
+  }
 });
 
 async function shellyRelay(ip, gen, channel, on) {

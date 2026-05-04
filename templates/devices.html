@@ -1,42 +1,153 @@
 {# SPDX-License-Identifier: Apache-2.0 #}
 {% extends "base.html" %}
-{% block title %}HmIP Geräteübersicht{% endblock %}
+{% block title %}Geräteübersicht – Homematic Bridge{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1>Geräteübersicht</h1>
-  <div class="sub">{{ devices | length }} Geräte im aktuellen Snapshot</div>
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Geräte</div>
+    <h1>Geräteübersicht</h1>
+    <div class="sub">{{ devices | length }} Geräte · Snapshot {{ snapshot_time_str }} · vor {{ snapshot_age_str }}</div>
+  </div>
+  <div class="actions">
+    <button id="exportBtn" class="btn ghost" type="button">Export CSV</button>
+    <a class="btn primary" href="/devices">Snapshot aktualisieren</a>
+  </div>
 </div>
-<div class="search-wrap">
-  <input id="search" type="text" placeholder="Suchen nach ID, Label, Raum, Typ …" autocomplete="off">
+
+<div class="toolbar">
+  <div class="search-pill">
+    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    <input id="search" type="text" placeholder="Suchen nach ID, Label, Raum, Typ …" autocomplete="off">
+    <span class="kbd">⌘K</span>
+  </div>
+  <div class="tabs" id="catTabs">
+    <button class="active" data-cat="all">Alle <span class="count">{{ devices | length }}</span></button>
+    <button data-cat="heating">Heizung <span class="count">{{ cat_counts.heating }}</span></button>
+    <button data-cat="sensor">Sensoren <span class="count">{{ cat_counts.sensor }}</span></button>
+    <button data-cat="actor">Aktoren <span class="count">{{ cat_counts.actor }}</span></button>
+    <button data-cat="other">Sonstige <span class="count">{{ cat_counts.other }}</span></button>
+  </div>
+  <div class="segmented" id="viewToggle">
+    <button class="active" data-view="table">Tabelle</button>
+    <button data-view="cards">Kacheln</button>
+  </div>
 </div>
-<table class="data-table">
-  <thead>
-    <tr><th>Device ID</th><th>Label</th><th>Raum</th><th>Typ</th><th>Modell</th></tr>
-  </thead>
-  <tbody>
-    {% for dev in devices %}
-    <tr>
-      <td class="mono"><a href="/devices/{{ dev.id | e }}">{{ dev.id | e }}</a></td>
-      <td class="label-cell">{{ dev.label | e }}</td>
-      <td>{{ dev.room | e }}</td>
-      <td><span class="type-pill">{{ dev.type | e }}</span></td>
-      <td class="mono">{{ dev.model | e }}</td>
-    </tr>
-    {% else %}
-    <tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px">Keine Geräte gefunden.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+
+<div id="viewTable">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Label</th>
+        <th>Raum</th>
+        <th>Typ</th>
+        <th>Modell</th>
+        <th>Device ID</th>
+        <th aria-label="Öffnen"></th>
+      </tr>
+    </thead>
+    <tbody id="devTbody">
+      {% for dev in devices %}
+      <tr data-cat="{{ dev.category }}" data-search="{{ (dev.id ~ ' ' ~ dev.label ~ ' ' ~ dev.room ~ ' ' ~ dev.type ~ ' ' ~ dev.model) | lower | e }}">
+        <td class="label-cell"><a href="/devices/{{ dev.id | e }}">{{ dev.label | e }}</a></td>
+        <td>{{ dev.room | e }}</td>
+        <td><span class="type-badge cat-{{ dev.category }}">{{ dev.type | e }}</span></td>
+        <td class="mono muted">{{ dev.model | e }}</td>
+        <td class="mono"><a class="mono-link" href="/devices/{{ dev.id | e }}">{{ dev.id | e }}</a></td>
+        <td class="row-chev"><a href="/devices/{{ dev.id | e }}" aria-label="Details öffnen">›</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="empty-cell">Keine Geräte gefunden.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div id="viewCards" class="cards-grid" hidden>
+  {% for dev in devices %}
+  <a class="device-card" href="/devices/{{ dev.id | e }}" data-cat="{{ dev.category }}" data-search="{{ (dev.id ~ ' ' ~ dev.label ~ ' ' ~ dev.room ~ ' ' ~ dev.type ~ ' ' ~ dev.model) | lower | e }}">
+    <div class="device-card-head">
+      <span class="type-badge cat-{{ dev.category }}">{{ dev.type | e }}</span>
+      <span class="row-chev">›</span>
+    </div>
+    <div class="device-card-title">{{ dev.label | e }}</div>
+    <div class="device-card-meta">{{ dev.room | e }}</div>
+    <div class="device-card-meta mono">{{ dev.model | e }}</div>
+  </a>
+  {% endfor %}
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-document.getElementById('search').addEventListener('input', function() {
-  const q = this.value.toLowerCase();
-  document.querySelectorAll('tbody tr').forEach(r => {
-    r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
+(function() {
+  const search = document.getElementById('search');
+  const tabs = document.querySelectorAll('#catTabs button');
+  const viewToggle = document.querySelectorAll('#viewToggle button');
+  const tableView = document.getElementById('viewTable');
+  const cardsView = document.getElementById('viewCards');
+  let currentCat = 'all';
+
+  function applyFilter() {
+    const q = (search.value || '').toLowerCase().trim();
+    document.querySelectorAll('#devTbody tr[data-cat], .device-card').forEach(el => {
+      const cat = el.getAttribute('data-cat');
+      const txt = el.getAttribute('data-search') || '';
+      const catOk = currentCat === 'all' || cat === currentCat;
+      const qOk = !q || txt.includes(q);
+      el.style.display = (catOk && qOk) ? '' : 'none';
+    });
+  }
+
+  search.addEventListener('input', applyFilter);
+  tabs.forEach(t => t.addEventListener('click', () => {
+    tabs.forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    currentCat = t.dataset.cat;
+    applyFilter();
+  }));
+  viewToggle.forEach(b => b.addEventListener('click', () => {
+    viewToggle.forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    if (b.dataset.view === 'cards') {
+      tableView.hidden = true;
+      cardsView.hidden = false;
+    } else {
+      tableView.hidden = false;
+      cardsView.hidden = true;
+    }
+  }));
+
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      search.focus();
+      search.select();
+    }
   });
-});
+
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    const rows = [['ID', 'Label', 'Raum', 'Typ', 'Modell']];
+    document.querySelectorAll('#devTbody tr[data-cat]').forEach(tr => {
+      if (tr.style.display === 'none') return;
+      const cells = tr.querySelectorAll('td');
+      rows.push([
+        cells[4].innerText.trim(),
+        cells[0].innerText.trim(),
+        cells[1].innerText.trim(),
+        cells[2].innerText.trim(),
+        cells[3].innerText.trim(),
+      ]);
+    });
+    const csv = rows.map(r => r.map(c => '"' + c.replace(/"/g, '""') + '"').join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'devices.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+})();
 </script>
 {% endblock %}

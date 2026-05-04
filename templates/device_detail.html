@@ -1,36 +1,65 @@
 {# SPDX-License-Identifier: Apache-2.0 #}
-{% from "macros.html" import val_html, kv_rows, channel_card %}
+{% from "macros.html" import val_html, channel_card %}
 {% extends "base.html" %}
-{% block title %}Device · {{ dev.label | e }}{% endblock %}
+{% block title %}{{ dev.label | e if dev else 'Gerät' }} – Homematic Bridge{% endblock %}
 
 {% block content %}
 {% if not dev %}
-  <div class="page-header"><h1>Gerät nicht gefunden</h1></div>
-  <p style="color:var(--muted)">Device <code>{{ device_id | e }}</code> wurde im aktuellen Snapshot nicht gefunden.</p>
-  <p style="margin-top:16px"><a href="/devices/html">&laquo; Zurück zur Übersicht</a></p>
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">Gerät</div>
+      <h1>Gerät nicht gefunden</h1>
+      <div class="sub">Device <span class="mono">{{ device_id | e }}</span> wurde im aktuellen Snapshot nicht gefunden.</div>
+    </div>
+    <div class="actions">
+      <a class="btn ghost" href="/devices/html">&laquo; Zurück</a>
+    </div>
+  </div>
 {% else %}
-  {# Breadcrumb #}
+  {% set ch0 = dev.raw.get('functionalChannels', {}).get('0', {}) %}
+  {% set unreach = ch0.get('unreach') %}
+  {% set low_bat = ch0.get('lowBat') %}
+  {% set sabotage = ch0.get('sabotage') %}
+
   <div class="breadcrumb">
     <a href="/devices/html">Geräte</a>
-    <span class="sep">&rsaquo;</span>
-    {{ dev.room | e }} <span style="opacity:.4">&rsaquo;</span>
-    {{ dev.label | e }}
+    <span class="sep">›</span>
+    <span>{{ dev.room | e }}</span>
+    <span class="sep">›</span>
+    <span style="color:var(--text)">{{ dev.label | e }}</span>
   </div>
 
-  <div class="page-header">
-    <h1>{{ dev.label | e }}</h1>
-    <div class="sub">
-      <span class="type-pill">{{ dev.type | e }}</span>&nbsp;
-      {{ dev.model | e }} &nbsp;&middot;&nbsp;
-      <span class="mono">{{ dev.id | e }}</span>
+  <div class="detail-head">
+    <div>
+      <h1>{{ dev.label | e }}</h1>
+      <div class="meta">
+        <span class="type-badge">{{ dev.type | e }}</span>
+        <span>{{ dev.model | e }}</span>
+        <span>·</span>
+        <span class="mono">{{ dev.id | e }}</span>
+        {% if unreach is sameas true %}
+          <span class="pill error"><span class="dot"></span>nicht erreichbar</span>
+        {% elif unreach is sameas false %}
+          <span class="pill ok"><span class="dot"></span>erreichbar</span>
+        {% endif %}
+        {% if low_bat is sameas true %}
+          <span class="pill warn">Batterie schwach</span>
+        {% endif %}
+        {% if sabotage is sameas true %}
+          <span class="pill error">Sabotage</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="actions">
+      <a class="btn ghost" href="#raw-json">Rohdaten</a>
+      <a class="btn primary" href="/devices/{{ dev.id | e }}">Aktualisieren</a>
     </div>
   </div>
 
-  {# Meta-Grid #}
   <div class="meta-grid">
     <div class="meta-card">
       <div class="k">Raum</div>
-      <div class="v">{{ dev.room | e }}</div>
+      <div class="v plain">{{ dev.room | e }}</div>
     </div>
     {% for k in meta_keys %}
       {% if k in dev.raw %}
@@ -42,25 +71,22 @@
     {% endfor %}
   </div>
 
-  {# Functional Channels #}
-  <h2 style="font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Functional Channels</h2>
+  <div class="section-title">Functional Channels</div>
   {% if dev.channels %}
     {% for ch_idx, ch in dev.channels %}
       {{ channel_card(ch_idx, ch, open_default=loop.first) }}
     {% endfor %}
   {% else %}
-    <p style="color:var(--muted)">Keine Channels</p>
+    <div class="card"><div class="card-body" style="color:var(--muted)">Keine Channels</div></div>
   {% endif %}
 
-  {# Raw JSON #}
-  <div style="margin-top:16px">
-    <details>
-      <summary>
-        <span class="summary-title">Rohdaten (JSON)</span>
-        <span class="chevron">&#9660;</span>
-      </summary>
-      <pre class="json-raw">{{ dev.raw_json }}</pre>
-    </details>
-  </div>
+  <details class="channel" id="raw-json" style="margin-top:18px">
+    <summary>
+      <span>Rohdaten</span>
+      <span class="sub">JSON</span>
+      <span class="chevron">&#9660;</span>
+    </summary>
+    <pre class="json-raw">{{ dev.raw_json }}</pre>
+  </details>
 {% endif %}
 {% endblock %}

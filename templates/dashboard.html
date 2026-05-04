@@ -1,141 +1,268 @@
 {# SPDX-License-Identifier: Apache-2.0 #}
-{% from "macros.html" import bool_pill %}
 {% extends "base.html" %}
 {% block title %}HmIP Dashboard{% endblock %}
 
 {% block content %}
-<div class="page-header"><h1>Dashboard</h1></div>
-<div class="dash-grid">
+<div class="eyebrow">Übersicht</div>
+<div class="page-head">
+  <div>
+    <h1>Dashboard</h1>
+    <div class="sub">
+      Snapshot von {{ snapshot_time_str }} ·
+      {{ hmip_count }} HmIP-Geräte ·
+      {{ shelly_count }} Shellys ·
+      letzter Sync vor {{ snapshot_age_str }}
+    </div>
+  </div>
+  <div class="actions">
+    <button class="btn ghost" onclick="location.reload()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      Sync
+    </button>
+  </div>
+</div>
 
-  {# ── Wetter ── #}
-  <div class="dash-card">
-    <h3>Wetter</h3>
-    <div class="weather-icon">{{ weather.icon }}</div>
-    <div class="big-val">{{ weather.temp_str }}<em> &deg;C</em></div>
-    <div class="sub-val">
-      {{ weather.condition | replace("_", " ") | title }}
-      {% if weather.minmax %} &middot; {{ weather.minmax }}{% endif %}
+{# ── Status-Pills-Row ── #}
+<div class="status-row">
+  <div class="status-cell">
+    <span class="icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+    </span>
+    <div>
+      <div class="label">Alarm {{ 'aktiv' if alarm.any_active else 'unscharf' }}</div>
+      <div class="desc">{{ 'Aktuell aktiv' if alarm.any_active else 'Aktuell unscharf' }}</div>
     </div>
-    <div style="margin-top:12px">
-      <div class="dash-kv"><span class="dk">Luftfeuchtigkeit</span><span class="dv">{{ weather.humidity }} %</span></div>
-      <div class="dash-kv"><span class="dk">Wind</span><span class="dv">{{ weather.wind_str | e }}</span></div>
+  </div>
+  <div class="status-cell">
+    <span class="icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    </span>
+    <div>
+      <div class="label">Anwesenheit</div>
+      <div class="desc">Anwesend</div>
+    </div>
+  </div>
+  <div class="status-cell">
+    <span class="icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </span>
+    <div>
+      <div class="label">Nachtmodus</div>
+      <div class="desc">Inaktiv</div>
+    </div>
+  </div>
+  <div class="status-cell">
+    <span class="icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    </span>
+    <div>
+      <div class="label">Beleuchtung</div>
+      <div class="desc">{{ heating_count }} Heizgruppen aktiv</div>
+    </div>
+  </div>
+</div>
+
+{# ── 3 Karten: Wetter / Innenklima / System ── #}
+<div class="three-col">
+
+  {# Wetter #}
+  <div class="card">
+    <div class="card-head">
+      <span class="title">Wetter</span>
+      <span class="meta">aktualisiert · {{ snapshot_time_str }}</span>
+    </div>
+    <div class="card-body">
+      <div class="weather-row">
+        <div>
+          <div class="weather-temp">{{ weather.temp_str }} <span style="font-size:18px;color:var(--muted)">°C</span></div>
+          <div class="weather-desc">
+            {{ weather.condition | replace("_", " ") | title }}
+            {% if weather.minmax %} · {{ weather.minmax }}{% endif %}
+          </div>
+        </div>
+        <div class="weather-icon">{{ weather.icon }}</div>
+      </div>
+      <div class="weather-meta">
+        <div><div class="k">Luftfeuchte</div><div class="v">{{ weather.humidity if weather.humidity is not none else '–' }} %</div></div>
+        <div><div class="k">Wind</div><div class="v">{{ weather.wind_str | e }}</div></div>
+        <div><div class="k">Druck</div><div class="v">– hPa</div></div>
+      </div>
     </div>
   </div>
 
-  {# ── Alarm ── #}
-  <div class="dash-card {{ 'alarm-active' if alarm.any_active else 'alarm-ok' }}">
-    <h3>Alarm / Sicherheit</h3>
-    <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      {% if alarm.any_active %}
-        <span class="status-pill pill-error">&#9888; ALARM AKTIV</span>
-      {% else %}
-        <span class="status-pill pill-ok">Kein Alarm</span>
-      {% endif %}
+  {# Innenklima #}
+  <div class="card">
+    <div class="card-head">
+      <span class="title">Innenklima</span>
+      <span class="pill info">Ø {{ indoor_avg_str }} °C</span>
     </div>
-    <div class="dash-kv"><span class="dk">Einbruch</span>
-      <span class="dv">{{ bool_pill(alarm.intrusion, "AKTIV", "OK") }}</span></div>
-    <div class="dash-kv"><span class="dk">Sicherheitsalarm</span>
-      <span class="dv">{{ bool_pill(alarm.safety, "AKTIV", "OK") }}</span></div>
-    <div class="dash-kv"><span class="dk">Letztes Ereignis</span>
-      <span class="dv">{{ alarm.last_event_type | replace("_", " ") | e }}</span></div>
-    <div class="dash-kv"><span class="dk">Zeitpunkt</span>
-      <span class="dv">{{ alarm.last_event_ts }}</span></div>
-    <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
-      <button id="btn-test-smoke"
-        onclick="testSmokeAlarm()"
-        style="background:var(--surface2);color:var(--yellow);border:1px solid var(--yellow);
-               padding:5px 12px;border-radius:5px;font-size:12px;cursor:pointer">
-        &#128276; Rauchmelder testen
-      </button>
-      <button id="btn-clear-smoke"
-        onclick="clearSmokeAlarm()"
-        style="background:var(--surface2);color:var(--red);border:1px solid var(--red);
-               padding:5px 12px;border-radius:5px;font-size:12px;cursor:pointer">
-        &#128684; Alarm löschen
-      </button>
-    </div>
-    <div id="alarm-msg" style="margin-top:8px;font-size:12px;display:none"></div>
-  </div>
-
-  {# ── System ── #}
-  <div class="dash-card">
-    <h3>System</h3>
-    <div class="dash-kv"><span class="dk">Verbindung</span>
-      <span class="dv">{{ bool_pill(system.connected, "Verbunden", "Getrennt", "pill-ok", "pill-error") }}</span></div>
-    <div class="dash-kv"><span class="dk">Firmware</span>
-      <span class="dv">{{ system.update_state | e }}</span></div>
-    <div class="dash-kv"><span class="dk">Duty Cycle</span>
-      <span class="dv mono">{{ "%.1f" | format(system.duty) }} %</span></div>
-    <div class="progress-bar">
-      <div class="fill {{ 'bad' if system.duty > 80 else ('warn' if system.duty > 50 else '') }}"
-           style="width:{{ [system.duty, 100] | min | int }}%"></div>
+    <div class="card-body">
+      <div class="climate-big">{{ indoor_avg_str }} <span style="font-size:18px;color:var(--muted)">°C</span></div>
+      <div class="climate-sub">Mittel über {{ heating_count }} Heizgruppen · letzte 12 h</div>
+      <div class="legend">
+        <span class="ist">— Ist</span>
+        <span class="soll">— Soll</span>
+      </div>
     </div>
   </div>
 
-  {# ── Gerätewarnungen ── #}
-  {% if warn_devs %}
-  <div class="dash-card alarm-active">
-    <h3>Gerätewarnungen <a href="/devices/status" style="font-size:11px;float:right;color:var(--accent)">Alle &rarr;</a></h3>
-    {% for name in warn_devs[:6] %}
-      <div class="dash-kv"><span class="dk">&#9888;</span><span class="dv">{{ name | e }}</span></div>
-    {% endfor %}
-    {% if warn_devs | length > 6 %}
-      <div class="dash-kv" style="color:var(--muted)">... +{{ warn_devs | length - 6 }} weitere</div>
-    {% endif %}
+  {# System #}
+  <div class="card">
+    <div class="card-head">
+      <span class="title">System</span>
+      <span class="pill {{ 'ok' if system.connected else 'error' }}">
+        <span class="dot"></span>{{ 'Verbunden' if system.connected else 'Getrennt' }}
+      </span>
+    </div>
+    <div class="card-body">
+      <div class="kv-row"><span class="k">HCU</span><span class="v mono">hcu1-E461.local</span></div>
+      <div class="kv-row"><span class="k">Firmware</span><span class="v">{{ system.update_state | replace('_',' ') | title }}</span></div>
+      <div class="kv-row" style="border-bottom:none">
+        <span class="k">Duty Cycle</span>
+        <span class="v mono">{{ "%.1f" | format(system.duty) }} %</span>
+      </div>
+      <div class="progress">
+        <div class="fill {{ 'bad' if system.duty > 80 else ('warn' if system.duty > 50 else '') }}"
+             style="width:{{ [system.duty, 100] | min | int }}%"></div>
+      </div>
+    </div>
   </div>
-  {% else %}
-  <div class="dash-card alarm-ok">
-    <h3>Gerätewarnungen</h3>
-    <div style="color:var(--green);font-size:13px">Alle Geräte OK</div>
-  </div>
-  {% endif %}
 
 </div>
 
-{# ── Heizung ── #}
-{% if heating_groups %}
-<div class="dash-card wide" style="margin-bottom:24px">
-  <h3>Heizung <a href="/heating" style="font-size:11px;float:right;color:var(--accent)">Alle &rarr;</a></h3>
-  <div class="heating-grid">
-    {% for hg in heating_groups[:6] %}
-    <div class="heat-card">
-      <div class="room">{{ hg.label | e }}</div>
-      <div class="temps">
-        <span class="actual">{{ hg.actual_str }}</span>
-        <span class="setpoint">{{ hg.setp_str }}</span>
+{# ── Alarm + Aktivität ── #}
+<div class="two-col">
+
+  {# Alarm #}
+  <div class="card">
+    <div class="card-head">
+      <span class="title">Alarm & Sicherheit</span>
+    </div>
+    <div class="card-body">
+      <div class="alarm-head">
+        <span class="alarm-shield {{ 'bad' if alarm.any_active else '' }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </span>
+        <div>
+          <div class="alarm-title">{{ 'Alarm aktiv' if alarm.any_active else 'Kein Alarm' }}</div>
+          <div class="alarm-sub">
+            {% if alarm.any_active %}
+              Auslöser: {{ alarm.last_event_type | replace('_',' ') | e }}
+            {% else %}
+              Keine Auslösungen seit {{ alarm.last_event_ts }}
+            {% endif %}
+          </div>
+        </div>
       </div>
-      {% if hg.valve_str %}<div class="valve">{{ hg.valve_str }}</div>{% endif %}
-      {% if hg.mode_str %}<div class="mode-pill">{{ hg.mode_str }}</div>{% endif %}
+
+      <div class="alarm-grid">
+        <div class="kv-row"><span class="k">Einbruch</span>
+          {% if alarm.intrusion %}
+            <span class="pill error">AKTIV</span>
+          {% else %}
+            <span class="pill ok">OK</span>
+          {% endif %}
+        </div>
+        <div class="kv-row"><span class="k">Sicherheit</span>
+          {% if alarm.safety %}
+            <span class="pill error">AKTIV</span>
+          {% else %}
+            <span class="pill ok">OK</span>
+          {% endif %}
+        </div>
+        <div class="kv-row"><span class="k">Letztes Ereignis</span>
+          <span class="v mono" style="font-size:11.5px">{{ alarm.last_event_type | e or '–' }}</span>
+        </div>
+        <div class="kv-row"><span class="k">Zeitpunkt</span>
+          <span class="v mono" style="font-size:11.5px">{{ alarm.last_event_ts }}</span>
+        </div>
+      </div>
+
+      <div style="margin-top:18px;display:flex;gap:8px;flex-wrap:wrap">
+        <button id="btn-test-smoke" class="btn" onclick="testSmokeAlarm()">
+          <span style="color:#d97706">⚠</span> Rauchmelder testen
+        </button>
+        <button id="btn-clear-smoke" class="btn ghost" onclick="clearSmokeAlarm()">
+          Alarm löschen
+        </button>
+      </div>
+      <div id="alarm-msg" style="margin-top:10px;font-size:12.5px;display:none"></div>
     </div>
-    {% endfor %}
-    {% if heating_groups | length > 6 %}
-    <div class="heat-card" style="display:flex;align-items:center;justify-content:center;color:var(--muted)">
-      +{{ heating_groups | length - 6 }} weitere &rarr; <a href="/heating" style="margin-left:6px">Alle</a>
+  </div>
+
+  {# Gerätewarnungen / Aktivität #}
+  <div class="card">
+    <div class="card-head">
+      <span class="title">Gerätewarnungen</span>
+      <a href="/devices/status" style="font-size:12px">Alle Ereignisse →</a>
     </div>
-    {% endif %}
+    <div class="card-body">
+      {% if warn_devs %}
+        <ul class="timeline">
+          {% for name in warn_devs[:7] %}
+            <li>
+              <span class="ts">–</span>
+              <span class="dot warn"></span>
+              <span><b>{{ name | e }}</b> Warnung</span>
+              <span class="room">–</span>
+            </li>
+          {% endfor %}
+        </ul>
+        {% if warn_devs | length > 7 %}
+          <div style="color:var(--muted);font-size:12.5px;margin-top:6px">
+            +{{ warn_devs | length - 7 }} weitere Warnungen
+          </div>
+        {% endif %}
+      {% else %}
+        <div style="display:flex;align-items:center;gap:10px;color:var(--green)">
+          <span class="alarm-shield" style="width:28px;height:28px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><polyline points="20 6 9 17 4 12"/></svg>
+          </span>
+          <div>
+            <div style="font-weight:600;color:var(--text)">Alle Geräte OK</div>
+            <div style="color:var(--muted);font-size:12.5px">Keine Warnungen im aktuellen Snapshot</div>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+{# ── Heizung-Zeile ── #}
+{% if heating_groups %}
+<div class="card">
+  <div class="card-head">
+    <span class="title">Heizung</span>
+    <a href="/heating" style="font-size:12px">Alle {{ heating_count }} Räume →</a>
+  </div>
+  <div class="card-body">
+    <div class="heat-grid">
+      {% for hg in heating_groups[:8] %}
+      <div class="heat-cell">
+        <div>
+          <div class="room">{{ hg.label | e }}</div>
+          <div class="info">{{ hg.actual_str }} · {{ hg.setp_str }}</div>
+        </div>
+        <span class="mode">{{ hg.mode_str or 'Auto' }}</span>
+      </div>
+      {% endfor %}
+    </div>
   </div>
 </div>
 {% endif %}
+
 {% endblock %}
 
 {% block scripts %}
 <script>
 async function testSmokeAlarm() {
   const TEST_SEC = 5;
-  const ok = confirm(
-    `Rauchmelder-Test starten?\n\n` +
-    `Alle Rauchmelder piepen und blinken für ${TEST_SEC} Sekunden,\n` +
-    `dann wird das Signal automatisch gestoppt.`
-  );
-  if (!ok) return;
-
+  if (!confirm(`Rauchmelder-Test starten?\n\nAlle Rauchmelder piepen und blinken für ${TEST_SEC} Sekunden,\ndann wird das Signal automatisch gestoppt.`)) return;
   const btn  = document.getElementById('btn-test-smoke');
   const btnC = document.getElementById('btn-clear-smoke');
   const msg  = document.getElementById('alarm-msg');
-  btn.disabled = true;
-  btnC.disabled = true;
-  msg.style.display = 'none';
-
+  btn.disabled = true; btnC.disabled = true; msg.style.display = 'none';
   try {
     const r = await fetch('/alarm/test-smoke', { method: 'POST' });
     const d = await r.json();
@@ -143,23 +270,17 @@ async function testSmokeAlarm() {
       msg.style.color = 'var(--red)';
       msg.textContent = `Fehler: ${d.error || r.status}`;
       msg.style.display = 'block';
-      btn.disabled = false; btnC.disabled = false;
-      return;
+      btn.disabled = false; btnC.disabled = false; return;
     }
-    // Countdown
     let remaining = TEST_SEC;
-    msg.style.color = 'var(--yellow)';
-    msg.style.display = 'block';
+    msg.style.color = '#d97706'; msg.style.display = 'block';
     const tick = setInterval(() => {
       remaining--;
-      btn.textContent = `🔔 Test läuft… ${remaining}s`;
+      btn.innerHTML = `🔔 Test läuft… ${remaining}s`;
       msg.textContent = `Test aktiv auf ${d.triggered} Gerät(en) – stoppt in ${remaining}s`;
-      if (remaining <= 0) {
-        clearInterval(tick);
-        clearSmokeAlarm(true);  // automatisch löschen
-      }
+      if (remaining <= 0) { clearInterval(tick); clearSmokeAlarm(true); }
     }, 1000);
-    btn.textContent = `🔔 Test läuft… ${TEST_SEC}s`;
+    btn.innerHTML = `🔔 Test läuft… ${TEST_SEC}s`;
     msg.textContent = `Test aktiv auf ${d.triggered} Gerät(en) – stoppt in ${TEST_SEC}s`;
   } catch (e) {
     msg.style.color = 'var(--red)';
@@ -170,21 +291,11 @@ async function testSmokeAlarm() {
 }
 
 async function clearSmokeAlarm(auto = false) {
-  if (!auto) {
-    const ok = confirm(
-      'Rauchmelder-Alarm löschen?\n\n' +
-      'Dies schaltet das optische und akustische Alarmsignal auf allen\n' +
-      'Rauchmeldern ab. Nur ausführen wenn der Alarm bereits erledigt ist.'
-    );
-    if (!ok) return;
-  }
-
+  if (!auto && !confirm('Rauchmelder-Alarm löschen?\n\nDies schaltet das optische und akustische Alarmsignal auf allen\nRauchmeldern ab.')) return;
   const btn  = document.getElementById('btn-clear-smoke');
   const btnT = document.getElementById('btn-test-smoke');
   const msg  = document.getElementById('alarm-msg');
-  btn.disabled = true;
-  if (!auto) msg.style.display = 'none';
-
+  btn.disabled = true; if (!auto) msg.style.display = 'none';
   try {
     const r = await fetch('/alarm/clear-smoke', { method: 'POST' });
     const d = await r.json();
@@ -194,23 +305,21 @@ async function clearSmokeAlarm(auto = false) {
         ? `✓ Alarm-Signal auf ${d.cleared} Gerät(en) gelöscht.`
         : `ℹ ${d.info || 'Keine Rauchmelder gefunden.'}`;
       btn.textContent  = '✓ Gesendet';
-      btnT.textContent = '🔔 Rauchmelder testen';
+      btnT.innerHTML   = '<span style="color:#d97706">⚠</span> Rauchmelder testen';
       btnT.disabled    = false;
     } else {
-      msg.style.color  = 'var(--red)';
-      msg.textContent  = `Fehler: ${d.error || r.status}`;
-      btn.disabled     = false;
-      btn.textContent  = '🔔 Alarm löschen';
-      btnT.disabled    = false;
-      btnT.textContent = '🔔 Rauchmelder testen';
+      msg.style.color = 'var(--red)';
+      msg.textContent = `Fehler: ${d.error || r.status}`;
+      btn.disabled = false; btn.textContent = 'Alarm löschen';
+      btnT.disabled = false;
+      btnT.innerHTML = '<span style="color:#d97706">⚠</span> Rauchmelder testen';
     }
   } catch (e) {
-    msg.style.color  = 'var(--red)';
-    msg.textContent  = 'Netzwerkfehler – bitte erneut versuchen.';
-    btn.disabled     = false;
-    btn.textContent  = '🔔 Alarm löschen';
-    btnT.disabled    = false;
-    btnT.textContent = '🔔 Rauchmelder testen';
+    msg.style.color = 'var(--red)';
+    msg.textContent = 'Netzwerkfehler – bitte erneut versuchen.';
+    btn.disabled = false; btn.textContent = 'Alarm löschen';
+    btnT.disabled = false;
+    btnT.innerHTML = '<span style="color:#d97706">⚠</span> Rauchmelder testen';
   }
   msg.style.display = 'block';
 }

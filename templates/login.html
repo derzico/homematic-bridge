@@ -5,7 +5,10 @@
 {% block body %}
 <div class="login-wrap">
   <div class="login-card">
-    <div class="logo">&#9889; Homematic <em>Bridge</em></div>
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h7l-1 8 11-13h-7l1-7z"/></svg>
+      Homematic <em style="color:var(--muted);font-style:normal;font-weight:500">Bridge</em>
+    </div>
     {% if error %}
       <div class="login-error">Falsches Passwort. Bitte erneut versuchen.</div>
     {% endif %}
