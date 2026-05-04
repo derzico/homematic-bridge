@@ -67,10 +67,14 @@ def _compile_translations(translations_dir: str) -> None:
 
 def init_app(app: Flask) -> None:
     """Initialisiert Flask-Babel an der übergebenen App."""
+    # Flask resolves a relative ``BABEL_TRANSLATION_DIRECTORIES`` against
+    # ``app.root_path``. Setting an absolute path keeps it robust regardless
+    # of where the Flask app object was created.
+    translations_dir = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "translations")
+    )
     app.config.setdefault("BABEL_DEFAULT_LOCALE", LANGUAGES[0])
-    app.config.setdefault("BABEL_TRANSLATION_DIRECTORIES", "translations")
+    app.config.setdefault("BABEL_TRANSLATION_DIRECTORIES", translations_dir)
     babel.init_app(app, locale_selector=_select_locale)
 
-    translations_dir = os.path.join(app.root_path, "..", "translations")
-    translations_dir = os.path.normpath(translations_dir)
     _compile_translations(translations_dir)

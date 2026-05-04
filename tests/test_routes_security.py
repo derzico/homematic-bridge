@@ -100,7 +100,8 @@ class TestTemplateRendering:
         state.REQUIRE_API_KEY = False
         state.config_internal = {"system_state_path": str(snapshot_path)}
 
-        resp = app.test_client().get("/")
+        # Force English so the assertion can match the source string verbatim.
+        resp = app.test_client().get("/", headers={"Accept-Language": "en"})
 
         assert resp.status_code == 200
         assert b"test_confirm" in resp.data
