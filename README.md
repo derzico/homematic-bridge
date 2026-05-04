@@ -1,5 +1,7 @@
 # homematic-bridge
 
+[Deutsch](./README.md) | [English](./README.en.md)
+
 > Python-Bridge zwischen **Homematic IP (HCU)** und externen Smarthome-Systemen – gebaut weil kein System von Haus aus mit dem anderen redet.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
@@ -77,17 +79,17 @@ require_api_key: true
 
 ## Dokumentation
 
-Vollständige Dokumentation im **[GitHub Wiki](https://github.com/derzico/homematic-bridge/wiki)**:
+Vollständige Dokumentation im **[GitHub Wiki](https://github.com/derzico/homematic-bridge/wiki)**. Die wichtigsten Seiten gibt es auf Deutsch und Englisch:
 
-| Seite | Inhalt |
-|---|---|
-| [Installation & Docker](https://github.com/derzico/homematic-bridge/wiki/Installation-und-Docker) | Setup, Token, Volumes, Update, Troubleshooting |
-| [Konfiguration](https://github.com/derzico/homematic-bridge/wiki/Konfiguration) | config.yaml, internal_config.yaml, SSL/TLS |
-| [Homematic IP](https://github.com/derzico/homematic-bridge/wiki/Homematic-IP) | WebSocket, Gerätetypen, Alarm, Thermostat |
-| [Shelly](https://github.com/derzico/homematic-bridge/wiki/Shelly) | Scan, Steuerung, Web-UI-Proxy |
-| [Loxone UDP](https://github.com/derzico/homematic-bridge/wiki/Loxone-UDP) | UDP-Push-Format, Loxone-Konfiguration |
-| [API-Referenz](https://github.com/derzico/homematic-bridge/wiki/API-Referenz) | Alle Endpunkte mit Beispielen |
-| [Web-Interface](https://github.com/derzico/homematic-bridge/wiki/Web-Interface) | Dashboard, Seiten, Features |
+| Deutsch | English | Inhalt |
+|---|---|---|
+| [Installation & Docker](https://github.com/derzico/homematic-bridge/wiki/Installation-und-Docker) | [Installation & Docker](https://github.com/derzico/homematic-bridge/wiki/Installation-and-Docker) | Setup, Token, Volumes, Update, Troubleshooting |
+| [Konfiguration](https://github.com/derzico/homematic-bridge/wiki/Konfiguration) | [Configuration](https://github.com/derzico/homematic-bridge/wiki/Configuration) | config.yaml, internal_config.yaml, SSL/TLS |
+| [Homematic IP](https://github.com/derzico/homematic-bridge/wiki/Homematic-IP) | [Homematic IP](https://github.com/derzico/homematic-bridge/wiki/Homematic-IP-en) | WebSocket, Gerätetypen, Alarm, Thermostat |
+| [Shelly](https://github.com/derzico/homematic-bridge/wiki/Shelly) | [Shelly](https://github.com/derzico/homematic-bridge/wiki/Shelly-en) | Scan, Steuerung, Web-UI-Proxy |
+| [Loxone UDP](https://github.com/derzico/homematic-bridge/wiki/Loxone-UDP) | [Loxone UDP](https://github.com/derzico/homematic-bridge/wiki/Loxone-UDP-en) | UDP-Push-Format, Loxone-Konfiguration |
+| [API-Referenz](https://github.com/derzico/homematic-bridge/wiki/API-Referenz) | [API Reference](https://github.com/derzico/homematic-bridge/wiki/API-Reference) | Alle Endpunkte mit Beispielen |
+| [Web-Interface](https://github.com/derzico/homematic-bridge/wiki/Web-Interface) | [Web Interface](https://github.com/derzico/homematic-bridge/wiki/Web-Interface-en) | Dashboard, Seiten, Features |
 
 Weitere Infos: **[schnellniclas.de/homematic-bridge](https://schnellniclas.de/homematic-bridge)**
 
