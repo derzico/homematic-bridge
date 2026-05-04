@@ -2,6 +2,9 @@
 # tests/test_routes_security.py - Regressionstests fuer Web-Sicherheitskontrollen
 
 import app.state as state
+from app import i18n
+from app.routes import bp
+from flask import Flask
 
 
 def _authenticate(client, csrf_token: str = "csrf-test-token") -> None:
@@ -80,3 +83,25 @@ class TestSafeRedirects:
 
         assert resp.status_code == 302
         assert resp.headers["Location"] == "/"
+
+
+class TestTemplateRendering:
+    def test_dashboard_renders_js_i18n_strings(self, tmp_path):
+        app = Flask(__name__, template_folder="../templates")
+        app.secret_key = b"test-secret-key"
+        app.config["TESTING"] = True
+        app.register_blueprint(bp)
+        i18n.init_app(app)
+        snapshot_path = tmp_path / "system_state.json"
+        snapshot_path.write_text(
+            '{"body":{"body":{"home":{"weather":{},"functionalHomes":{}},"groups":{},"devices":{}}}}',
+            encoding="utf-8",
+        )
+        state.REQUIRE_API_KEY = False
+        state.config_internal = {"system_state_path": str(snapshot_path)}
+
+        resp = app.test_client().get("/")
+
+        assert resp.status_code == 200
+        assert b"test_confirm" in resp.data
+        assert b"{s} seconds" in resp.data

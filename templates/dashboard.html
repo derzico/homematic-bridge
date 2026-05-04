@@ -247,20 +247,20 @@
 <script>
 const CSRF_TOKEN = {{ csrf_token | tojson }};
 const I18N = {
-  test_confirm: {{ _("Start smoke detector test?\n\nAll smoke detectors will beep and flash for %(s)s seconds,\nthen the signal stops automatically.") | tojson }},
+  test_confirm: {{ _("Start smoke detector test?\n\nAll smoke detectors will beep and flash for {s} seconds,\nthen the signal stops automatically.") | tojson }},
   test_running: {{ _("Test running…") | tojson }},
-  test_active:  {{ _("Test active on %(n)s device(s) – stops in %(s)ss") | tojson }},
+  test_active:  {{ _("Test active on {n} device(s) – stops in {s}s") | tojson }},
   test_error:   {{ _("Error:") | tojson }},
   net_error:    {{ _("Network error – please try again.") | tojson }},
   clear_confirm:{{ _("Clear smoke alarm?\n\nThis turns off the optical and acoustic alarm signal\non all smoke detectors.") | tojson }},
-  cleared_n:    {{ _("✓ Alarm signal cleared on %(n)s device(s).") | tojson }},
+  cleared_n:    {{ _("✓ Alarm signal cleared on {n} device(s).") | tojson }},
   no_smoke:     {{ _("No smoke detectors found.") | tojson }},
   sent:         {{ _("✓ Sent") | tojson }},
   test_btn:     {{ _("Test smoke detectors") | tojson }},
   clear_btn:    {{ _("Clear alarm") | tojson }},
 };
 
-function fmt(t, vars) { return t.replace(/%\((\w+)\)s/g, (_, k) => vars[k]); }
+function fmt(t, vars) { return t.replace(/\{(\w+)\}/g, (_, k) => vars[k]); }
 
 async function testSmokeAlarm() {
   const TEST_SEC = 5;
