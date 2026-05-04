@@ -1,18 +1,18 @@
 {# SPDX-License-Identifier: Apache-2.0 #}
 {% extends "base.html" %}
-{% block title %}Konfiguration – Homematic Bridge{% endblock %}
+{% block title %}{{ _("Configuration") }} – Homematic Bridge{% endblock %}
 
 {% block content %}
 <div class="page-head">
   <div>
-    <div class="eyebrow">Einstellungen</div>
-    <h1>Konfiguration</h1>
-    <div class="sub">config/config.yaml — nach dem Speichern werden Loxone- und Shelly-Einstellungen sofort übernommen. HCU-Verbindungsänderungen erfordern einen Neustart.</div>
+    <div class="eyebrow">{{ _("Settings") }}</div>
+    <h1>{{ _("Configuration") }}</h1>
+    <div class="sub">{{ _("config/config.yaml — Loxone and Shelly settings apply immediately after saving. HCU connection changes require a restart.") }}</div>
   </div>
   <div class="actions">
-    <button type="button" class="btn ghost" id="loadSampleBtn">Beispiel laden</button>
-    <button type="button" class="btn" id="validateBtn">Validieren</button>
-    <button type="submit" form="configForm" class="btn primary">Speichern</button>
+    <button type="button" class="btn ghost" id="loadSampleBtn">{{ _("Load sample") }}</button>
+    <button type="button" class="btn" id="validateBtn">{{ _("Validate") }}</button>
+    <button type="submit" form="configForm" class="btn primary">{{ _("Save") }}</button>
   </div>
 </div>
 
@@ -20,7 +20,7 @@
   <div class="alert error" id="banner">{{ error | e }}</div>
 {% elif success %}
   <div class="alert ok" id="banner">
-    <strong>✓ Gespeichert.</strong> Verbindungsänderungen (HCU, Token) erfordern einen Neustart.
+    <strong>{{ _("✓ Saved.") }}</strong> {{ _("Connection changes (HCU, token) require a restart.") }}
   </div>
 {% else %}
   <div class="alert" id="banner" style="display:none"></div>
@@ -29,26 +29,26 @@
 <div class="config-layout">
   <aside class="config-side">
     <div class="side-section">
-      <div class="side-head">Abschnitte</div>
-      <a href="#" class="side-link active" data-jump=""><span>Allgemein</span></a>
-      <a href="#" class="side-link" data-jump="homematic_hcu"><span>HCU-Verbindung</span><span class="pill warn">restart</span></a>
-      <a href="#" class="side-link" data-jump="loxone:"><span>Loxone Push</span></a>
-      <a href="#" class="side-link" data-jump="shelly:"><span>Shelly</span></a>
-      <a href="#" class="side-link" data-jump="ssl_"><span>SSL / Sicherheit</span></a>
-      <a href="#" class="side-link" data-jump="logging"><span>Logging</span></a>
+      <div class="side-head">{{ _("Sections") }}</div>
+      <a href="#" class="side-link active" data-jump=""><span>{{ _("General") }}</span></a>
+      <a href="#" class="side-link" data-jump="homematic_hcu"><span>{{ _("HCU connection") }}</span><span class="pill warn">{{ _("restart") }}</span></a>
+      <a href="#" class="side-link" data-jump="loxone:"><span>{{ _("Loxone push") }}</span></a>
+      <a href="#" class="side-link" data-jump="shelly:"><span>{{ _("Shelly") }}</span></a>
+      <a href="#" class="side-link" data-jump="ssl_"><span>{{ _("SSL / Security") }}</span></a>
+      <a href="#" class="side-link" data-jump="logging"><span>{{ _("Logging") }}</span></a>
     </div>
     <div class="side-section">
-      <div class="side-head">Hilfe</div>
-      <a href="https://github.com/derzico/homematic-bridge/wiki" target="_blank" rel="noopener" class="side-link"><span>YAML-Referenz</span></a>
-      <a href="https://github.com/derzico/homematic-bridge/wiki" target="_blank" rel="noopener" class="side-link"><span>HCU Token erstellen</span></a>
-      <a href="https://github.com/derzico/homematic-bridge/wiki" target="_blank" rel="noopener" class="side-link"><span>Loxone-Variablen Namensschema</span></a>
+      <div class="side-head">{{ _("Help") }}</div>
+      <a href="https://github.com/derzico/homematic-bridge/wiki" target="_blank" rel="noopener" class="side-link"><span>{{ _("YAML reference") }}</span></a>
+      <a href="https://github.com/derzico/homematic-bridge/wiki" target="_blank" rel="noopener" class="side-link"><span>{{ _("Create HCU token") }}</span></a>
+      <a href="https://github.com/derzico/homematic-bridge/wiki" target="_blank" rel="noopener" class="side-link"><span>{{ _("Loxone variable naming") }}</span></a>
     </div>
   </aside>
 
   <div class="editor-card">
     <div class="editor-head">
       <span class="filename">config/config.yaml</span>
-      <span class="meta" id="editorMeta">UTF-8 · – Zeilen · – B</span>
+      <span class="meta" id="editorMeta">UTF-8 · – {{ _("lines") }} · – B</span>
     </div>
     <form id="configForm" method="POST" action="/config" class="editor-body">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -128,6 +128,22 @@
 
 {% block scripts %}
 <script>
+const I18N_CFG = {
+  lines:           {{ _("lines") | tojson }},
+  checking:        {{ _("Checking…") | tojson }},
+  yaml_ok:         {{ _("✓ YAML valid") | tojson }},
+  last_check:      {{ _("Last successful validation at {t}") | tojson }},
+  yaml_invalid:    {{ _("YAML invalid") | tojson }},
+  net_err_validate:{{ _("Network error during validation") | tojson }},
+  confirm_replace: {{ _("Replace current content with sample?") | tojson }},
+  sample_loaded:   {{ _("Sample loaded. Please adjust before saving.") | tojson }},
+  sample_failed:   {{ _("Sample could not be loaded") | tojson }},
+  net_err_sample:  {{ _("Network error while loading sample") | tojson }},
+  locale:          {{ (request.cookies.get('lang') or 'en') | tojson }},
+};
+
+function fmtCfg(t, vars) { return t.replace(/\{(\w+)\}/g, (_, k) => vars[k]); }
+
 (function() {
   const ed = document.getElementById('configEditor');
   const gutter = document.getElementById('lineGutter');
@@ -144,7 +160,7 @@
     gutter.textContent = g;
     const bytes = new Blob([ed.value]).size;
     const kb = bytes >= 1024 ? (bytes / 1024).toFixed(2) + ' KB' : bytes + ' B';
-    meta.textContent = `UTF-8 · ${lines} Zeilen · ${kb}`;
+    meta.textContent = `UTF-8 · ${lines} ${I18N_CFG.lines} · ${kb}`;
   }
 
   function syncScroll() { gutter.scrollTop = ed.scrollTop; }
@@ -159,7 +175,6 @@
   ed.addEventListener('scroll', syncScroll);
   updateGutter();
 
-  // Sidebar-Links: zum ersten Treffer im Editor scrollen
   document.querySelectorAll('.side-link[data-jump]').forEach(link => {
     link.addEventListener('click', (e) => {
       e.preventDefault();
@@ -171,8 +186,7 @@
       if (idx >= 0) {
         ed.focus();
         ed.setSelectionRange(idx, idx + needle.length);
-        // grobes Scroll: Textarea-Höhe pro Zeile abschätzen
-        const lineHeight = 21; // 13px * 1.6 ≈ 21
+        const lineHeight = 21;
         const lineNo = ed.value.slice(0, idx).split('\n').length - 1;
         ed.scrollTop = Math.max(0, lineNo * lineHeight - 80);
         syncScroll();
@@ -180,11 +194,10 @@
     });
   });
 
-  // Validieren
   validateBtn.addEventListener('click', async () => {
     validateBtn.disabled = true;
     const oldText = validateBtn.textContent;
-    validateBtn.textContent = 'Prüfe…';
+    validateBtn.textContent = I18N_CFG.checking;
     try {
       const r = await fetch('/config/validate', {
         method: 'POST',
@@ -193,34 +206,33 @@
       });
       const d = await r.json();
       if (d.ok) {
-        const stamp = new Date().toLocaleTimeString('de-DE');
-        showBanner('ok', `<strong>✓ YAML gültig</strong><br><span style="color:var(--muted);font-size:12.5px">Letzte erfolgreiche Validierung um ${stamp}</span>`);
+        const stamp = new Date().toLocaleTimeString(I18N_CFG.locale === 'de' ? 'de-DE' : 'en-US');
+        showBanner('ok', `<strong>${I18N_CFG.yaml_ok}</strong><br><span style="color:var(--muted);font-size:12.5px">${fmtCfg(I18N_CFG.last_check, {t: stamp})}</span>`);
       } else {
-        showBanner('error', '<strong>YAML ungültig</strong><br>• ' + (d.errors || []).join('<br>• '));
+        showBanner('error', `<strong>${I18N_CFG.yaml_invalid}</strong><br>• ` + (d.errors || []).join('<br>• '));
       }
     } catch (e) {
-      showBanner('error', 'Netzwerkfehler bei Validierung');
+      showBanner('error', I18N_CFG.net_err_validate);
     } finally {
       validateBtn.disabled = false;
       validateBtn.textContent = oldText;
     }
   });
 
-  // Beispiel laden
   sampleBtn.addEventListener('click', async () => {
-    if (ed.value.trim() && !confirm('Aktuellen Inhalt durch Beispiel ersetzen?')) return;
+    if (ed.value.trim() && !confirm(I18N_CFG.confirm_replace)) return;
     try {
       const r = await fetch('/config/sample');
       const d = await r.json();
       if (d.content) {
         ed.value = d.content;
         updateGutter();
-        showBanner('ok', 'Beispiel geladen. Vor dem Speichern bitte anpassen.');
+        showBanner('ok', I18N_CFG.sample_loaded);
       } else {
-        showBanner('error', d.error || 'Beispiel konnte nicht geladen werden');
+        showBanner('error', d.error || I18N_CFG.sample_failed);
       }
     } catch (e) {
-      showBanner('error', 'Netzwerkfehler beim Laden des Beispiels');
+      showBanner('error', I18N_CFG.net_err_sample);
     }
   });
 })();

@@ -1,69 +1,69 @@
 {# SPDX-License-Identifier: Apache-2.0 #}
 {% from "macros.html" import bool_pill, rssi_html %}
 {% extends "base.html" %}
-{% block title %}Gerätestatus – Homematic Bridge{% endblock %}
+{% block title %}{{ _("Device status") }} – Homematic Bridge{% endblock %}
 
 {% block content %}
 <div class="page-head">
   <div>
-    <div class="eyebrow">Diagnose</div>
-    <h1>Gerätestatus</h1>
-    <div class="sub">{{ entries | length }} Geräte · {{ warn_count }} mit aktiven Warnungen · sortiert nach Schweregrad</div>
+    <div class="eyebrow">{{ _("Diagnostics") }}</div>
+    <h1>{{ _("Device status") }}</h1>
+    <div class="sub">{{ _("%(n)s devices · %(w)s with active warnings · sorted by severity", n=entries|length, w=warn_count) }}</div>
   </div>
   <div class="actions">
     {% if warn_count %}
-      <span class="pill error">{{ warn_count }} Warnung{{ "en" if warn_count != 1 else "" }}</span>
+      <span class="pill error">{{ ngettext("%(num)s warning", "%(num)s warnings", warn_count) }}</span>
     {% endif %}
-    <button class="btn ghost" id="filterBtn" type="button">Filter</button>
-    <a class="btn primary" href="/devices/status">Aktualisieren</a>
+    <button class="btn ghost" id="filterBtn" type="button">{{ _("Filter") }}</button>
+    <a class="btn primary" href="/devices/status">{{ _("Refresh") }}</a>
   </div>
 </div>
 
 <div class="stat-row">
-  <button type="button" class="stat-card" data-stat="low_bat" aria-label="Filter Low Battery">
+  <button type="button" class="stat-card" data-stat="low_bat" aria-label="{{ _('Filter low battery') }}">
     <span class="stat-icon yellow">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="16" height="10" rx="2"/><line x1="22" y1="11" x2="22" y2="13"/><line x1="6" y1="11" x2="6" y2="13"/></svg>
     </span>
-    <div><div class="stat-num">{{ stats.low_bat }}</div><div class="stat-label">Low Battery</div></div>
+    <div><div class="stat-num">{{ stats.low_bat }}</div><div class="stat-label">{{ _("Low battery") }}</div></div>
   </button>
-  <button type="button" class="stat-card" data-stat="sabotage" aria-label="Filter Sabotage">
+  <button type="button" class="stat-card" data-stat="sabotage" aria-label="{{ _('Filter sabotage') }}">
     <span class="stat-icon red">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
     </span>
-    <div><div class="stat-num">{{ stats.sabotage }}</div><div class="stat-label">Sabotage</div></div>
+    <div><div class="stat-num">{{ stats.sabotage }}</div><div class="stat-label">{{ _("Sabotage") }}</div></div>
   </button>
-  <button type="button" class="stat-card" data-stat="unreach" aria-label="Filter nicht erreichbar">
+  <button type="button" class="stat-card" data-stat="unreach" aria-label="{{ _('Filter unreachable') }}">
     <span class="stat-icon blue">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
     </span>
-    <div><div class="stat-num">{{ stats.unreach }}</div><div class="stat-label">Nicht erreichbar</div></div>
+    <div><div class="stat-num">{{ stats.unreach }}</div><div class="stat-label">{{ _("Unreachable") }}</div></div>
   </button>
-  <button type="button" class="stat-card" data-stat="duty" aria-label="Filter Duty Cycle">
+  <button type="button" class="stat-card" data-stat="duty" aria-label="{{ _('Filter duty cycle') }}">
     <span class="stat-icon gray">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
     </span>
-    <div><div class="stat-num">{{ stats.duty }}</div><div class="stat-label">Duty Cycle hoch</div></div>
+    <div><div class="stat-num">{{ stats.duty }}</div><div class="stat-label">{{ _("High duty cycle") }}</div></div>
   </button>
-  <button type="button" class="stat-card" data-stat="weak_rssi" aria-label="Filter schwaches Signal">
+  <button type="button" class="stat-card" data-stat="weak_rssi" aria-label="{{ _('Filter weak signal') }}">
     <span class="stat-icon blue">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="14"/><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="6"/></svg>
     </span>
-    <div><div class="stat-num">{{ stats.weak_rssi }}</div><div class="stat-label">Schwaches Signal</div></div>
+    <div><div class="stat-num">{{ stats.weak_rssi }}</div><div class="stat-label">{{ _("Weak signal") }}</div></div>
   </button>
-  <button type="button" class="stat-card" data-stat="ok" aria-label="Filter OK">
+  <button type="button" class="stat-card" data-stat="ok" aria-label="{{ _('Filter OK') }}">
     <span class="stat-icon green">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
     </span>
-    <div><div class="stat-num">{{ stats.ok }}</div><div class="stat-label">Alle OK</div></div>
+    <div><div class="stat-num">{{ stats.ok }}</div><div class="stat-label">{{ _("All OK") }}</div></div>
   </button>
 </div>
 
 <table class="data-table" id="statusTable">
   <thead>
     <tr>
-      <th>Label</th><th>Raum</th><th>Typ</th>
-      <th>Batterie</th><th>Erreichbarkeit</th><th>Duty</th><th>Sabotage</th>
-      <th>RSSI</th><th>Device ID</th>
+      <th>{{ _("Label") }}</th><th>{{ _("Room") }}</th><th>{{ _("Type") }}</th>
+      <th>{{ _("Battery") }}</th><th>{{ _("Reachability") }}</th><th>{{ _("Duty") }}</th><th>{{ _("Sabotage") }}</th>
+      <th>{{ _("RSSI") }}</th><th>{{ _("Device ID") }}</th>
     </tr>
   </thead>
   <tbody>
@@ -78,15 +78,15 @@
       <td class="label-cell"><a href="/devices/{{ e.id | e }}">{{ e.label | e }}</a></td>
       <td>{{ e.room | e }}</td>
       <td><span class="type-badge">{{ e.type | e }}</span></td>
-      <td>{{ bool_pill(e.low_bat, "Low Bat", "OK") }}</td>
-      <td>{{ bool_pill(e.unreach, "Nicht erreichbar", "Erreichbar") }}</td>
-      <td>{{ bool_pill(e.duty, "Duty Cycle", "OK") }}</td>
-      <td>{{ bool_pill(e.sabotage, "Sabotage", "OK") }}</td>
+      <td>{{ bool_pill(e.low_bat, _("Low bat"), _("OK")) }}</td>
+      <td>{{ bool_pill(e.unreach, _("Unreachable"), _("Reachable")) }}</td>
+      <td>{{ bool_pill(e.duty, _("Duty cycle"), _("OK")) }}</td>
+      <td>{{ bool_pill(e.sabotage, _("Sabotage"), _("OK")) }}</td>
       <td>{{ rssi_html(e.rssi) }}</td>
       <td class="mono"><a class="mono-link" href="/devices/{{ e.id | e }}">{{ e.id | e }}</a></td>
     </tr>
     {% else %}
-    <tr><td colspan="9" class="empty-cell">Keine Geräte.</td></tr>
+    <tr><td colspan="9" class="empty-cell">{{ _("No devices.") }}</td></tr>
     {% endfor %}
   </tbody>
 </table>

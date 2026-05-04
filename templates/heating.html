@@ -1,41 +1,41 @@
 {# SPDX-License-Identifier: Apache-2.0 #}
 {% extends "base.html" %}
-{% block title %}Heizung – Homematic Bridge{% endblock %}
+{% block title %}{{ _("Heating") }} – Homematic Bridge{% endblock %}
 
 {% block content %}
 <div class="page-head">
   <div>
-    <div class="eyebrow">Klima</div>
-    <h1>Heizung</h1>
-    <div class="sub">Abwesenheitsmodus: <strong style="color:var(--text)">{{ absence | e }}</strong> · Außentemperatur {{ out_temp_str }}</div>
+    <div class="eyebrow">{{ _("Climate") }}</div>
+    <h1>{{ _("Heating") }}</h1>
+    <div class="sub">{{ _("Absence mode:") }} <strong style="color:var(--text)">{{ absence | e }}</strong> · {{ _("Outdoor temperature") }} {{ out_temp_str }}</div>
   </div>
   <div class="actions">
     <div class="segmented" id="modeSeg">
-      <button class="active" data-mode="auto">Automatik</button>
-      <button data-mode="absent">Abwesend</button>
-      <button data-mode="party">Party</button>
+      <button class="active" data-mode="auto">{{ _("Automatic") }}</button>
+      <button data-mode="absent">{{ _("Absent") }}</button>
+      <button data-mode="party">{{ _("Party") }}</button>
     </div>
-    <button class="btn" id="boostAllBtn" type="button">Boost alle</button>
+    <button class="btn" id="boostAllBtn" type="button">{{ _("Boost all") }}</button>
   </div>
 </div>
 
 <div class="stat-row" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr))">
-  <div class="stat-card kpi"><div class="k">Ist-Mittel</div>   <div class="v">{{ kpis.ist_avg }}</div></div>
-  <div class="stat-card kpi"><div class="k">Soll-Mittel</div>  <div class="v">{{ kpis.soll_avg }}</div></div>
-  <div class="stat-card kpi"><div class="k">Ø Ventil</div>     <div class="v">{{ kpis.valve_avg }}</div></div>
-  <div class="stat-card kpi"><div class="k">Ø Luftfeuchte</div><div class="v">{{ kpis.hum_avg }}</div></div>
+  <div class="stat-card kpi"><div class="k">{{ _("Avg actual") }}</div>   <div class="v">{{ kpis.ist_avg }}</div></div>
+  <div class="stat-card kpi"><div class="k">{{ _("Avg target") }}</div>   <div class="v">{{ kpis.soll_avg }}</div></div>
+  <div class="stat-card kpi"><div class="k">{{ _("Avg valve") }}</div>    <div class="v">{{ kpis.valve_avg }}</div></div>
+  <div class="stat-card kpi"><div class="k">{{ _("Avg humidity") }}</div> <div class="v">{{ kpis.hum_avg }}</div></div>
 </div>
 
 <table class="data-table">
   <thead>
     <tr>
-      <th>Raum</th>
-      <th>Ist</th>
-      <th>Soll</th>
+      <th>{{ _("Room") }}</th>
+      <th>{{ _("Actual") }}</th>
+      <th>{{ _("Target") }}</th>
       <th>&Delta;</th>
-      <th>Luftfeuchte</th>
-      <th>Ventil</th>
-      <th>Modus</th>
+      <th>{{ _("Humidity") }}</th>
+      <th>{{ _("Valve") }}</th>
+      <th>{{ _("Mode") }}</th>
     </tr>
   </thead>
   <tbody>
@@ -74,18 +74,18 @@
       </td>
       <td>
         {% if hg.boost %}
-          <span class="pill warn">Boost</span>
+          <span class="pill warn">{{ _("Boost") }}</span>
         {% elif hg.party %}
-          <span class="pill warn">Party</span>
+          <span class="pill warn">{{ _("Party") }}</span>
         {% elif hg.mode_str | lower == 'manual' %}
-          <span class="pill warn">Manuell</span>
+          <span class="pill warn">{{ _("Manual") }}</span>
         {% else %}
-          <span class="pill">{{ hg.mode_str | e or 'Auto' }}</span>
+          <span class="pill">{{ hg.mode_str | e or _("Auto") }}</span>
         {% endif %}
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="7" class="empty-cell">Keine Heizgruppen gefunden.</td></tr>
+    <tr><td colspan="7" class="empty-cell">{{ _("No heating groups found.") }}</td></tr>
     {% endfor %}
   </tbody>
 </table>
@@ -93,12 +93,15 @@
 
 {% block scripts %}
 <script>
+const I18N_HEAT = {
+  not_implemented: {{ _("Boost all: not implemented yet") | tojson }},
+};
 document.querySelectorAll('#modeSeg button').forEach(b => b.addEventListener('click', () => {
   document.querySelectorAll('#modeSeg button').forEach(x => x.classList.remove('active'));
   b.classList.add('active');
 }));
 document.getElementById('boostAllBtn').addEventListener('click', () => {
-  alert('Boost alle: noch nicht implementiert');
+  alert(I18N_HEAT.not_implemented);
 });
 </script>
 {% endblock %}

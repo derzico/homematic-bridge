@@ -1,20 +1,20 @@
 {# SPDX-License-Identifier: Apache-2.0 #}
 {% from "macros.html" import rssi_html_shelly %}
 {% extends "base.html" %}
-{% block title %}Shelly – Homematic Bridge{% endblock %}
+{% block title %}{{ _("Shelly") }} – Homematic Bridge{% endblock %}
 
 {% block content %}
 {% if not enabled %}
   <div class="page-head">
     <div>
-      <div class="eyebrow">Shelly</div>
-      <h1>Shelly Scanner</h1>
-      <div class="sub">Nicht aktiviert – siehe Konfigurationshinweis unten.</div>
+      <div class="eyebrow">{{ _("Shelly") }}</div>
+      <h1>{{ _("Shelly Scanner") }}</h1>
+      <div class="sub">{{ _("Not enabled – see configuration hint below.") }}</div>
     </div>
   </div>
   <div class="card" style="max-width:560px">
     <div class="card-body">
-      <p style="color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:10px">Füge in <code class="mono">config/config.yaml</code> hinzu:</p>
+      <p style="color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:10px">{{ _("Add to") }} <code class="mono">config/config.yaml</code>:</p>
       <pre class="json-raw" style="border-radius:8px;border:1px solid var(--border-soft)">shelly:
   enabled: true
   subnet: "192.168.1.0/24"
@@ -24,61 +24,61 @@
 {% else %}
   <div class="page-head">
     <div>
-      <div class="eyebrow">Shelly</div>
-      <h1>Shelly</h1>
+      <div class="eyebrow">{{ _("Shelly") }}</div>
+      <h1>{{ _("Shelly") }}</h1>
       <div class="sub">
-        Subnet: <strong style="color:var(--text)">{{ subnet | e }}</strong>
-        · {{ online_count }}/{{ devices | length }} online · Auto-Refresh: 60s
+        {{ _("Subnet:") }} <strong style="color:var(--text)">{{ subnet | e }}</strong>
+        · {{ _("%(on)s/%(total)s online · auto-refresh: 60s", on=online_count, total=devices|length) }}
       </div>
     </div>
     <div class="actions">
-      <button id="upd-check-btn" class="btn ghost" onclick="checkUpdates()">Auf Updates prüfen</button>
-      <button id="refresh-btn" class="btn" onclick="refreshStatus()">Status aktualisieren</button>
-      <button id="scan-btn" class="btn primary" onclick="startScan()">Netzwerk scannen</button>
+      <button id="upd-check-btn" class="btn ghost" onclick="checkUpdates()">{{ _("Check for updates") }}</button>
+      <button id="refresh-btn" class="btn" onclick="refreshStatus()">{{ _("Refresh status") }}</button>
+      <button id="scan-btn" class="btn primary" onclick="startScan()">{{ _("Scan network") }}</button>
     </div>
   </div>
 
   {% if offline_names %}
   <div class="alert error" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <strong>⚠ {{ offline_count }} Gerät{{ "e" if offline_count > 1 else "" }} nicht erreichbar</strong>
+    <strong>⚠ {{ ngettext("%(num)s device unreachable", "%(num)s devices unreachable", offline_count) }}</strong>
     <span style="color:var(--muted)">{{ offline_names | e }}</span>
-    <span style="color:var(--muted-2);font-size:11.5px">– kann temporär sein, wird beim nächsten Scan/Refresh aktualisiert</span>
+    <span style="color:var(--muted-2);font-size:11.5px">{{ _("– may be temporary, will be updated on next scan/refresh") }}</span>
   </div>
   {% endif %}
 
   {% if updates_count %}
   <div class="alert" style="background:var(--yellow-soft);color:var(--yellow);border-color:transparent;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <strong>▲ {{ updates_count }} Firmware-Update{{ "s" if updates_count > 1 else "" }} verfügbar</strong>
-    <span style="color:var(--muted)">– Update-Button in der Firmware-Spalte</span>
+    <strong>▲ {{ ngettext("%(num)s firmware update available", "%(num)s firmware updates available", updates_count) }}</strong>
+    <span style="color:var(--muted)">{{ _("– update button in the firmware column") }}</span>
   </div>
   {% endif %}
 
   <div class="toolbar">
     <div class="search-pill">
       <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-      <input id="search" placeholder="Suchen…" autocomplete="off">
+      <input id="search" placeholder="{{ _('Search…') }}" autocomplete="off">
       <span class="kbd">⌘K</span>
     </div>
     <div class="tabs" id="shellyCatTabs">
       {% set on_count     = devices | selectattr('category', 'equalto', 'on')      | list | length %}
       {% set energy_count = devices | selectattr('category', 'equalto', 'energy')  | list | length %}
       {% set offline_cnt  = devices | selectattr('category', 'equalto', 'offline') | list | length %}
-      <button class="active" data-cat="all">Alle <span class="count">{{ devices | length }}</span></button>
-      <button data-cat="on">An <span class="count">{{ on_count }}</span></button>
-      <button data-cat="energy">Energy <span class="count">{{ energy_count }}</span></button>
-      <button data-cat="offline">Offline <span class="count">{{ offline_cnt }}</span></button>
+      <button class="active" data-cat="all">{{ _("All") }} <span class="count">{{ devices | length }}</span></button>
+      <button data-cat="on">{{ _("On") }} <span class="count">{{ on_count }}</span></button>
+      <button data-cat="energy">{{ _("Energy") }} <span class="count">{{ energy_count }}</span></button>
+      <button data-cat="offline">{{ _("Offline") }} <span class="count">{{ offline_cnt }}</span></button>
     </div>
     <span id="scan-info" style="color:var(--muted);font-size:13px">{{ scan_info | e }}</span>
   </div>
 
   {% if not devices %}
-    <div class="card"><div class="card-body" style="color:var(--muted)">Noch keine Geräte gefunden. Starte einen Scan.</div></div>
+    <div class="card"><div class="card-body" style="color:var(--muted)">{{ _("No devices found yet. Start a scan.") }}</div></div>
   {% else %}
     <table class="data-table">
       <thead>
         <tr>
-          <th>Name</th><th>Modell</th><th>Gen</th><th>IP</th><th>MAC</th>
-          <th>Firmware</th><th>WLAN</th><th>Status / Steuerung</th><th>Gesehen</th>
+          <th>{{ _("Name") }}</th><th>{{ _("Model") }}</th><th>{{ _("Gen") }}</th><th>{{ _("IP") }}</th><th>{{ _("MAC") }}</th>
+          <th>{{ _("Firmware") }}</th><th>{{ _("WLAN") }}</th><th>{{ _("Status / Control") }}</th><th>{{ _("Last seen") }}</th>
         </tr>
       </thead>
       <tbody>
@@ -87,7 +87,7 @@
         {% set ip_dash = dev.ip | replace(".", "-") %}
         <tr data-cat="{{ dev.category }}"{{ ' style="opacity:0.6"' | safe if not dev.online }}>
           <td class="label-cell">
-            {% if not dev.online %}<span class="pill error">offline</span> {% endif %}
+            {% if not dev.online %}<span class="pill error">{{ _("offline") }}</span> {% endif %}
             {{ dev.name | e }}
           </td>
           <td><span class="type-badge">{{ dev.model | e }}</span></td>
@@ -105,7 +105,7 @@
           <td>{{ rssi_html_shelly(dev.rssi) }}</td>
           <td>
             {% if not dev.online %}
-              <span style="color:var(--muted);font-size:12px">nicht erreichbar</span>
+              <span style="color:var(--muted);font-size:12px">{{ _("unreachable") }}</span>
             {% elif dev.emeters %}
               {% for idx, em in dev.emeters | dictsort %}
                 {% set phase = {"0": "L1", "1": "L2", "2": "L3"}.get(idx, "CH" ~ idx) %}
@@ -130,7 +130,7 @@
               {% if dev.emeters | length > 1 %}
                 {% set total_pw = dev.emeters.values() | map(attribute='power_w') | select('number') | sum %}
                 <div style="border-top:1px solid var(--border-soft);margin-top:4px;padding-top:4px;font-family:var(--mono);font-size:11px;color:var(--muted)">
-                  Gesamt: <strong style="color:var(--text)">{{ "%.0f W" | format(total_pw) }}</strong>
+                  {{ _("Total:") }} <strong style="color:var(--text)">{{ "%.0f W" | format(total_pw) }}</strong>
                 </div>
               {% endif %}
               {% if dev.channels %}
@@ -141,7 +141,7 @@
                     <button id="{{ btn_id }}" class="btn {{ 'primary' if is_on else '' }}"
                       onclick="shellyRelay('{{ dev.ip }}',{{ dev.gen }},{{ ch_idx }},{{ 'false' if is_on else 'true' }})"
                       style="padding:3px 10px;font-size:11px">
-                      CH{{ ch_idx }} {{ "EIN" if is_on else "AUS" }}{{ " · %.0f W" | format(ch.power_w) if ch.power_w is number else "" }}
+                      CH{{ ch_idx }} {{ _("ON") if is_on else _("OFF") }}{{ " · %.0f W" | format(ch.power_w) if ch.power_w is number else "" }}
                     </button>
                     {% if ch.total_kwh is number %}
                       <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">· {{ "%.2f kWh" | format(ch.total_kwh) }}</span>
@@ -157,7 +157,7 @@
                 <button id="{{ btn_id }}" class="btn {{ 'primary' if is_on else '' }}"
                   onclick="shellyRelay('{{ dev.ip }}',{{ dev.gen }},{{ ch_idx }},{{ 'false' if is_on else 'true' }})"
                   style="padding:3px 10px;font-size:11px">
-                  CH{{ ch_idx }} {{ "EIN" if is_on else "AUS" }}{{ " · %.0f W" | format(ch.power_w) if ch.power_w is number else "" }}
+                  CH{{ ch_idx }} {{ _("ON") if is_on else _("OFF") }}{{ " · %.0f W" | format(ch.power_w) if ch.power_w is number else "" }}
                 </button>
                 {% if ch.total_kwh is number %}
                   <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">· {{ "%.2f kWh" | format(ch.total_kwh) }}</span>
@@ -181,6 +181,26 @@
 {% if enabled %}
 <script>
 const CSRF_TOKEN = {{ csrf_token | tojson }};
+const I18N_SH = {
+  switch_error:  {{ _("Failed to switch") | tojson }},
+  net_error:     {{ _("Network error") | tojson }},
+  scan_running:  {{ _("Scan running…") | tojson }},
+  scan_started:  {{ _("Scan started – please wait…") | tojson }},
+  scan_btn:      {{ _("Scan network") | tojson }},
+  upd_confirm:   {{ _("Start firmware update for {ip}?\nDevice will be unreachable during update.") | tojson }},
+  upd_running:   {{ _("Update running…") | tojson }},
+  upd_restart:   {{ _("Restarting…") | tojson }},
+  upd_failed:    {{ _("Update failed") | tojson }},
+  upd_btn:       {{ _("Update") | tojson }},
+  check_btn:     {{ _("Check for updates") | tojson }},
+  checking:      {{ _("Checking…") | tojson }},
+  waiting_dev:   {{ _("Waiting for devices (5s)…") | tojson }},
+  refresh_btn:   {{ _("Refresh status") | tojson }},
+  refreshing:    {{ _("Refreshing…") | tojson }},
+  fail:          {{ _("Error") | tojson }},
+};
+
+function fmtSh(t, vars) { return t.replace(/\{(\w+)\}/g, (_, k) => vars[k]); }
 
 (function() {
   let currentCat = 'all';
@@ -223,62 +243,62 @@ async function shellyRelay(ip, gen, channel, on) {
     });
     const d = await r.json();
     if (d.success) { setTimeout(() => location.reload(), 800); }
-    else { alert('Fehler beim Schalten'); if (btn) btn.disabled = false; }
-  } catch(e) { alert('Netzwerkfehler'); if (btn) btn.disabled = false; }
+    else { alert(I18N_SH.switch_error); if (btn) btn.disabled = false; }
+  } catch(e) { alert(I18N_SH.net_error); if (btn) btn.disabled = false; }
 }
 
 async function startScan() {
   const btn = document.getElementById('scan-btn');
-  btn.disabled = true; btn.textContent = 'Scan läuft…';
-  document.getElementById('scan-info').textContent = 'Scan gestartet – bitte warten…';
+  btn.disabled = true; btn.textContent = I18N_SH.scan_running;
+  document.getElementById('scan-info').textContent = I18N_SH.scan_started;
   try {
     const r = await fetch('/shelly/scan', {method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN}});
     const d = await r.json();
     if (d.status === 'started' || d.status === 'already_running') { pollScan(); }
-    else { document.getElementById('scan-info').textContent = d.error || 'Fehler'; btn.disabled = false; btn.textContent = 'Netzwerk scannen'; }
-  } catch(e) { document.getElementById('scan-info').textContent = 'Netzwerkfehler'; btn.disabled = false; btn.textContent = 'Netzwerk scannen'; }
+    else { document.getElementById('scan-info').textContent = d.error || I18N_SH.fail; btn.disabled = false; btn.textContent = I18N_SH.scan_btn; }
+  } catch(e) { document.getElementById('scan-info').textContent = I18N_SH.net_error; btn.disabled = false; btn.textContent = I18N_SH.scan_btn; }
 }
 
 function pollScan() {
   fetch('/shelly/status').then(r => r.json()).then(d => {
-    if (d.running) { document.getElementById('scan-info').textContent = 'Scan läuft…'; setTimeout(pollScan, 2000); }
+    if (d.running) { document.getElementById('scan-info').textContent = I18N_SH.scan_running; setTimeout(pollScan, 2000); }
     else { location.reload(); }
   });
 }
 
 async function shellyUpdate(ip) {
-  if (!confirm('Firmware-Update für ' + ip + ' starten?\nDas Gerät ist während des Updates nicht erreichbar.')) return;
+  if (!confirm(fmtSh(I18N_SH.upd_confirm, {ip: ip}))) return;
   const btn = document.getElementById('upd-' + ip.replace(/\./g,'-'));
-  if (btn) { btn.disabled = true; btn.textContent = 'Update läuft…'; }
+  if (btn) { btn.disabled = true; btn.textContent = I18N_SH.upd_running; }
   try {
     const r = await fetch('/shelly/' + ip + '/update', {method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN}});
     const d = await r.json();
-    if (d.success) { if (btn) btn.textContent = 'Neustart…'; setTimeout(() => location.reload(), 15000); }
-    else { alert('Update fehlgeschlagen'); if (btn) { btn.disabled = false; btn.textContent = 'Update'; } }
-  } catch(e) { alert('Netzwerkfehler'); if (btn) { btn.disabled = false; btn.textContent = 'Update'; } }
+    if (d.success) { if (btn) btn.textContent = I18N_SH.upd_restart; setTimeout(() => location.reload(), 15000); }
+    else { alert(I18N_SH.upd_failed); if (btn) { btn.disabled = false; btn.textContent = I18N_SH.upd_btn; } }
+  } catch(e) { alert(I18N_SH.net_error); if (btn) { btn.disabled = false; btn.textContent = I18N_SH.upd_btn; } }
 }
 
 async function checkUpdates() {
   const btn = document.getElementById('upd-check-btn');
-  btn.disabled = true; btn.textContent = 'Prüfe…';
+  btn.disabled = true; btn.textContent = I18N_SH.checking;
   try {
     await fetch('/shelly/check-updates', {method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN}});
-    btn.textContent = 'Warte auf Geräte (5s)…';
+    btn.textContent = I18N_SH.waiting_dev;
     setTimeout(async () => {
       await fetch('/shelly/refresh-status', {method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN}});
       location.reload();
     }, 5000);
-  } catch(e) { btn.disabled = false; btn.textContent = 'Auf Updates prüfen'; }
+  } catch(e) { btn.disabled = false; btn.textContent = I18N_SH.check_btn; }
 }
 
 async function refreshStatus() {
   const btn = document.getElementById('refresh-btn');
-  btn.disabled = true; btn.textContent = 'Aktualisiere…';
+  btn.disabled = true; btn.textContent = I18N_SH.refreshing;
   try {
     await fetch('/shelly/refresh-status', {method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN}});
     location.reload();
   }
-  catch(e) { btn.disabled = false; btn.textContent = 'Status aktualisieren'; }
+  catch(e) { btn.disabled = false; btn.textContent = I18N_SH.refresh_btn; }
 }
 
 setTimeout(() => {

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-05-04 15:48+0200\n"
+"POT-Creation-Date: 2026-05-04 15:55+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -22,7 +22,8 @@ msgstr ""
 msgid "Dashboard"
 msgstr ""
 
-#: templates/base.html:626
+#: templates/base.html:626 templates/device_detail.html:25
+#: templates/devices.html:8
 msgid "Devices"
 msgstr ""
 
@@ -31,10 +32,12 @@ msgid "Status"
 msgstr ""
 
 #: templates/base.html:628 templates/dashboard.html:225
+#: templates/devices.html:26 templates/heating.html:3 templates/heating.html:9
 msgid "Heating"
 msgstr ""
 
-#: templates/base.html:629
+#: templates/base.html:629 templates/config.html:36 templates/shelly.html:4
+#: templates/shelly.html:10 templates/shelly.html:27 templates/shelly.html:28
 msgid "Shelly"
 msgstr ""
 
@@ -61,6 +64,125 @@ msgstr ""
 
 #: templates/base.html:652
 msgid "Sign out"
+msgstr ""
+
+#: templates/config.html:3 templates/config.html:9
+msgid "Configuration"
+msgstr ""
+
+#: templates/config.html:8
+msgid "Settings"
+msgstr ""
+
+#: templates/config.html:10
+msgid ""
+"config/config.yaml — Loxone and Shelly settings apply immediately after "
+"saving. HCU connection changes require a restart."
+msgstr ""
+
+#: templates/config.html:13
+msgid "Load sample"
+msgstr ""
+
+#: templates/config.html:14
+msgid "Validate"
+msgstr ""
+
+#: templates/config.html:15
+msgid "Save"
+msgstr ""
+
+#: templates/config.html:23
+msgid "✓ Saved."
+msgstr ""
+
+#: templates/config.html:23
+msgid "Connection changes (HCU, token) require a restart."
+msgstr ""
+
+#: templates/config.html:32
+msgid "Sections"
+msgstr ""
+
+#: templates/config.html:33
+msgid "General"
+msgstr ""
+
+#: templates/config.html:34
+msgid "HCU connection"
+msgstr ""
+
+#: templates/config.html:34
+msgid "restart"
+msgstr ""
+
+#: templates/config.html:35
+msgid "Loxone push"
+msgstr ""
+
+#: templates/config.html:37
+msgid "SSL / Security"
+msgstr ""
+
+#: templates/config.html:38
+msgid "Logging"
+msgstr ""
+
+#: templates/config.html:41
+msgid "Help"
+msgstr ""
+
+#: templates/config.html:42
+msgid "YAML reference"
+msgstr ""
+
+#: templates/config.html:43
+msgid "Create HCU token"
+msgstr ""
+
+#: templates/config.html:44
+msgid "Loxone variable naming"
+msgstr ""
+
+#: templates/config.html:51 templates/config.html:132
+msgid "lines"
+msgstr ""
+
+#: templates/config.html:133 templates/shelly.html:196
+msgid "Checking…"
+msgstr ""
+
+#: templates/config.html:134
+msgid "✓ YAML valid"
+msgstr ""
+
+#: templates/config.html:135
+#, python-brace-format
+msgid "Last successful validation at {t}"
+msgstr ""
+
+#: templates/config.html:136
+msgid "YAML invalid"
+msgstr ""
+
+#: templates/config.html:137
+msgid "Network error during validation"
+msgstr ""
+
+#: templates/config.html:138
+msgid "Replace current content with sample?"
+msgstr ""
+
+#: templates/config.html:139
+msgid "Sample loaded. Please adjust before saving."
+msgstr ""
+
+#: templates/config.html:140
+msgid "Sample could not be loaded"
+msgstr ""
+
+#: templates/config.html:141
+msgid "Network error while loading sample"
 msgstr ""
 
 #: templates/dashboard.html:6
@@ -127,7 +249,7 @@ msgstr ""
 msgid "updated"
 msgstr ""
 
-#: templates/dashboard.html:81
+#: templates/dashboard.html:81 templates/heating.html:36
 msgid "Humidity"
 msgstr ""
 
@@ -148,11 +270,12 @@ msgstr ""
 msgid "Average across %(n)s heating zones · last 12 h"
 msgstr ""
 
-#: templates/dashboard.html:97
+#: templates/dashboard.html:97 templates/heating.html:33
 msgid "Actual"
 msgstr ""
 
-#: templates/dashboard.html:98
+#: templates/dashboard.html:98 templates/heating.html:34
+#: templates/macros.html:112
 msgid "Target"
 msgstr ""
 
@@ -172,11 +295,11 @@ msgstr ""
 msgid "HCU"
 msgstr ""
 
-#: templates/dashboard.html:112
+#: templates/dashboard.html:112 templates/shelly.html:81
 msgid "Firmware"
 msgstr ""
 
-#: templates/dashboard.html:114
+#: templates/dashboard.html:114 templates/status.html:83
 msgid "Duty cycle"
 msgstr ""
 
@@ -207,6 +330,7 @@ msgid "ACTIVE"
 msgstr ""
 
 #: templates/dashboard.html:154 templates/dashboard.html:161
+#: templates/status.html:81 templates/status.html:83 templates/status.html:84
 msgid "OK"
 msgstr ""
 
@@ -260,7 +384,7 @@ msgstr ""
 msgid "All %(n)s rooms →"
 msgstr ""
 
-#: templates/dashboard.html:236
+#: templates/dashboard.html:236 templates/heating.html:83
 msgid "Auto"
 msgstr ""
 
@@ -311,6 +435,213 @@ msgstr ""
 msgid "✓ Sent"
 msgstr ""
 
+#: templates/device_detail.html:4 templates/device_detail.html:10
+#: templates/device_detail.html:12
+msgid "Device"
+msgstr ""
+
+#: templates/device_detail.html:11
+msgid "Device not found"
+msgstr ""
+
+#: templates/device_detail.html:12
+msgid "was not found in the current snapshot."
+msgstr ""
+
+#: templates/device_detail.html:15
+msgid "Back"
+msgstr ""
+
+#: templates/device_detail.html:41 templates/macros.html:90
+#: templates/status.html:39 templates/status.html:82
+msgid "Unreachable"
+msgstr ""
+
+#: templates/device_detail.html:43 templates/macros.html:92
+#: templates/status.html:82
+msgid "Reachable"
+msgstr ""
+
+#: templates/device_detail.html:46 templates/macros.html:95
+#: templates/status.html:27
+msgid "Low battery"
+msgstr ""
+
+#: templates/device_detail.html:49 templates/macros.html:98
+#: templates/status.html:33 templates/status.html:65 templates/status.html:84
+msgid "Sabotage"
+msgstr ""
+
+#: templates/device_detail.html:54 templates/device_detail.html:85
+msgid "Raw data"
+msgstr ""
+
+#: templates/device_detail.html:55 templates/status.html:18
+msgid "Refresh"
+msgstr ""
+
+#: templates/device_detail.html:61 templates/devices.html:42
+#: templates/devices.html:130 templates/heating.html:32
+#: templates/status.html:64
+msgid "Room"
+msgstr ""
+
+#: templates/device_detail.html:74
+msgid "Functional channels"
+msgstr ""
+
+#: templates/device_detail.html:80
+msgid "No channels"
+msgstr ""
+
+#: templates/devices.html:3 templates/devices.html:9
+msgid "Device overview"
+msgstr ""
+
+#: templates/devices.html:10
+#, python-format
+msgid "%(n)s devices · snapshot %(t)s · %(a)s ago"
+msgstr ""
+
+#: templates/devices.html:13
+msgid "Export CSV"
+msgstr ""
+
+#: templates/devices.html:14
+msgid "Refresh snapshot"
+msgstr ""
+
+#: templates/devices.html:21
+msgid "Search by ID, label, room, type …"
+msgstr ""
+
+#: templates/devices.html:25 templates/shelly.html:66
+msgid "All"
+msgstr ""
+
+#: templates/devices.html:27
+msgid "Sensors"
+msgstr ""
+
+#: templates/devices.html:28
+msgid "Actors"
+msgstr ""
+
+#: templates/devices.html:29
+msgid "Other"
+msgstr ""
+
+#: templates/devices.html:32
+msgid "Table"
+msgstr ""
+
+#: templates/devices.html:33
+msgid "Cards"
+msgstr ""
+
+#: templates/devices.html:41 templates/devices.html:130
+#: templates/status.html:64
+msgid "Label"
+msgstr ""
+
+#: templates/devices.html:43 templates/devices.html:130
+#: templates/status.html:64
+msgid "Type"
+msgstr ""
+
+#: templates/devices.html:44 templates/devices.html:130
+#: templates/shelly.html:80
+msgid "Model"
+msgstr ""
+
+#: templates/devices.html:45 templates/status.html:66
+msgid "Device ID"
+msgstr ""
+
+#: templates/devices.html:46
+msgid "Open"
+msgstr ""
+
+#: templates/devices.html:57
+msgid "Open details"
+msgstr ""
+
+#: templates/devices.html:60
+msgid "No devices found."
+msgstr ""
+
+#: templates/devices.html:130
+msgid "ID"
+msgstr ""
+
+#: templates/heating.html:8
+msgid "Climate"
+msgstr ""
+
+#: templates/heating.html:10
+msgid "Absence mode:"
+msgstr ""
+
+#: templates/heating.html:10
+msgid "Outdoor temperature"
+msgstr ""
+
+#: templates/heating.html:14
+msgid "Automatic"
+msgstr ""
+
+#: templates/heating.html:15
+msgid "Absent"
+msgstr ""
+
+#: templates/heating.html:16 templates/heating.html:79
+msgid "Party"
+msgstr ""
+
+#: templates/heating.html:18
+msgid "Boost all"
+msgstr ""
+
+#: templates/heating.html:23
+msgid "Avg actual"
+msgstr ""
+
+#: templates/heating.html:24
+msgid "Avg target"
+msgstr ""
+
+#: templates/heating.html:25
+msgid "Avg valve"
+msgstr ""
+
+#: templates/heating.html:26
+msgid "Avg humidity"
+msgstr ""
+
+#: templates/heating.html:37
+msgid "Valve"
+msgstr ""
+
+#: templates/heating.html:38
+msgid "Mode"
+msgstr ""
+
+#: templates/heating.html:77
+msgid "Boost"
+msgstr ""
+
+#: templates/heating.html:81
+msgid "Manual"
+msgstr ""
+
+#: templates/heating.html:88
+msgid "No heating groups found."
+msgstr ""
+
+#: templates/heating.html:97
+msgid "Boost all: not implemented yet"
+msgstr ""
+
 #: templates/login.html:3 templates/login.html:13 templates/login.html:30
 msgid "Sign in"
 msgstr ""
@@ -337,5 +668,283 @@ msgstr ""
 
 #: templates/login.html:35
 msgid "Forgot API key?"
+msgstr ""
+
+#: templates/macros.html:84
+msgid "No data"
+msgstr ""
+
+#: templates/macros.html:101 templates/shelly.html:67
+msgid "On"
+msgstr ""
+
+#: templates/macros.html:103
+msgid "Off"
+msgstr ""
+
+#: templates/macros.html:119
+msgid "Window open"
+msgstr ""
+
+#: templates/macros.html:121
+msgid "Window closed"
+msgstr ""
+
+#: templates/macros.html:129
+msgid "Channel"
+msgstr ""
+
+#: templates/shelly.html:11
+msgid "Shelly Scanner"
+msgstr ""
+
+#: templates/shelly.html:12
+msgid "Not enabled – see configuration hint below."
+msgstr ""
+
+#: templates/shelly.html:17
+msgid "Add to"
+msgstr ""
+
+#: templates/shelly.html:30
+msgid "Subnet:"
+msgstr ""
+
+#: templates/shelly.html:31
+#, python-format
+msgid "%(on)s/%(total)s online · auto-refresh: 60s"
+msgstr ""
+
+#: templates/shelly.html:35 templates/shelly.html:195
+msgid "Check for updates"
+msgstr ""
+
+#: templates/shelly.html:36 templates/shelly.html:198
+msgid "Refresh status"
+msgstr ""
+
+#: templates/shelly.html:37 templates/shelly.html:189
+msgid "Scan network"
+msgstr ""
+
+#: templates/shelly.html:43
+#, python-format
+msgid "%(num)s device unreachable"
+msgid_plural "%(num)s devices unreachable"
+msgstr[0] ""
+msgstr[1] ""
+
+#: templates/shelly.html:45
+msgid "– may be temporary, will be updated on next scan/refresh"
+msgstr ""
+
+#: templates/shelly.html:51
+#, python-format
+msgid "%(num)s firmware update available"
+msgid_plural "%(num)s firmware updates available"
+msgstr[0] ""
+msgstr[1] ""
+
+#: templates/shelly.html:52
+msgid "– update button in the firmware column"
+msgstr ""
+
+#: templates/shelly.html:59
+msgid "Search…"
+msgstr ""
+
+#: templates/shelly.html:68
+msgid "Energy"
+msgstr ""
+
+#: templates/shelly.html:69
+msgid "Offline"
+msgstr ""
+
+#: templates/shelly.html:75
+msgid "No devices found yet. Start a scan."
+msgstr ""
+
+#: templates/shelly.html:80
+msgid "Name"
+msgstr ""
+
+#: templates/shelly.html:80
+msgid "Gen"
+msgstr ""
+
+#: templates/shelly.html:80
+msgid "IP"
+msgstr ""
+
+#: templates/shelly.html:80
+msgid "MAC"
+msgstr ""
+
+#: templates/shelly.html:81
+msgid "WLAN"
+msgstr ""
+
+#: templates/shelly.html:81
+msgid "Status / Control"
+msgstr ""
+
+#: templates/shelly.html:81
+msgid "Last seen"
+msgstr ""
+
+#: templates/shelly.html:90
+msgid "offline"
+msgstr ""
+
+#: templates/shelly.html:108
+msgid "unreachable"
+msgstr ""
+
+#: templates/shelly.html:133
+msgid "Total:"
+msgstr ""
+
+#: templates/shelly.html:144 templates/shelly.html:160
+msgid "ON"
+msgstr ""
+
+#: templates/shelly.html:144 templates/shelly.html:160
+msgid "OFF"
+msgstr ""
+
+#: templates/shelly.html:185
+msgid "Failed to switch"
+msgstr ""
+
+#: templates/shelly.html:186
+msgid "Network error"
+msgstr ""
+
+#: templates/shelly.html:187
+msgid "Scan running…"
+msgstr ""
+
+#: templates/shelly.html:188
+msgid "Scan started – please wait…"
+msgstr ""
+
+#: templates/shelly.html:190
+#, python-brace-format
+msgid ""
+"Start firmware update for {ip}?\n"
+"Device will be unreachable during update."
+msgstr ""
+
+#: templates/shelly.html:191
+msgid "Update running…"
+msgstr ""
+
+#: templates/shelly.html:192
+msgid "Restarting…"
+msgstr ""
+
+#: templates/shelly.html:193
+msgid "Update failed"
+msgstr ""
+
+#: templates/shelly.html:194
+msgid "Update"
+msgstr ""
+
+#: templates/shelly.html:197
+msgid "Waiting for devices (5s)…"
+msgstr ""
+
+#: templates/shelly.html:199
+msgid "Refreshing…"
+msgstr ""
+
+#: templates/shelly.html:200
+msgid "Error"
+msgstr ""
+
+#: templates/status.html:4 templates/status.html:10
+msgid "Device status"
+msgstr ""
+
+#: templates/status.html:9
+msgid "Diagnostics"
+msgstr ""
+
+#: templates/status.html:11
+#, python-format
+msgid "%(n)s devices · %(w)s with active warnings · sorted by severity"
+msgstr ""
+
+#: templates/status.html:15
+#, python-format
+msgid "%(num)s warning"
+msgid_plural "%(num)s warnings"
+msgstr[0] ""
+msgstr[1] ""
+
+#: templates/status.html:17
+msgid "Filter"
+msgstr ""
+
+#: templates/status.html:23
+msgid "Filter low battery"
+msgstr ""
+
+#: templates/status.html:29
+msgid "Filter sabotage"
+msgstr ""
+
+#: templates/status.html:35
+msgid "Filter unreachable"
+msgstr ""
+
+#: templates/status.html:41
+msgid "Filter duty cycle"
+msgstr ""
+
+#: templates/status.html:45
+msgid "High duty cycle"
+msgstr ""
+
+#: templates/status.html:47
+msgid "Filter weak signal"
+msgstr ""
+
+#: templates/status.html:51
+msgid "Weak signal"
+msgstr ""
+
+#: templates/status.html:53
+msgid "Filter OK"
+msgstr ""
+
+#: templates/status.html:57
+msgid "All OK"
+msgstr ""
+
+#: templates/status.html:65
+msgid "Battery"
+msgstr ""
+
+#: templates/status.html:65
+msgid "Reachability"
+msgstr ""
+
+#: templates/status.html:65
+msgid "Duty"
+msgstr ""
+
+#: templates/status.html:66
+msgid "RSSI"
+msgstr ""
+
+#: templates/status.html:81
+msgid "Low bat"
+msgstr ""
+
+#: templates/status.html:89
+msgid "No devices."
 msgstr ""
 

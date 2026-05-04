@@ -1,18 +1,18 @@
 {# SPDX-License-Identifier: Apache-2.0 #}
 {% from "macros.html" import val_html, channel_card %}
 {% extends "base.html" %}
-{% block title %}{{ dev.label | e if dev else 'Gerät' }} – Homematic Bridge{% endblock %}
+{% block title %}{{ dev.label | e if dev else _("Device") }} – Homematic Bridge{% endblock %}
 
 {% block content %}
 {% if not dev %}
   <div class="page-head">
     <div>
-      <div class="eyebrow">Gerät</div>
-      <h1>Gerät nicht gefunden</h1>
-      <div class="sub">Device <span class="mono">{{ device_id | e }}</span> wurde im aktuellen Snapshot nicht gefunden.</div>
+      <div class="eyebrow">{{ _("Device") }}</div>
+      <h1>{{ _("Device not found") }}</h1>
+      <div class="sub">{{ _("Device") }} <span class="mono">{{ device_id | e }}</span> {{ _("was not found in the current snapshot.") }}</div>
     </div>
     <div class="actions">
-      <a class="btn ghost" href="/devices/html">&laquo; Zurück</a>
+      <a class="btn ghost" href="/devices/html">&laquo; {{ _("Back") }}</a>
     </div>
   </div>
 {% else %}
@@ -22,7 +22,7 @@
   {% set sabotage = ch0.get('sabotage') %}
 
   <div class="breadcrumb">
-    <a href="/devices/html">Geräte</a>
+    <a href="/devices/html">{{ _("Devices") }}</a>
     <span class="sep">›</span>
     <span>{{ dev.room | e }}</span>
     <span class="sep">›</span>
@@ -38,27 +38,27 @@
         <span>·</span>
         <span class="mono">{{ dev.id | e }}</span>
         {% if unreach is sameas true %}
-          <span class="pill error"><span class="dot"></span>nicht erreichbar</span>
+          <span class="pill error"><span class="dot"></span>{{ _("Unreachable") }}</span>
         {% elif unreach is sameas false %}
-          <span class="pill ok"><span class="dot"></span>erreichbar</span>
+          <span class="pill ok"><span class="dot"></span>{{ _("Reachable") }}</span>
         {% endif %}
         {% if low_bat is sameas true %}
-          <span class="pill warn">Batterie schwach</span>
+          <span class="pill warn">{{ _("Low battery") }}</span>
         {% endif %}
         {% if sabotage is sameas true %}
-          <span class="pill error">Sabotage</span>
+          <span class="pill error">{{ _("Sabotage") }}</span>
         {% endif %}
       </div>
     </div>
     <div class="actions">
-      <a class="btn ghost" href="#raw-json">Rohdaten</a>
-      <a class="btn primary" href="/devices/{{ dev.id | e }}">Aktualisieren</a>
+      <a class="btn ghost" href="#raw-json">{{ _("Raw data") }}</a>
+      <a class="btn primary" href="/devices/{{ dev.id | e }}">{{ _("Refresh") }}</a>
     </div>
   </div>
 
   <div class="meta-grid">
     <div class="meta-card">
-      <div class="k">Raum</div>
+      <div class="k">{{ _("Room") }}</div>
       <div class="v plain">{{ dev.room | e }}</div>
     </div>
     {% for k in meta_keys %}
@@ -71,18 +71,18 @@
     {% endfor %}
   </div>
 
-  <div class="section-title">Functional Channels</div>
+  <div class="section-title">{{ _("Functional channels") }}</div>
   {% if dev.channels %}
     {% for ch_idx, ch in dev.channels %}
       {{ channel_card(ch_idx, ch, open_default=loop.first) }}
     {% endfor %}
   {% else %}
-    <div class="card"><div class="card-body" style="color:var(--muted)">Keine Channels</div></div>
+    <div class="card"><div class="card-body" style="color:var(--muted)">{{ _("No channels") }}</div></div>
   {% endif %}
 
   <details class="channel" id="raw-json" style="margin-top:18px">
     <summary>
-      <span>Rohdaten</span>
+      <span>{{ _("Raw data") }}</span>
       <span class="sub">JSON</span>
       <span class="chevron">&#9660;</span>
     </summary>

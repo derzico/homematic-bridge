@@ -1,36 +1,36 @@
 {# SPDX-License-Identifier: Apache-2.0 #}
 {% extends "base.html" %}
-{% block title %}Geräteübersicht – Homematic Bridge{% endblock %}
+{% block title %}{{ _("Device overview") }} – Homematic Bridge{% endblock %}
 
 {% block content %}
 <div class="page-head">
   <div>
-    <div class="eyebrow">Geräte</div>
-    <h1>Geräteübersicht</h1>
-    <div class="sub">{{ devices | length }} Geräte · Snapshot {{ snapshot_time_str }} · vor {{ snapshot_age_str }}</div>
+    <div class="eyebrow">{{ _("Devices") }}</div>
+    <h1>{{ _("Device overview") }}</h1>
+    <div class="sub">{{ _("%(n)s devices · snapshot %(t)s · %(a)s ago", n=devices|length, t=snapshot_time_str, a=snapshot_age_str) }}</div>
   </div>
   <div class="actions">
-    <button id="exportBtn" class="btn ghost" type="button">Export CSV</button>
-    <a class="btn primary" href="/devices">Snapshot aktualisieren</a>
+    <button id="exportBtn" class="btn ghost" type="button">{{ _("Export CSV") }}</button>
+    <a class="btn primary" href="/devices">{{ _("Refresh snapshot") }}</a>
   </div>
 </div>
 
 <div class="toolbar">
   <div class="search-pill">
     <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-    <input id="search" type="text" placeholder="Suchen nach ID, Label, Raum, Typ …" autocomplete="off">
+    <input id="search" type="text" placeholder="{{ _('Search by ID, label, room, type …') }}" autocomplete="off">
     <span class="kbd">⌘K</span>
   </div>
   <div class="tabs" id="catTabs">
-    <button class="active" data-cat="all">Alle <span class="count">{{ devices | length }}</span></button>
-    <button data-cat="heating">Heizung <span class="count">{{ cat_counts.heating }}</span></button>
-    <button data-cat="sensor">Sensoren <span class="count">{{ cat_counts.sensor }}</span></button>
-    <button data-cat="actor">Aktoren <span class="count">{{ cat_counts.actor }}</span></button>
-    <button data-cat="other">Sonstige <span class="count">{{ cat_counts.other }}</span></button>
+    <button class="active" data-cat="all">{{ _("All") }} <span class="count">{{ devices | length }}</span></button>
+    <button data-cat="heating">{{ _("Heating") }} <span class="count">{{ cat_counts.heating }}</span></button>
+    <button data-cat="sensor">{{ _("Sensors") }} <span class="count">{{ cat_counts.sensor }}</span></button>
+    <button data-cat="actor">{{ _("Actors") }} <span class="count">{{ cat_counts.actor }}</span></button>
+    <button data-cat="other">{{ _("Other") }} <span class="count">{{ cat_counts.other }}</span></button>
   </div>
   <div class="segmented" id="viewToggle">
-    <button class="active" data-view="table">Tabelle</button>
-    <button data-view="cards">Kacheln</button>
+    <button class="active" data-view="table">{{ _("Table") }}</button>
+    <button data-view="cards">{{ _("Cards") }}</button>
   </div>
 </div>
 
@@ -38,12 +38,12 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th>Label</th>
-        <th>Raum</th>
-        <th>Typ</th>
-        <th>Modell</th>
-        <th>Device ID</th>
-        <th aria-label="Öffnen"></th>
+        <th>{{ _("Label") }}</th>
+        <th>{{ _("Room") }}</th>
+        <th>{{ _("Type") }}</th>
+        <th>{{ _("Model") }}</th>
+        <th>{{ _("Device ID") }}</th>
+        <th aria-label="{{ _('Open') }}"></th>
       </tr>
     </thead>
     <tbody id="devTbody">
@@ -54,10 +54,10 @@
         <td><span class="type-badge cat-{{ dev.category }}">{{ dev.type | e }}</span></td>
         <td class="mono muted">{{ dev.model | e }}</td>
         <td class="mono"><a class="mono-link" href="/devices/{{ dev.id | e }}">{{ dev.id | e }}</a></td>
-        <td class="row-chev"><a href="/devices/{{ dev.id | e }}" aria-label="Details öffnen">›</a></td>
+        <td class="row-chev"><a href="/devices/{{ dev.id | e }}" aria-label="{{ _('Open details') }}">›</a></td>
       </tr>
       {% else %}
-      <tr><td colspan="6" class="empty-cell">Keine Geräte gefunden.</td></tr>
+      <tr><td colspan="6" class="empty-cell">{{ _("No devices found.") }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -127,7 +127,7 @@
   });
 
   document.getElementById('exportBtn').addEventListener('click', () => {
-    const rows = [['ID', 'Label', 'Raum', 'Typ', 'Modell']];
+    const rows = [[{{ _("ID") | tojson }}, {{ _("Label") | tojson }}, {{ _("Room") | tojson }}, {{ _("Type") | tojson }}, {{ _("Model") | tojson }}]];
     document.querySelectorAll('#devTbody tr[data-cat]').forEach(tr => {
       if (tr.style.display === 'none') return;
       const cells = tr.querySelectorAll('td');
