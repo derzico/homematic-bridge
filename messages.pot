@@ -1,0 +1,341 @@
+# Translations template for PROJECT.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the PROJECT project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-05-04 15:48+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: templates/base.html:625 templates/dashboard.html:3
+#: templates/dashboard.html:9
+msgid "Dashboard"
+msgstr ""
+
+#: templates/base.html:626
+msgid "Devices"
+msgstr ""
+
+#: templates/base.html:627
+msgid "Status"
+msgstr ""
+
+#: templates/base.html:628 templates/dashboard.html:225
+msgid "Heating"
+msgstr ""
+
+#: templates/base.html:629
+msgid "Shelly"
+msgstr ""
+
+#: templates/base.html:630
+msgid "Config"
+msgstr ""
+
+#: templates/base.html:631
+msgid "Health"
+msgstr ""
+
+#: templates/base.html:641
+msgid "HCU connected"
+msgstr ""
+
+#: templates/base.html:641
+msgid "HCU disconnected"
+msgstr ""
+
+#: templates/base.html:645
+#, python-format
+msgid "%(n)s devices"
+msgstr ""
+
+#: templates/base.html:652
+msgid "Sign out"
+msgstr ""
+
+#: templates/dashboard.html:6
+msgid "Overview"
+msgstr ""
+
+#: templates/dashboard.html:11
+#, python-format
+msgid ""
+"Snapshot from %(t)s · %(h)s HmIP devices · %(s)s Shellys · last sync "
+"%(a)s ago"
+msgstr ""
+
+#: templates/dashboard.html:18
+msgid "Sync"
+msgstr ""
+
+#: templates/dashboard.html:29 templates/dashboard.html:138
+msgid "Alarm active"
+msgstr ""
+
+#: templates/dashboard.html:29
+msgid "Alarm disarmed"
+msgstr ""
+
+#: templates/dashboard.html:30
+msgid "Currently active"
+msgstr ""
+
+#: templates/dashboard.html:30
+msgid "Currently disarmed"
+msgstr ""
+
+#: templates/dashboard.html:38
+msgid "Presence"
+msgstr ""
+
+#: templates/dashboard.html:39
+msgid "At home"
+msgstr ""
+
+#: templates/dashboard.html:47
+msgid "Night mode"
+msgstr ""
+
+#: templates/dashboard.html:48
+msgid "Inactive"
+msgstr ""
+
+#: templates/dashboard.html:56
+msgid "Lighting"
+msgstr ""
+
+#: templates/dashboard.html:57
+#, python-format
+msgid "%(n)s heating zones active"
+msgstr ""
+
+#: templates/dashboard.html:66
+msgid "Weather"
+msgstr ""
+
+#: templates/dashboard.html:67
+msgid "updated"
+msgstr ""
+
+#: templates/dashboard.html:81
+msgid "Humidity"
+msgstr ""
+
+#: templates/dashboard.html:82
+msgid "Wind"
+msgstr ""
+
+#: templates/dashboard.html:83
+msgid "Pressure"
+msgstr ""
+
+#: templates/dashboard.html:90
+msgid "Indoor climate"
+msgstr ""
+
+#: templates/dashboard.html:95
+#, python-format
+msgid "Average across %(n)s heating zones · last 12 h"
+msgstr ""
+
+#: templates/dashboard.html:97
+msgid "Actual"
+msgstr ""
+
+#: templates/dashboard.html:98
+msgid "Target"
+msgstr ""
+
+#: templates/dashboard.html:105
+msgid "System"
+msgstr ""
+
+#: templates/dashboard.html:107
+msgid "Connected"
+msgstr ""
+
+#: templates/dashboard.html:107
+msgid "Disconnected"
+msgstr ""
+
+#: templates/dashboard.html:111
+msgid "HCU"
+msgstr ""
+
+#: templates/dashboard.html:112
+msgid "Firmware"
+msgstr ""
+
+#: templates/dashboard.html:114
+msgid "Duty cycle"
+msgstr ""
+
+#: templates/dashboard.html:130
+msgid "Alarm & Security"
+msgstr ""
+
+#: templates/dashboard.html:138
+msgid "No alarm"
+msgstr ""
+
+#: templates/dashboard.html:141
+#, python-format
+msgid "Trigger: %(t)s"
+msgstr ""
+
+#: templates/dashboard.html:143
+#, python-format
+msgid "No triggers since %(t)s"
+msgstr ""
+
+#: templates/dashboard.html:150
+msgid "Intrusion"
+msgstr ""
+
+#: templates/dashboard.html:152 templates/dashboard.html:159
+msgid "ACTIVE"
+msgstr ""
+
+#: templates/dashboard.html:154 templates/dashboard.html:161
+msgid "OK"
+msgstr ""
+
+#: templates/dashboard.html:157
+msgid "Safety"
+msgstr ""
+
+#: templates/dashboard.html:164
+msgid "Last event"
+msgstr ""
+
+#: templates/dashboard.html:167
+msgid "Time"
+msgstr ""
+
+#: templates/dashboard.html:174 templates/dashboard.html:259
+msgid "Test smoke detectors"
+msgstr ""
+
+#: templates/dashboard.html:177 templates/dashboard.html:260
+msgid "Clear alarm"
+msgstr ""
+
+#: templates/dashboard.html:186
+msgid "Device warnings"
+msgstr ""
+
+#: templates/dashboard.html:187
+msgid "All events →"
+msgstr ""
+
+#: templates/dashboard.html:196
+msgid "warning"
+msgstr ""
+
+#: templates/dashboard.html:203
+#, python-format
+msgid "+%(n)s more warnings"
+msgstr ""
+
+#: templates/dashboard.html:212
+msgid "All devices OK"
+msgstr ""
+
+#: templates/dashboard.html:213
+msgid "No warnings in the current snapshot"
+msgstr ""
+
+#: templates/dashboard.html:226
+#, python-format
+msgid "All %(n)s rooms →"
+msgstr ""
+
+#: templates/dashboard.html:236
+msgid "Auto"
+msgstr ""
+
+#: templates/dashboard.html:250
+#, python-brace-format
+msgid ""
+"Start smoke detector test?\n"
+"\n"
+"All smoke detectors will beep and flash for {s} seconds,\n"
+"then the signal stops automatically."
+msgstr ""
+
+#: templates/dashboard.html:251
+msgid "Test running…"
+msgstr ""
+
+#: templates/dashboard.html:252
+#, python-brace-format
+msgid "Test active on {n} device(s) – stops in {s}s"
+msgstr ""
+
+#: templates/dashboard.html:253
+msgid "Error:"
+msgstr ""
+
+#: templates/dashboard.html:254
+msgid "Network error – please try again."
+msgstr ""
+
+#: templates/dashboard.html:255
+msgid ""
+"Clear smoke alarm?\n"
+"\n"
+"This turns off the optical and acoustic alarm signal\n"
+"on all smoke detectors."
+msgstr ""
+
+#: templates/dashboard.html:256
+#, python-brace-format
+msgid "✓ Alarm signal cleared on {n} device(s)."
+msgstr ""
+
+#: templates/dashboard.html:257
+msgid "No smoke detectors found."
+msgstr ""
+
+#: templates/dashboard.html:258
+msgid "✓ Sent"
+msgstr ""
+
+#: templates/login.html:3 templates/login.html:13 templates/login.html:30
+msgid "Sign in"
+msgstr ""
+
+#: templates/login.html:14
+msgid "Enter your API key to access the Bridge dashboard."
+msgstr ""
+
+#: templates/login.html:17
+msgid "Wrong password. Please try again."
+msgstr ""
+
+#: templates/login.html:23
+msgid "Password (API key)"
+msgstr ""
+
+#: templates/login.html:24
+msgid "Enter API key"
+msgstr ""
+
+#: templates/login.html:28
+msgid "Stay signed in on this device"
+msgstr ""
+
+#: templates/login.html:35
+msgid "Forgot API key?"
+msgstr ""
+

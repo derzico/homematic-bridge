@@ -13,3 +13,7 @@ logs/
 .pytest-tmp/
 pytest-basetemp-*/
 htmlcov/
+
+# Compiled translations (auto-generated from .po by app/i18n.py at startup)
+*.mo
+
