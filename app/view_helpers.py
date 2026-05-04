@@ -256,9 +256,22 @@ def prepare_device_status(system_state_path: str) -> Dict[str, Any]:
         })
     entries.sort(key=lambda e: (-e["sev"], str(e["label"]).lower()))
     warn_count = sum(1 for e in entries if e["sev"] >= 2)
+
+    stats = {
+        "low_bat":    sum(1 for e in entries if e["low_bat"]),
+        "sabotage":   sum(1 for e in entries if e["sabotage"]),
+        "unreach":    sum(1 for e in entries if e["unreach"]),
+        "duty":       sum(1 for e in entries if e["duty"]),
+        "weak_rssi":  sum(1 for e in entries
+                          if isinstance(e["rssi"], (int, float))
+                          and e["rssi"] != 128 and e["rssi"] < -85),
+        "ok":         sum(1 for e in entries if e["sev"] == 0),
+    }
+
     ctx = {
         "entries": entries,
         "warn_count": warn_count,
+        "stats": stats,
         "active_nav": "status",
     }
     ctx.update(_common_context(system_state_path, hmip_count=len(entries)))
@@ -375,6 +388,11 @@ def prepare_heating(system_state_path: str) -> Dict[str, Any]:
         if isinstance(fh, dict) and fh.get("solution") == "INDOOR_CLIMATE":
             absence = str(fh.get("absenceType", "–")).replace("_", " ").title()
 
+    # Außentemperatur aus dem Wetter-Block
+    weather_raw = home.get("weather") or {}
+    out_temp = weather_raw.get("temperature")
+    out_temp_str = f"{out_temp:.1f} °C" if isinstance(out_temp, (int, float)) else "–"
+
     # Heizgruppen
     heating_groups_raw = []
     for g in groups.values():
@@ -382,25 +400,69 @@ def prepare_heating(system_state_path: str) -> Dict[str, Any]:
             heating_groups_raw.append(g)
     heating_groups_raw.sort(key=lambda g: str(g.get("label", "")))
     heating_groups = []
+    actuals: List[float] = []
+    setps: List[float] = []
+    valves: List[float] = []
+    hums: List[float] = []
     for hg in heating_groups_raw:
         actual = hg.get("actualTemperature")
         setp = hg.get("setPointTemperature")
         hum_val = hg.get("humidity")
         valve = hg.get("valvePosition")
         mode = hg.get("controlMode", "–")
+
+        if isinstance(actual, (int, float)):
+            actuals.append(actual)
+        if isinstance(setp, (int, float)):
+            setps.append(setp)
+        if isinstance(valve, (int, float)):
+            valves.append(valve)
+        if isinstance(hum_val, (int, float)):
+            hums.append(hum_val)
+
+        # Delta = Ist − Soll (positiv = zu warm, negativ = zu kalt)
+        if isinstance(actual, (int, float)) and isinstance(setp, (int, float)):
+            delta = actual - setp
+            delta_str = f"{delta:+.1f}°"
+            # Bar-Breite proportional zu |delta|, max 4° → 50% (volle Hälfte)
+            bar_pct = min(abs(delta) / 4.0 * 50.0, 50.0)
+        else:
+            delta = None
+            delta_str = "–"
+            bar_pct = 0.0
+
         heating_groups.append({
             "label": str(hg.get("label", "–")),
             "actual_str": f"{actual:.1f} °C" if isinstance(actual, (int, float)) else "–",
             "setp_str": f"{setp:.1f} °C" if isinstance(setp, (int, float)) else "–",
             "hum_str": f"{hum_val} %" if isinstance(hum_val, (int, float)) else "–",
+            "valve_pct": int(round(valve * 100)) if isinstance(valve, (int, float)) else None,
             "valve_str": f"{valve * 100:.0f} %" if isinstance(valve, (int, float)) else "–",
             "mode_str": str(mode).replace("_", " ").title(),
             "boost": hg.get("boostMode", False),
             "party": hg.get("partyMode", False),
+            "delta": delta,
+            "delta_str": delta_str,
+            "delta_bar_pct": bar_pct,
         })
+
+    def _avg(xs: List[float], unit: str, fmt: str = "%.1f") -> str:
+        if not xs:
+            return "–"
+        return (fmt + " %s") % (sum(xs) / len(xs), unit)
+
+    kpis = {
+        "ist_avg":   _avg(actuals, "°C"),
+        "soll_avg":  _avg(setps,   "°C"),
+        "valve_avg": (f"{sum(valves) / len(valves) * 100:.0f} %" if valves else "–"),
+        "hum_avg":   (f"{sum(hums) / len(hums):.0f} %" if hums else "–"),
+    }
+
     ctx = {
         "absence": absence,
+        "out_temp_str": out_temp_str,
         "heating_groups": heating_groups,
+        "kpis": kpis,
         "active_nav": "heating",
     }
     ctx.update(_common_context(system_state_path))
@@ -429,6 +491,18 @@ def prepare_shelly() -> Dict[str, Any]:
 
     devices = []
     for dev in devices_raw:
+        channels = dev.get("channels", {}) or {}
+        emeters = dev.get("emeters", {}) or {}
+        any_on = any(bool(ch.get("on")) for ch in channels.values() if isinstance(ch, dict))
+        online = dev.get("online", True)
+        if not online:
+            cat = "offline"
+        elif emeters:
+            cat = "energy"
+        elif any_on:
+            cat = "on"
+        else:
+            cat = "off"
         devices.append({
             "ip": dev.get("ip", ""),
             "name": dev.get("name") or dev.get("id") or "–",
@@ -438,11 +512,12 @@ def prepare_shelly() -> Dict[str, Any]:
             "fw": dev.get("fw", "–"),
             "new_fw": dev.get("new_fw", ""),
             "update_available": dev.get("update_available", False),
-            "online": dev.get("online", True),
-            "channels": dev.get("channels", {}),
-            "emeters": dev.get("emeters", {}),
+            "online": online,
+            "channels": channels,
+            "emeters": emeters,
             "rssi": dev.get("rssi"),
             "age_str": _age_str(dev.get("last_seen")),
+            "category": cat,
         })
 
     online_count = sum(1 for d in devices if d["online"])

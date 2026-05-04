@@ -59,6 +59,15 @@
       <input id="search" placeholder="Suchen…" autocomplete="off">
       <span class="kbd">⌘K</span>
     </div>
+    <div class="tabs" id="shellyCatTabs">
+      {% set on_count     = devices | selectattr('category', 'equalto', 'on')      | list | length %}
+      {% set energy_count = devices | selectattr('category', 'equalto', 'energy')  | list | length %}
+      {% set offline_cnt  = devices | selectattr('category', 'equalto', 'offline') | list | length %}
+      <button class="active" data-cat="all">Alle <span class="count">{{ devices | length }}</span></button>
+      <button data-cat="on">An <span class="count">{{ on_count }}</span></button>
+      <button data-cat="energy">Energy <span class="count">{{ energy_count }}</span></button>
+      <button data-cat="offline">Offline <span class="count">{{ offline_cnt }}</span></button>
+    </div>
     <span id="scan-info" style="color:var(--muted);font-size:13px">{{ scan_info | e }}</span>
   </div>
 
@@ -76,7 +85,7 @@
         {% for dev in devices %}
         {% set ip = dev.ip | e %}
         {% set ip_dash = dev.ip | replace(".", "-") %}
-        <tr{{ ' style="opacity:0.6"' | safe if not dev.online }}>
+        <tr data-cat="{{ dev.category }}"{{ ' style="opacity:0.6"' | safe if not dev.online }}>
           <td class="label-cell">
             {% if not dev.online %}<span class="pill error">offline</span> {% endif %}
             {{ dev.name | e }}
@@ -171,12 +180,27 @@
 {% block scripts %}
 {% if enabled %}
 <script>
-document.getElementById('search')?.addEventListener('input', function() {
-  const q = this.value.toLowerCase();
-  document.querySelectorAll('tbody tr').forEach(r => {
-    r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
-  });
-});
+(function() {
+  let currentCat = 'all';
+  const searchEl = document.getElementById('search');
+  const tabs = document.querySelectorAll('#shellyCatTabs button');
+
+  function apply() {
+    const q = (searchEl?.value || '').toLowerCase();
+    document.querySelectorAll('tbody tr[data-cat]').forEach(r => {
+      const catOk = currentCat === 'all' || r.getAttribute('data-cat') === currentCat;
+      const qOk = !q || r.textContent.toLowerCase().includes(q);
+      r.style.display = (catOk && qOk) ? '' : 'none';
+    });
+  }
+  searchEl?.addEventListener('input', apply);
+  tabs.forEach(t => t.addEventListener('click', () => {
+    tabs.forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    currentCat = t.dataset.cat;
+    apply();
+  }));
+})();
 
 document.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {

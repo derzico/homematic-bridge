@@ -6,47 +6,126 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <div class="eyebrow">Status</div>
-    <h1>Gerätestatus
-      {% if warn_count %}
-        <span class="pill error" style="vertical-align:middle;margin-left:8px;font-size:11.5px">{{ warn_count }} Warnung{{ "en" if warn_count != 1 else "" }}</span>
-      {% else %}
-        <span class="pill ok" style="vertical-align:middle;margin-left:8px;font-size:11.5px">Alle {{ entries | length }} Geräte OK</span>
-      {% endif %}
-    </h1>
-    <div class="sub">{{ entries | length }} Geräte · Geräte mit Warnungen werden oben angezeigt</div>
+    <div class="eyebrow">Diagnose</div>
+    <h1>Gerätestatus</h1>
+    <div class="sub">{{ entries | length }} Geräte · {{ warn_count }} mit aktiven Warnungen · sortiert nach Schweregrad</div>
   </div>
   <div class="actions">
+    {% if warn_count %}
+      <span class="pill error">{{ warn_count }} Warnung{{ "en" if warn_count != 1 else "" }}</span>
+    {% endif %}
+    <button class="btn ghost" id="filterBtn" type="button">Filter</button>
     <a class="btn primary" href="/devices/status">Aktualisieren</a>
   </div>
 </div>
 
-<div>
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th>Label</th><th>Raum</th><th>Typ</th>
-        <th>Batterie</th><th>Erreichbarkeit</th><th>Duty Cycle</th><th>Sabotage</th>
-        <th>RSSI</th><th>Device ID</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for e in entries %}
-      <tr class="{{ 'row-error' if e.sev == 2 else ('row-warn' if e.sev == 1 else '') }}">
-        <td class="label-cell"><a href="/devices/{{ e.id | e }}">{{ e.label | e }}</a></td>
-        <td>{{ e.room | e }}</td>
-        <td><span class="type-badge">{{ e.type | e }}</span></td>
-        <td>{{ bool_pill(e.low_bat, "Low Bat", "OK") }}</td>
-        <td>{{ bool_pill(e.unreach, "Nicht erreichbar", "Erreichbar") }}</td>
-        <td>{{ bool_pill(e.duty, "Duty Cycle", "OK") }}</td>
-        <td>{{ bool_pill(e.sabotage, "Sabotage", "OK") }}</td>
-        <td>{{ rssi_html(e.rssi) }}</td>
-        <td class="mono"><a class="mono-link" href="/devices/{{ e.id | e }}">{{ e.id | e }}</a></td>
-      </tr>
-      {% else %}
-      <tr><td colspan="9" class="empty-cell">Keine Geräte.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="stat-row">
+  <button type="button" class="stat-card" data-stat="low_bat" aria-label="Filter Low Battery">
+    <span class="stat-icon yellow">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="16" height="10" rx="2"/><line x1="22" y1="11" x2="22" y2="13"/><line x1="6" y1="11" x2="6" y2="13"/></svg>
+    </span>
+    <div><div class="stat-num">{{ stats.low_bat }}</div><div class="stat-label">Low Battery</div></div>
+  </button>
+  <button type="button" class="stat-card" data-stat="sabotage" aria-label="Filter Sabotage">
+    <span class="stat-icon red">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    </span>
+    <div><div class="stat-num">{{ stats.sabotage }}</div><div class="stat-label">Sabotage</div></div>
+  </button>
+  <button type="button" class="stat-card" data-stat="unreach" aria-label="Filter nicht erreichbar">
+    <span class="stat-icon blue">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+    </span>
+    <div><div class="stat-num">{{ stats.unreach }}</div><div class="stat-label">Nicht erreichbar</div></div>
+  </button>
+  <button type="button" class="stat-card" data-stat="duty" aria-label="Filter Duty Cycle">
+    <span class="stat-icon gray">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    </span>
+    <div><div class="stat-num">{{ stats.duty }}</div><div class="stat-label">Duty Cycle hoch</div></div>
+  </button>
+  <button type="button" class="stat-card" data-stat="weak_rssi" aria-label="Filter schwaches Signal">
+    <span class="stat-icon blue">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="14"/><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="6"/></svg>
+    </span>
+    <div><div class="stat-num">{{ stats.weak_rssi }}</div><div class="stat-label">Schwaches Signal</div></div>
+  </button>
+  <button type="button" class="stat-card" data-stat="ok" aria-label="Filter OK">
+    <span class="stat-icon green">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </span>
+    <div><div class="stat-num">{{ stats.ok }}</div><div class="stat-label">Alle OK</div></div>
+  </button>
 </div>
+
+<table class="data-table" id="statusTable">
+  <thead>
+    <tr>
+      <th>Label</th><th>Raum</th><th>Typ</th>
+      <th>Batterie</th><th>Erreichbarkeit</th><th>Duty</th><th>Sabotage</th>
+      <th>RSSI</th><th>Device ID</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in entries %}
+    <tr class="{{ 'row-error' if e.sev == 2 else ('row-warn' if e.sev == 1 else '') }}"
+        data-low-bat="{{ '1' if e.low_bat else '0' }}"
+        data-sabotage="{{ '1' if e.sabotage else '0' }}"
+        data-unreach="{{ '1' if e.unreach else '0' }}"
+        data-duty="{{ '1' if e.duty else '0' }}"
+        data-weak="{{ '1' if e.rssi is number and e.rssi != 128 and e.rssi < -85 else '0' }}"
+        data-ok="{{ '1' if e.sev == 0 else '0' }}">
+      <td class="label-cell"><a href="/devices/{{ e.id | e }}">{{ e.label | e }}</a></td>
+      <td>{{ e.room | e }}</td>
+      <td><span class="type-badge">{{ e.type | e }}</span></td>
+      <td>{{ bool_pill(e.low_bat, "Low Bat", "OK") }}</td>
+      <td>{{ bool_pill(e.unreach, "Nicht erreichbar", "Erreichbar") }}</td>
+      <td>{{ bool_pill(e.duty, "Duty Cycle", "OK") }}</td>
+      <td>{{ bool_pill(e.sabotage, "Sabotage", "OK") }}</td>
+      <td>{{ rssi_html(e.rssi) }}</td>
+      <td class="mono"><a class="mono-link" href="/devices/{{ e.id | e }}">{{ e.id | e }}</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="9" class="empty-cell">Keine Geräte.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const cards = document.querySelectorAll('.stat-card[data-stat]');
+  const filterBtn = document.getElementById('filterBtn');
+  let active = null;
+
+  function apply() {
+    document.querySelectorAll('#statusTable tbody tr').forEach(tr => {
+      if (!active) { tr.style.display = ''; return; }
+      const map = {
+        low_bat:   'data-low-bat',
+        sabotage:  'data-sabotage',
+        unreach:   'data-unreach',
+        duty:      'data-duty',
+        weak_rssi: 'data-weak',
+        ok:        'data-ok',
+      };
+      const attr = map[active];
+      tr.style.display = (attr && tr.getAttribute(attr) === '1') ? '' : 'none';
+    });
+    cards.forEach(c => c.classList.toggle('active', c.dataset.stat === active));
+  }
+
+  cards.forEach(c => c.addEventListener('click', () => {
+    active = (active === c.dataset.stat) ? null : c.dataset.stat;
+    apply();
+  }));
+  filterBtn.addEventListener('click', () => { active = null; apply(); });
+})();
+</script>
+<style>
+.stat-card { cursor: pointer; transition: border-color .12s, box-shadow .12s; }
+.stat-card:hover  { border-color: #cbd5e1; box-shadow: var(--shadow-sm); }
+.stat-card.active { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, .15); }
+</style>
 {% endblock %}

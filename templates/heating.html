@@ -5,19 +5,37 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <div class="eyebrow">Heizung</div>
+    <div class="eyebrow">Klima</div>
     <h1>Heizung</h1>
-    <div class="sub">Abwesenheitsmodus: <strong style="color:var(--text)">{{ absence | e }}</strong></div>
+    <div class="sub">Abwesenheitsmodus: <strong style="color:var(--text)">{{ absence | e }}</strong> · Außentemperatur {{ out_temp_str }}</div>
   </div>
   <div class="actions">
-    <a class="btn primary" href="/heating">Aktualisieren</a>
+    <div class="segmented" id="modeSeg">
+      <button class="active" data-mode="auto">Automatik</button>
+      <button data-mode="absent">Abwesend</button>
+      <button data-mode="party">Party</button>
+    </div>
+    <button class="btn" id="boostAllBtn" type="button">Boost alle</button>
   </div>
+</div>
+
+<div class="stat-row" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr))">
+  <div class="stat-card kpi"><div class="k">Ist-Mittel</div>   <div class="v">{{ kpis.ist_avg }}</div></div>
+  <div class="stat-card kpi"><div class="k">Soll-Mittel</div>  <div class="v">{{ kpis.soll_avg }}</div></div>
+  <div class="stat-card kpi"><div class="k">Ø Ventil</div>     <div class="v">{{ kpis.valve_avg }}</div></div>
+  <div class="stat-card kpi"><div class="k">Ø Luftfeuchte</div><div class="v">{{ kpis.hum_avg }}</div></div>
 </div>
 
 <table class="data-table">
   <thead>
     <tr>
-      <th>Raum</th><th>Ist-Temp</th><th>Soll-Temp</th><th>Luftfeuchte</th><th>Ventil</th><th>Modus</th>
+      <th>Raum</th>
+      <th>Ist</th>
+      <th>Soll</th>
+      <th>&Delta;</th>
+      <th>Luftfeuchte</th>
+      <th>Ventil</th>
+      <th>Modus</th>
     </tr>
   </thead>
   <tbody>
@@ -25,18 +43,62 @@
     <tr>
       <td class="label-cell">{{ hg.label | e }}</td>
       <td class="mono">{{ hg.actual_str }}</td>
-      <td class="mono">{{ hg.setp_str }}</td>
-      <td class="mono">{{ hg.hum_str }}</td>
-      <td class="mono">{{ hg.valve_str }}</td>
+      <td class="mono muted">{{ hg.setp_str }}</td>
       <td>
-        <span class="pill">{{ hg.mode_str | e }}</span>
-        {% if hg.boost %} <span class="pill warn">Boost</span>{% endif %}
-        {% if hg.party %} <span class="pill warn">Party</span>{% endif %}
+        {% if hg.delta is not none %}
+          <div class="delta-cell">
+            <div class="delta-bar">
+              <span class="center"></span>
+              {% if hg.delta > 0.05 %}
+                <span class="fill warm" style="width:{{ '%.1f' | format(hg.delta_bar_pct) }}%"></span>
+              {% elif hg.delta < -0.05 %}
+                <span class="fill cold" style="width:{{ '%.1f' | format(hg.delta_bar_pct) }}%"></span>
+              {% endif %}
+            </div>
+            <span class="delta-val {{ 'warm' if hg.delta > 0.05 else ('cold' if hg.delta < -0.05 else 'zero') }}">{{ hg.delta_str }}</span>
+          </div>
+        {% else %}
+          <span class="muted">–</span>
+        {% endif %}
+      </td>
+      <td class="mono">{{ hg.hum_str }}</td>
+      <td>
+        {% if hg.valve_pct is not none %}
+          <div class="valve-cell">
+            <div class="valve-bar"><div class="fill" style="width:{{ hg.valve_pct }}%"></div></div>
+            <span class="valve-val">{{ hg.valve_pct }} %</span>
+          </div>
+        {% else %}
+          <span class="muted">–</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if hg.boost %}
+          <span class="pill warn">Boost</span>
+        {% elif hg.party %}
+          <span class="pill warn">Party</span>
+        {% elif hg.mode_str | lower == 'manual' %}
+          <span class="pill warn">Manuell</span>
+        {% else %}
+          <span class="pill">{{ hg.mode_str | e or 'Auto' }}</span>
+        {% endif %}
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="6" class="empty-cell">Keine Heizgruppen gefunden.</td></tr>
+    <tr><td colspan="7" class="empty-cell">Keine Heizgruppen gefunden.</td></tr>
     {% endfor %}
   </tbody>
 </table>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('#modeSeg button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('#modeSeg button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+}));
+document.getElementById('boostAllBtn').addEventListener('click', () => {
+  alert('Boost alle: noch nicht implementiert');
+});
+</script>
 {% endblock %}

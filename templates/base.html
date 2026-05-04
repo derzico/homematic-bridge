@@ -445,6 +445,62 @@ pre.json-raw {
   color: var(--text-soft);
 }
 
+/* ── Stat-Cards (Diagnose / Heizung) ──────────────────────────────────────── */
+.stat-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px; margin-bottom: 18px;
+}
+.stat-card {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px;
+}
+.stat-card .stat-icon {
+  width: 36px; height: 36px; border-radius: 8px;
+  background: var(--surface-alt);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted); flex-shrink: 0;
+}
+.stat-card .stat-icon svg { width: 18px; height: 18px; }
+.stat-card .stat-icon.green  { background: var(--green-soft);  color: var(--green); }
+.stat-card .stat-icon.red    { background: var(--red-soft);    color: var(--red); }
+.stat-card .stat-icon.yellow { background: var(--yellow-soft); color: var(--yellow); }
+.stat-card .stat-icon.blue   { background: var(--accent-soft); color: var(--accent); }
+.stat-card .stat-icon.gray   { background: var(--surface-alt); color: var(--muted); }
+.stat-card .stat-num   { font-size: 22px; font-weight: 600; color: var(--text); line-height: 1; }
+.stat-card .stat-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+/* Stat-Card Variante mit großer Zahl/Wert (Heizung KPIs) */
+.stat-card.kpi { display: block; padding: 16px 18px; }
+.stat-card.kpi .k {
+  font-size: 10.5px; color: var(--muted-2); text-transform: uppercase;
+  letter-spacing: .07em; font-weight: 600;
+}
+.stat-card.kpi .v { font-size: 22px; font-weight: 500; color: var(--text); margin-top: 12px; }
+
+/* Delta-Indikator für Heizungs-Tabelle */
+.delta-cell { display: flex; align-items: center; gap: 10px; min-width: 130px; }
+.delta-bar {
+  flex: 1; height: 4px; background: var(--surface-alt); border-radius: 999px;
+  position: relative; overflow: visible;
+}
+.delta-bar .center { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--border); }
+.delta-bar .fill {
+  position: absolute; top: 0; bottom: 0; border-radius: 999px;
+}
+.delta-bar .fill.warm { background: var(--red); right: 50%; }
+.delta-bar .fill.cold { background: var(--accent); left: 50%; }
+.delta-val { font-family: var(--mono); font-size: 12.5px; min-width: 46px; text-align: right; }
+.delta-val.warm { color: var(--red); }
+.delta-val.cold { color: var(--accent); }
+.delta-val.zero { color: var(--muted); }
+
+/* Ventil-Progress-Bar für Heizungs-Tabelle */
+.valve-cell { display: flex; align-items: center; gap: 10px; min-width: 140px; }
+.valve-bar  { flex: 1; height: 6px; background: var(--surface-alt); border-radius: 999px; overflow: hidden; }
+.valve-bar .fill { height: 100%; background: var(--accent); border-radius: 999px; }
+.valve-val  { font-family: var(--mono); font-size: 12.5px; min-width: 38px; text-align: right; color: var(--text); }
+
 /* ── Devices: Type-Badge Kategorie-Farben ─────────────────────────────────── */
 .type-badge.cat-heating { background: #fff1e6; color: #b54708; }
 .type-badge.cat-sensor  { background: #e6f4ff; color: #0958d9; }
