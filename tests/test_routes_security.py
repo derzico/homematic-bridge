@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 # tests/test_routes_security.py - Regressionstests fuer Web-Sicherheitskontrollen
 
+from unittest.mock import patch
+
+from flask import Flask
+
 import app.state as state
 from app import i18n
 from app.routes import bp
-from flask import Flask
 
 
 def _authenticate(client, csrf_token: str = "csrf-test-token") -> None:
@@ -47,6 +50,39 @@ class TestWebPostCsrf:
         for path, body in endpoints:
             resp = flask_client.post(path, json=body) if body is not None else flask_client.post(path)
             assert resp.status_code == 403, path
+
+
+class TestStateChangingRoutes:
+    def test_switch_get_is_not_allowed_even_from_loopback(self, flask_client):
+        state.REQUIRE_API_KEY = False
+
+        resp = flask_client.get(
+            "/hmipSwitch?device=test-device&on=true",
+            environ_base={"REMOTE_ADDR": "127.0.0.1"},
+        )
+
+        assert resp.status_code == 405
+
+
+class TestShellyWebUiIsolation:
+    def test_redirects_to_device_origin_instead_of_proxying_html(self, flask_client):
+        state.REQUIRE_API_KEY = True
+        _authenticate(flask_client)
+
+        with patch("app.shelly_proxy.shelly_mod.load_cached", return_value=[{"ip": "192.168.1.2"}]):
+            resp = flask_client.get("/shelly/192.168.1.2/webui/settings?tab=wifi")
+
+        assert resp.status_code == 302
+        assert resp.headers["Location"] == "http://192.168.1.2/settings?tab=wifi"
+
+    def test_rejects_uncached_redirect_targets(self, flask_client):
+        state.REQUIRE_API_KEY = True
+        _authenticate(flask_client)
+
+        with patch("app.shelly_proxy.shelly_mod.load_cached", return_value=[]):
+            resp = flask_client.get("/shelly/192.168.1.2/webui/")
+
+        assert resp.status_code == 404
 
 
 class TestSafeRedirects:

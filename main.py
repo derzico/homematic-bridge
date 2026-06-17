@@ -3,7 +3,6 @@
 
 import logging
 import os
-import secrets
 import sys
 from datetime import timedelta
 from logging.handlers import TimedRotatingFileHandler
@@ -16,7 +15,9 @@ from app.adapters.registry import AdapterRegistry
 from app.adapters.shelly_adapter import ShellyAdapter
 from app.auth import _ensure_api_key
 from app.routes import bp as routes_bp
-from config.loader import load_config, load_internal_config, validate_config, validate_internal_config
+from app.security import load_or_create_secret_key
+from config.loader import (load_config, load_internal_config, resolve_api_key_file,
+                           validate_config, validate_internal_config)
 
 # ── Konfiguration laden & validieren ─────────────────────────────────────────
 config          = load_config()
@@ -35,7 +36,7 @@ state.config_internal = config_internal
 state.STALE_SEC       = float(config_internal.get("health_stale_seconds", 60.0))
 state.PENDING_TTL     = float(config_internal.get("pending_ttl_seconds", 60.0))
 state.REQUIRE_API_KEY = bool(config_internal.get("require_api_key", config.get("require_api_key", True)))
-state.API_KEY_FILE    = config_internal.get("api_key_file", "data/api_key.txt")
+state.API_KEY_FILE    = resolve_api_key_file(config, config_internal)
 state.API_KEY         = os.getenv("BRIDGE_API_KEY") or config_internal.get("api_key") or config.get("api_key")
 
 _loxone_cfg        = config.get("loxone") or {}
@@ -73,19 +74,8 @@ if config_internal.get("log_file"):
     log.addHandler(file_handler)
 
 # ── Flask-App erstellen ───────────────────────────────────────────────────────
-def _load_or_create_secret_key(path: str) -> bytes:
-    try:
-        with open(path, "rb") as f:
-            return f.read()
-    except FileNotFoundError:
-        key = secrets.token_bytes(32)
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        with open(path, "wb") as f:
-            f.write(key)
-        return key
-
 app = Flask(__name__)
-app.secret_key = _load_or_create_secret_key("data/secret_key.bin")
+app.secret_key = load_or_create_secret_key("data/secret_key.bin")
 app.permanent_session_lifetime = timedelta(hours=8)
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_HTTPONLY"] = True

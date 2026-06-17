@@ -16,6 +16,7 @@ import requests
 
 import app.state as state
 from app.adapters.base import BaseAdapter, Device, DeviceCapability, DeviceChannel
+from config.loader import validate_shelly_subnet
 
 log = logging.getLogger("bridge-ws")
 
@@ -245,13 +246,13 @@ def _run_scan(subnet: str, timeout_sec: float, include_mdns: bool) -> None:
                 seen_ips.add(dev["ip"])
 
         # Netzwerk-Sweep
-        try:
-            network = ipaddress.ip_network(subnet, strict=False)
-        except ValueError as e:
+        subnet_error = validate_shelly_subnet(subnet)
+        if subnet_error:
             with _scan_lock:
-                _scan_error = f"Ungültiges Subnet '{subnet}': {e}"
+                _scan_error = f"Ungültiges Subnet '{subnet}': {subnet_error}"
                 _scan_running = False
             return
+        network = ipaddress.ip_network(subnet, strict=False)
 
         hosts = [str(h) for h in network.hosts() if str(h) not in seen_ips]
         log.info(f"Shelly-Sweep: {len(hosts)} IPs in {subnet} …")

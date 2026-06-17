@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
+import ipaddress
 import logging
 import os
 from typing import Any, Dict, List
@@ -7,6 +8,7 @@ from typing import Any, Dict, List
 import yaml
 
 log = logging.getLogger("bridge-ws")
+MAX_SHELLY_SCAN_ADDRESSES = 4096
 
 
 def load_yaml(path: str) -> dict:
@@ -24,6 +26,11 @@ def load_internal_config() -> dict:
     return load_yaml("config/internal_config.yaml")
 
 
+def resolve_api_key_file(config: dict, config_internal: dict) -> str:
+    """Ermittelt den API-Key-Pfad mit derselben Priorität bei Start und Reload."""
+    return config_internal.get("api_key_file", config.get("api_key_file", "data/api_key.txt"))
+
+
 # ── Config-Validierung ───────────────────────────────────────────────────────
 
 def _check_type(errors: List[str], cfg: dict, key: str, expected, *, required: bool = False, label: str = "") -> None:
@@ -37,6 +44,19 @@ def _check_type(errors: List[str], cfg: dict, key: str, expected, *, required: b
     if not isinstance(val, expected):
         tname = expected.__name__ if isinstance(expected, type) else str(expected)
         errors.append(f"'{path}' muss vom Typ {tname} sein, ist aber {type(val).__name__}")
+
+
+def validate_shelly_subnet(subnet: str) -> str:
+    """Liefert eine Fehlermeldung für unsichere Scan-Netze, sonst einen Leerstring."""
+    try:
+        network = ipaddress.ip_network(subnet, strict=False)
+    except ValueError as exc:
+        return f"ungültiges IPv4-Netz: {exc}"
+    if network.version != 4:
+        return "nur IPv4-Netze werden unterstützt"
+    if network.num_addresses > MAX_SHELLY_SCAN_ADDRESSES:
+        return f"maximal {MAX_SHELLY_SCAN_ADDRESSES} Adressen sind erlaubt"
+    return ""
 
 
 def validate_config(config: dict) -> List[str]:
@@ -84,6 +104,11 @@ def validate_config(config: dict) -> List[str]:
             _check_type(errors, shelly, "password", str, label="shelly.password")
             _check_type(errors, shelly, "scan_on_startup", bool, label="shelly.scan_on_startup")
             _check_type(errors, shelly, "scan_interval_hours", (int, float), label="shelly.scan_interval_hours")
+            subnet = shelly.get("subnet")
+            if isinstance(subnet, str) and subnet:
+                subnet_error = validate_shelly_subnet(subnet)
+                if subnet_error:
+                    errors.append(f"'shelly.subnet' {subnet_error}")
 
     return errors
 

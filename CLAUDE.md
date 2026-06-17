@@ -29,7 +29,7 @@ app/
   adapters/              # Adapter-Pattern für Drittsysteme
     base.py              # BaseAdapter ABC, Device/DeviceChannel/DeviceCapability
     registry.py          # AdapterRegistry – zentrales Adapter-Management
-    shelly_adapter.py    # ShellyAdapter + Scan/Cache/Steuerung + WebUI-Proxy
+    shelly_adapter.py    # ShellyAdapter + Scan/Cache/Steuerung
     hmip_adapter.py      # HmIPAdapter – wrappt WebSocket + Messages
     hmip_messages.py     # HmIP WebSocket-Nachrichten (Request/Response Builder)
     hmip_websocket.py    # HmIP WebSocket-Loop, Pending-Registry, Reconnect
@@ -47,7 +47,7 @@ templates/               # Jinja2-Templates (HTML)
   device_detail.html     # Gerätedetail mit Channels + Raw JSON
   status.html            # Gerätestatus (Batterie, Erreichbarkeit, RSSI)
   heating.html           # Heizungsseite mit Gruppen
-  shelly.html            # Shelly-Geräte mit Steuerung + WebUI-Proxy-Links
+  shelly.html            # Shelly-Geräte mit Steuerung + isolierten WebUI-Links
   config.html            # Konfigurationseditor
   login.html             # Login-Seite
 config/
@@ -80,7 +80,7 @@ Neue Drittsysteme werden als Adapter unter `app/adapters/` integriert:
 - Laufzeit-Zugriff über `state.config` / `state.config_internal` (unter Lock!)
 
 ### HTTP-API Endpunkte (Übersicht)
-- `POST /hmipSwitch` / `GET /hmipSwitch` – Schalten
+- `POST /hmipSwitch` – Schalten
 - `POST /hmipDimmer` – Dimmen
 - `POST /hmipRGB` – RGB-Licht (Format: `R=255,G=128,B=0`)
 - `POST /hmipThermostat` – Solltemperatur setzen (4.5–30.5 °C)
@@ -89,7 +89,7 @@ Neue Drittsysteme werden als Adapter unter `app/adapters/` integriert:
 - `GET /hmipState` – Gerätezustand aus Snapshot
 - `POST /alarm/test-smoke` / `POST /alarm/clear-smoke` – Rauchmelder-Test/-Reset (Web-Auth)
 - `POST /shelly/<ip>/relay/<ch>` – Shelly schalten
-- `GET /shelly/<ip>/webui/` – Shelly WebUI-Proxy (Basic Auth, Gen1 + Gen2)
+- `GET /shelly/<ip>/webui/` – Weiterleitung zur isolierten Shelly WebUI
 - `GET /healthz` – Healthcheck
 
 ## Konventionen

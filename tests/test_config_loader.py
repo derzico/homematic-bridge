@@ -3,7 +3,7 @@
 
 import yaml
 
-from config.loader import load_yaml
+from config.loader import load_yaml, resolve_api_key_file
 
 
 class TestLoadYaml:
@@ -32,3 +32,13 @@ class TestLoadYaml:
             assert False, "Expected yaml.YAMLError"
         except yaml.YAMLError:
             pass  # expected
+
+
+class TestResolveApiKeyFile:
+    def test_uses_user_config(self):
+        assert resolve_api_key_file({"api_key_file": "custom/key"}, {}) == "custom/key"
+
+    def test_internal_config_has_priority(self):
+        assert resolve_api_key_file(
+            {"api_key_file": "user/key"}, {"api_key_file": "internal/key"}
+        ) == "internal/key"

@@ -31,7 +31,7 @@ HCU (WebSocket) --> homematic-bridge --> Loxone Miniserver (UDP)
 | **Real-time events** | WebSocket connection to the HCU with snapshot and delta merge |
 | **Loxone UDP push** | Sends every HmIP state change as a UDP packet to the Miniserver |
 | **HTTP API** | Switches, dimmers, RGB lights, shutters, thermostats, alarms, irrigation |
-| **Shelly integration** | Auto scan for Gen1/Gen2/Gen3 devices, control, and Web UI proxy |
+| **Shelly integration** | Auto scan for Gen1/Gen2/Gen3 devices, control, and safe device Web UI links |
 | **Web interface** | Dashboard, heating view, device overview, configuration editor |
 | **API key auth** | Optional protection for API endpoints |
 | **Docker deployment** | Production-oriented setup with Docker Compose |
@@ -61,7 +61,7 @@ homematic_hcu: hcu1-E461.local
 homematic_token:
 ssl_cert_path:
 ssl_verify: false
-plugin_id:
+plugin_id: de.schnellniclas.homematic-bridge
 
 # Optional Loxone UDP push
 loxone:
@@ -95,7 +95,7 @@ Full documentation is available in the **[GitHub Wiki](https://github.com/derzic
 | [Installation & Docker](https://github.com/derzico/homematic-bridge/wiki/Installation-und-Docker) | [Installation & Docker](https://github.com/derzico/homematic-bridge/wiki/Installation-and-Docker) | Setup, token, volumes, updates, troubleshooting |
 | [Konfiguration](https://github.com/derzico/homematic-bridge/wiki/Konfiguration) | [Configuration](https://github.com/derzico/homematic-bridge/wiki/Configuration) | config.yaml, internal_config.yaml, SSL/TLS |
 | [Homematic IP](https://github.com/derzico/homematic-bridge/wiki/Homematic-IP) | [Homematic IP](https://github.com/derzico/homematic-bridge/wiki/Homematic-IP-en) | WebSocket, device types, alarm, thermostat |
-| [Shelly](https://github.com/derzico/homematic-bridge/wiki/Shelly) | [Shelly](https://github.com/derzico/homematic-bridge/wiki/Shelly-en) | Scan, control, Web UI proxy |
+| [Shelly](https://github.com/derzico/homematic-bridge/wiki/Shelly) | [Shelly](https://github.com/derzico/homematic-bridge/wiki/Shelly-en) | Scan, control, device Web UI |
 | [Loxone UDP](https://github.com/derzico/homematic-bridge/wiki/Loxone-UDP) | [Loxone UDP](https://github.com/derzico/homematic-bridge/wiki/Loxone-UDP-en) | UDP push format, Loxone configuration |
 | [API-Referenz](https://github.com/derzico/homematic-bridge/wiki/API-Referenz) | [API Reference](https://github.com/derzico/homematic-bridge/wiki/API-Reference) | All endpoints with examples |
 | [Web-Interface](https://github.com/derzico/homematic-bridge/wiki/Web-Interface) | [Web Interface](https://github.com/derzico/homematic-bridge/wiki/Web-Interface-en) | Dashboard, pages, features |

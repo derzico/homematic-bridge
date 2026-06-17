@@ -28,7 +28,7 @@ from app.utils import _find_device_in_list, _locate_devices_container
 from app.view_helpers import (prepare_dashboard, prepare_device_detail,
                                prepare_device_overview, prepare_device_status,
                                prepare_heating, prepare_shelly)
-from config.loader import validate_config
+from config.loader import resolve_api_key_file, validate_config
 
 bp = Blueprint("bridge", __name__)
 log = logging.getLogger("bridge-ws")
@@ -88,7 +88,7 @@ def _apply_runtime_config(parsed: Dict[str, Any]) -> None:
         state.REQUIRE_API_KEY = bool(
             state.config_internal.get("require_api_key", parsed.get("require_api_key", True))
         )
-        state.API_KEY_FILE = state.config_internal.get("api_key_file", parsed.get("api_key_file", "data/api_key.txt"))
+        state.API_KEY_FILE = resolve_api_key_file(parsed, state.config_internal)
         state.API_KEY = os.getenv("BRIDGE_API_KEY") or state.config_internal.get("api_key") or parsed.get("api_key")
 
     _ensure_api_key()
@@ -197,10 +197,7 @@ def serve_device_detail(device_id):
 # ── API: Switch ───────────────────────────────────────────────────────────────
 
 def _do_switch(device_id: Optional[str], on: Optional[bool], channel_index: Any):
-    """Gemeinsamer Code für GET/POST hmipSwitch.
-
-    Validiert Parameter, sendet Schaltbefehl und liefert Flask-Response zurück.
-    """
+    """Validiert Parameter und sendet einen Schaltbefehl."""
     if state.conn is None:
         return jsonify({"error": "WebSocket nicht verbunden"}), 503
     if not device_id or not isinstance(on, bool):
@@ -220,22 +217,6 @@ def _do_switch(device_id: Optional[str], on: Optional[bool], channel_index: Any)
 def hmip_switch_post():
     data = request.get_json(silent=True, force=True) or {}
     return _do_switch(data.get("device"), data.get("on"), data.get("channelIndex", 0))
-
-
-@bp.get("/hmipSwitch")
-def hmip_switch_get():
-    # Lokale Aufrufe (127.0.0.1) sind ohne API-Key erlaubt – komfortable Steuerung
-    # vom selben Host (z.B. cron). Externe Aufrufe brauchen X-API-Key.
-    local = request.remote_addr in {"127.0.0.1", "::1"}
-    if not local:
-        if not state.REQUIRE_API_KEY or not state.API_KEY:
-            return jsonify({"error": "Nur lokal erlaubt oder X-API-Key erforderlich"}), 403
-        if request.headers.get("X-API-Key") != state.API_KEY:
-            return jsonify({"error": "unauthorized"}), 401
-    on_param = request.args.get("on")
-    if on_param not in {"true", "false"}:
-        return jsonify({"error": "Parameter 'on' muss 'true' oder 'false' sein"}), 400
-    return _do_switch(request.args.get("device"), on_param == "true", request.args.get("channelIndex", "0"))
 
 
 # ── API: Dimmer ───────────────────────────────────────────────────────────────
@@ -715,15 +696,12 @@ def shelly_relay(ip: str, channel: int):
     return jsonify({"success": ok, "ip": ip, "channel": channel, "on": on}), 200 if ok else 502
 
 
-@bp.route("/shelly/<ip>/webui", defaults={"subpath": ""}, methods=["GET", "POST"], strict_slashes=False)
-@bp.route("/shelly/<ip>/webui/<path:subpath>", methods=["GET", "POST"])
+@bp.get("/shelly/<ip>/webui", defaults={"subpath": ""}, strict_slashes=False)
+@bp.get("/shelly/<ip>/webui/<path:subpath>")
 @require_web_auth
 def shelly_webui_proxy(ip: str, subpath: str):
-    """Proxy für die Web-UI eines Shelly-Geräts – Auto-Login, URL-Rewriting.
-
-    Logik in app/shelly_proxy.py – siehe dort für SSRF/CSRF-Hinweise.
-    """
-    return shelly_proxy.proxy_request(ip, subpath)
+    """Leitet zur separaten Geräte-Origin weiter, damit Gerätecode isoliert bleibt."""
+    return shelly_proxy.redirect_to_device(ip, subpath)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────

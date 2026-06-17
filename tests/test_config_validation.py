@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # tests/test_config_validation.py – Tests for config schema validation
 
-from config.loader import validate_config, validate_internal_config
+from config.loader import load_yaml, validate_config, validate_internal_config
 
 
 def _valid_config():
@@ -62,6 +62,18 @@ class TestValidateConfig:
             "scan_on_startup": False,
             "scan_interval_hours": 0,
         }
+        assert validate_config(cfg) == []
+
+    def test_shelly_rejects_large_or_ipv6_subnets(self):
+        for subnet in ("10.0.0.0/8", "2001:db8::/64"):
+            cfg = _valid_config()
+            cfg["shelly"] = {"enabled": True, "subnet": subnet}
+            errors = validate_config(cfg)
+            assert any("shelly.subnet" in error for error in errors)
+
+    def test_sample_has_valid_plugin_id(self):
+        cfg = load_yaml("config/config_sample.yaml")
+        cfg["homematic_token"] = "token-created-during-setup"
         assert validate_config(cfg) == []
 
     def test_not_a_dict(self):

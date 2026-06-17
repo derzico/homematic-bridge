@@ -31,7 +31,7 @@ HCU (WebSocket) ──► homematic-bridge ──► Loxone Miniserver (UDP)
 | **Echtzeit-Events** | WebSocket-Verbindung zur HCU mit Delta-Merge |
 | **Loxone UDP-Push** | Jede HmIP-Zustandsänderung als UDP-Paket an den Miniserver |
 | **HTTP-API** | Schalten, Dimmen, RGB, Rollläden, Thermostat, Alarm, Bewässerung |
-| **Shelly-Integration** | Auto-Scan (Gen1 + Gen2), Steuerung, Web-UI-Proxy |
+| **Shelly-Integration** | Auto-Scan (Gen1 + Gen2), Steuerung, sicherer Link zur Geräte-WebUI |
 | **Web-Interface** | Dashboard, Heizung, Geräteübersicht, Konfigurationseditor |
 | **API-Key-Auth** | Optionale Absicherung aller Endpunkte |
 | **Docker-Deployment** | Ein Befehl, sofort einsatzbereit |
@@ -59,6 +59,7 @@ Alle Einstellungen in `config/config.yaml` (Vorlage: `config/config_sample.yaml`
 ```yaml
 homematic_hcu: hcu1-E461.local   # Hostname oder IP der HCU
 homematic_token:                  # API-Token (über /api/token abrufen)
+plugin_id: de.schnellniclas.homematic-bridge
 
 # Loxone UDP-Push (optional)
 loxone:
@@ -86,7 +87,7 @@ Vollständige Dokumentation im **[GitHub Wiki](https://github.com/derzico/homema
 | [Installation & Docker](https://github.com/derzico/homematic-bridge/wiki/Installation-und-Docker) | [Installation & Docker](https://github.com/derzico/homematic-bridge/wiki/Installation-and-Docker) | Setup, Token, Volumes, Update, Troubleshooting |
 | [Konfiguration](https://github.com/derzico/homematic-bridge/wiki/Konfiguration) | [Configuration](https://github.com/derzico/homematic-bridge/wiki/Configuration) | config.yaml, internal_config.yaml, SSL/TLS |
 | [Homematic IP](https://github.com/derzico/homematic-bridge/wiki/Homematic-IP) | [Homematic IP](https://github.com/derzico/homematic-bridge/wiki/Homematic-IP-en) | WebSocket, Gerätetypen, Alarm, Thermostat |
-| [Shelly](https://github.com/derzico/homematic-bridge/wiki/Shelly) | [Shelly](https://github.com/derzico/homematic-bridge/wiki/Shelly-en) | Scan, Steuerung, Web-UI-Proxy |
+| [Shelly](https://github.com/derzico/homematic-bridge/wiki/Shelly) | [Shelly](https://github.com/derzico/homematic-bridge/wiki/Shelly-en) | Scan, Steuerung, Geräte-WebUI |
 | [Loxone UDP](https://github.com/derzico/homematic-bridge/wiki/Loxone-UDP) | [Loxone UDP](https://github.com/derzico/homematic-bridge/wiki/Loxone-UDP-en) | UDP-Push-Format, Loxone-Konfiguration |
 | [API-Referenz](https://github.com/derzico/homematic-bridge/wiki/API-Referenz) | [API Reference](https://github.com/derzico/homematic-bridge/wiki/API-Reference) | Alle Endpunkte mit Beispielen |
 | [Web-Interface](https://github.com/derzico/homematic-bridge/wiki/Web-Interface) | [Web Interface](https://github.com/derzico/homematic-bridge/wiki/Web-Interface-en) | Dashboard, Seiten, Features |

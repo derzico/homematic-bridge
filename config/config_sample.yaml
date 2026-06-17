@@ -2,7 +2,7 @@ homematic_hcu: hcu1-E461.local
 homematic_token:
 ssl_cert_path:
 ssl_verify: false
-plugin_id:
+plugin_id: de.schnellniclas.homematic-bridge
 friendly_name:
   en: "Homematic HTTP Bridge"
   de: "Homematic HTTP Bridge"
