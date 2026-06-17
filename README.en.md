@@ -7,6 +7,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![Docker](https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white)](./docker-compose.yml)
+[![CI](https://github.com/derzico/homematic-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/derzico/homematic-bridge/actions/workflows/ci.yml)
 
 ---
 

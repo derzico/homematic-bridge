@@ -54,6 +54,7 @@ def auth_app():
 @pytest.fixture(autouse=True)
 def _reset_state():
     """Save and restore state module globals around each test."""
+    state.stop_event.clear()
     saved = {
         "API_KEY": state.API_KEY,
         "REQUIRE_API_KEY": state.REQUIRE_API_KEY,
@@ -70,6 +71,7 @@ def _reset_state():
     state.config = saved["config"]
     state.config_internal = saved["config_internal"]
     state.conn = saved["conn"]
+    state.stop_event.clear()
     with state.pending_lock:
         state.pending.clear()
         state.pending.update(saved["pending"])
