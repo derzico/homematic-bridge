@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Homematic Bridge backup at 03:15 Europe/Berlin
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 Europe/Berlin
+Persistent=true
+AccuracySec=1s
+Unit=homematic-bridge-backup.service
+
+[Install]
+WantedBy=timers.target

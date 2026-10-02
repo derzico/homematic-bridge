@@ -205,3 +205,55 @@ def test_runtime_metadata_whitelists_environment():
         metadata = backup._runtime("bridge")
     assert metadata == {"image": "sha256:" + "a" * 64, "build_commit": "b" * 40}
     assert "do-not-save" not in json.dumps(metadata)
+
+
+def test_closed_wal_readonly_fallback_is_stable(installation):
+    root, dest = installation
+    source = root / "data/energy.sqlite3"
+    with sqlite3.connect(source) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("CREATE TABLE readings(value INTEGER)")
+        conn.execute("INSERT INTO readings VALUES(42)")
+    conn.close()
+    original = source.read_bytes()
+    copy_sqlite = backup._copy_sqlite
+    def readonly_mount(source, target, *, immutable=False):
+        if not immutable:
+            raise sqlite3.OperationalError("attempt to write a readonly database")
+        return copy_sqlite(source, target, immutable=immutable)
+    with patch.object(backup, "_copy_sqlite", side_effect=readonly_mount):
+        meta = backup.create(root, dest)
+    backup.verify(meta)
+    assert source.read_bytes() == original
+    assert not backup._sidecars_exist(source)
+
+
+def test_sqlite_fallback_never_ignores_active_wal(installation):
+    root, dest = installation
+    source = root / "data/energy.sqlite3"
+    conn = sqlite3.connect(source)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("CREATE TABLE readings(value INTEGER)")
+        conn.commit()
+        assert backup._sidecars_exist(source)
+        with patch.object(backup, "_copy_sqlite", side_effect=sqlite3.OperationalError("readonly")) as copy:
+            with pytest.raises(sqlite3.OperationalError):
+                backup.create(root, dest)
+        assert copy.call_count == 1
+        assert not list(dest.glob("*.json"))
+    finally:
+        conn.close()
+
+
+def test_unstable_offline_sqlite_fallback_is_not_published(installation):
+    root, dest = installation
+    source = root / "data/energy.sqlite3"
+    with sqlite3.connect(source) as conn:
+        conn.execute("CREATE TABLE readings(value INTEGER)")
+    conn.close()
+    with patch.object(backup, "_copy_sqlite", side_effect=[sqlite3.OperationalError("readonly"), None]), \
+         patch.object(backup, "_signature", side_effect=[(1, 2, 3, 4), (1, 2, 5, 6)]):
+        with pytest.raises(backup.BackupError, match="changed"):
+            backup.create(root, dest)
+    assert not list(dest.glob("*.json"))

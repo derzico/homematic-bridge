@@ -1,0 +1,19 @@
+[Unit]
+Description=Protected and verified Homematic Bridge backup
+After=local-fs.target docker.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+WorkingDirectory=/root/homematic-bridge
+ExecStart=/usr/bin/python3 /root/homematic-bridge/ops/backup.py create --root /root/homematic-bridge --destination /root/homematic-bridge-backups/scheduled --keep 14 --container homematic-bridge
+TimeoutStartSec=5min
+Nice=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/root/homematic-bridge-backups/scheduled
+PrivateTmp=true
+RestrictAddressFamilies=AF_UNIX

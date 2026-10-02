@@ -60,19 +60,42 @@ def _is_sqlite(path):
         return stream.read(16) == b"SQLite format 3\x00"
 
 
+def _signature(path):
+    info = path.stat()
+    return info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+
+
+def _sidecars_exist(source):
+    return any(Path(str(source) + suffix).exists() for suffix in ("-wal", "-shm", "-journal"))
+
+
+def _copy_sqlite(source, target, *, immutable=False):
+    uri = source.as_uri() + "?mode=ro" + ("&immutable=1" if immutable else "")
+    with contextlib.closing(sqlite3.connect(uri, uri=True, timeout=5)) as original:
+        with contextlib.closing(sqlite3.connect(target)) as copy:
+            deadline = time.monotonic() + 30
+            def progress(_status, _remaining, _total):
+                if time.monotonic() >= deadline:
+                    raise BackupError("SQLite backup exceeded deadline")
+            original.backup(copy, pages=256, sleep=0.05, progress=progress)
+            if copy.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                raise BackupError("SQLite backup failed integrity check")
+
+
 def _copy_file(source, target):
     target.parent.mkdir(parents=True, exist_ok=True)
     if _is_sqlite(source):
-        # No writes, checkpoint or mode changes to the source database.
-        with contextlib.closing(sqlite3.connect(source.as_uri() + "?mode=ro", uri=True, timeout=5)) as original:
-            with contextlib.closing(sqlite3.connect(target)) as copy:
-                deadline = time.monotonic() + 30
-                def progress(_status, _remaining, _total):
-                    if time.monotonic() >= deadline:
-                        raise BackupError("SQLite backup exceeded deadline")
-                original.backup(copy, pages=256, sleep=0.05, progress=progress)
-                if copy.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
-                    raise BackupError("SQLite backup failed integrity check")
+        # No checkpoint or mode changes to the source database. An offline WAL
+        # database with no sidecars may still try to create an index on RO mount.
+        try:
+            _copy_sqlite(source, target)
+        except sqlite3.OperationalError:
+            if _sidecars_exist(source):
+                raise  # Never bypass locks/ignore WAL for an active database.
+            before = _signature(source)
+            _copy_sqlite(source, target, immutable=True)
+            if _sidecars_exist(source) or before != _signature(source):
+                raise BackupError("Offline SQLite database changed during backup")
         shutil.copystat(source, target)
         return
     # Atomic replacement / concurrent modification must not produce a torn copy.
