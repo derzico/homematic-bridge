@@ -72,6 +72,10 @@ Gerätenamen oder `channelActive`. Scharfschaltung folgt den Sicherheitszonen,
 nicht dem Aktivierungsflag der Sicherheitslösung.
 Payloads, Einheiten, Grenzen und Updatehinweise: [Version 1.19.0](docs/releases/1.19.0.md).
 
+Geschützte, geprüfte Code-/Config-/Datensicherungen ohne Dienstneustart:
+[Backup-Werkzeug und Grenzen](docs/operations/backups.md). Eine Sicherung im
+gleichen Container ersetzt kein unabhängiges Proxmox-/Offsite-Backup.
+
 ---
 
 ## Schnellstart

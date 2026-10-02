@@ -68,6 +68,10 @@ Light controls follow declared channel capabilities, not model names or
 `channelActive`. Arming follows security zones, not the security solution flag.
 Payloads, units and update notes: [1.19.0 release documentation (German)](docs/releases/1.19.0.md).
 
+Protected, verified code/config/data backups without restarting the service:
+[backup tool and limitations (German)](docs/operations/backups.md). A backup in
+the same container is not a substitute for independent Proxmox/offsite backups.
+
 ---
 
 ## Quick Start
