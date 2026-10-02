@@ -3,6 +3,7 @@
 import ipaddress
 import logging
 import os
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Any, Dict, List
 
 import yaml
@@ -74,6 +75,15 @@ def validate_config(config: dict) -> List[str]:
     fn = config.get("friendly_name")
     if fn is not None and not isinstance(fn, dict):
         errors.append("'friendly_name' muss ein Dict sein (z.B. {en: ..., de: ...})")
+    elif isinstance(fn, dict):
+        if not isinstance(fn.get("de"), str) or not fn["de"].strip():
+            errors.append("'friendly_name.de' fehlt oder ist kein nicht-leerer String")
+        for language, name in fn.items():
+            if (not isinstance(language, str) or len(language) != 2
+                    or not language.isalpha() or language != language.lower()
+                    or not isinstance(name, str)):
+                errors.append("'friendly_name' muss ISO-639-1-Codes auf Strings abbilden")
+                break
 
     # Optionale Felder
     _check_type(errors, config, "ssl_verify", bool)
@@ -90,6 +100,29 @@ def validate_config(config: dict) -> List[str]:
         else:
             _check_type(errors, lox, "miniserver_ip", str, label="loxone.miniserver_ip")
             _check_type(errors, lox, "udp_port", int, label="loxone.udp_port")
+            interval = lox.get("resync_interval_seconds", 300)
+            if type(interval) is not int or not (interval == 0 or 30 <= interval <= 86400):
+                errors.append("'loxone.resync_interval_seconds' muss 0 oder 30..86400 sein")
+
+    energy = config.get("energy")
+    if energy is not None:
+        if not isinstance(energy, dict):
+            errors.append("'energy' muss ein Dict sein")
+        else:
+            if not isinstance(energy.get("enabled", False), bool):
+                errors.append("'energy.enabled' muss ein Boolean sein")
+            interval, retention = energy.get("interval_seconds", 60), energy.get("retention_days", 90)
+            if type(interval) is not int or not 30 <= interval <= 86400:
+                errors.append("'energy.interval_seconds' muss 30..86400 sein")
+            if type(retention) is not int or not 1 <= retention <= 730:
+                errors.append("'energy.retention_days' muss 1..730 sein")
+            try:
+                zone = energy.get("timezone", "Europe/Berlin")
+                if not isinstance(zone, str):
+                    raise ValueError
+                ZoneInfo(zone)
+            except (ValueError, ZoneInfoNotFoundError):
+                errors.append("'energy.timezone' muss eine gültige IANA-Zeitzone sein")
 
     # Shelly-Sektion
     shelly = config.get("shelly")
@@ -123,6 +156,11 @@ def validate_internal_config(config: dict) -> List[str]:
     _check_type(errors, config, "system_state_path", str, required=True)
     _check_type(errors, config, "log_file", str)
     _check_type(errors, config, "health_stale_seconds", (int, float))
+    _check_type(errors, config, "ack_timeout_seconds", (int, float))
+
+    ack_timeout = config.get("ack_timeout_seconds")
+    if isinstance(ack_timeout, (int, float)) and not 0.1 <= ack_timeout <= 30:
+        errors.append("'ack_timeout_seconds' muss zwischen 0.1 und 30 Sekunden liegen")
 
     log_level = config.get("log_level")
     if log_level is not None and log_level not in ("debug", "info", "warning", "error"):

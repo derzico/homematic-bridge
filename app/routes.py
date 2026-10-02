@@ -2,8 +2,10 @@
 # routes.py – Flask-Blueprint mit allen HTTP-Routen
 
 import colorsys
+import ipaddress
 import json
 import logging
+import math
 import os
 import time
 from typing import Any, Dict, Optional
@@ -16,13 +18,15 @@ from werkzeug.security import check_password_hash
 import app.adapters.shelly_adapter as shelly_mod
 import app.shelly_proxy as shelly_proxy
 import app.state as state
-from app.adapters.hmip_messages import (send_hmip_set_alarm_signal_acoustic,
-                                        send_hmip_set_alarm_signal_optical,
-                                        send_hmip_set_dim_level,
+from app.adapters.hmip_messages import (send_hmip_set_dim_level,
+                                        send_hmip_set_group_state,
                                         send_hmip_set_hue_saturation_dim_level,
                                         send_hmip_set_point_temperature,
                                         send_hmip_set_switch)
-from app.adapters.hmip_websocket import _register_pending
+from app.adapters.hmip_messages import send_hmip_set_watering_switch
+from app.adapters.hmip_messages import send_hmip_request
+from app.controls import ControlError, plan_control
+from app.adapters.hmip_websocket import _send_tracked, _wait_for_ack
 from app.auth import _ensure_api_key, generate_csrf_token, require_api_key, require_csrf, require_web_auth
 from app.utils import _find_device_in_list, _locate_devices_container
 from app.view_helpers import (prepare_dashboard, prepare_device_detail,
@@ -32,6 +36,42 @@ from config.loader import resolve_api_key_file, validate_config
 
 bp = Blueprint("bridge", __name__)
 log = logging.getLogger("bridge-ws")
+
+
+@bp.before_request
+def validate_control_json():
+    """Reject malformed control requests before any network/device operation."""
+    if request.method != "POST" or not (
+        request.path in {"/hmipSwitch", "/hmipDimmer", "/hmipRGB", "/hmipAlarm",
+                         "/hmipThermostat", "/hmipIrrigation"}
+        or (request.path.startswith("/shelly/") and "/relay/" in request.path)
+    ):
+        return None
+    data = request.get_json(silent=True, force=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Body muss ein JSON-Objekt sein"}), 400
+    for field in ("device", "group", "groupId", "rgb", "mode"):
+        if field in data and (not isinstance(data[field], str) or not data[field].strip()):
+            return jsonify({"error": f"{field} muss ein nicht-leerer String sein"}), 400
+    if "on" in data and not isinstance(data["on"], bool):
+        return jsonify({"error": "on muss ein Boolean sein"}), 400
+    if "channelIndex" in data:
+        value = data["channelIndex"]
+        if (isinstance(value, str) and len(value) <= 10
+                and value.isascii() and value.isdecimal()):
+            value = int(value)
+        if type(value) is not int or value < 0:
+            return jsonify({"error": "channelIndex muss eine nicht-negative ganze Zahl sein"}), 400
+        data["channelIndex"] = value
+    for field in ("dimLevel", "temperature"):
+        if field not in data:
+            continue
+        try:
+            if isinstance(data[field], bool) or not math.isfinite(float(data[field])):
+                raise ValueError
+        except (ValueError, TypeError, OverflowError):
+            return jsonify({"error": f"{field} muss eine endliche Zahl sein"}), 400
+    return None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -62,6 +102,14 @@ def _snapshot_age_ms(path: str) -> Optional[int]:
         return None
 
 
+def _snapshot_is_valid(snapshot) -> bool:
+    if not isinstance(snapshot, dict) or not isinstance(snapshot.get("body"), dict):
+        return False
+    body = snapshot["body"]
+    system = body.get("body", body)
+    return isinstance(system, dict) and isinstance(system.get("devices"), (dict, list))
+
+
 def _safe_redirect_target(target: Optional[str]) -> str:
     """Normalisiert Redirect-Ziele auf interne Pfade."""
     if not target:
@@ -81,6 +129,8 @@ def _safe_redirect_target(target: Optional[str]) -> str:
 def _apply_runtime_config(parsed: Dict[str, Any]) -> None:
     """Übernimmt runtime-relevante Config-Werte nach dem Speichern."""
     with state.config_lock:
+        connection_fields = ("homematic_hcu", "homematic_token", "plugin_id", "ssl_verify", "ssl_cert_path")
+        reconnect = any(state.config.get(key) != parsed.get(key) for key in connection_fields)
         state.config = parsed
         _lox = parsed.get("loxone") or {}
         state.LOXONE_HOST = _lox.get("miniserver_ip") or ""
@@ -91,9 +141,19 @@ def _apply_runtime_config(parsed: Dict[str, Any]) -> None:
         state.API_KEY_FILE = resolve_api_key_file(parsed, state.config_internal)
         state.API_KEY = os.getenv("BRIDGE_API_KEY") or state.config_internal.get("api_key") or parsed.get("api_key")
 
+    if reconnect:
+        with state.send_lock:
+            connection = state.conn
+            state.conn = None
+            state.WS_READY = False
+            if connection is not None:
+                connection.close()
+
     _ensure_api_key()
 
     shelly_cfg = dict(parsed.get("shelly") or {})
+    if state.runtime_services is not None:
+        state.runtime_services.update_config()
     shelly_mod.set_credentials(shelly_cfg.get("username"), shelly_cfg.get("password"))
     registry = state.adapter_registry
     if registry is None:
@@ -173,7 +233,8 @@ def serve_dashboard():
 @bp.route("/heating")
 @require_web_auth
 def serve_heating():
-    return render_template("heating.html", **prepare_heating(state.config_internal["system_state_path"]))
+    return render_template("heating.html", **prepare_heating(state.config_internal["system_state_path"]),
+                           csrf_token=generate_csrf_token())
 
 
 @bp.route("/devices/html")
@@ -196,6 +257,188 @@ def serve_device_detail(device_id):
 
 # ── API: Switch ───────────────────────────────────────────────────────────────
 
+def _send_hmip_command(send_func, path: str, *args):
+    """Sendet einen HmIP-Befehl und wartet auf die korrelierte HCU-Antwort."""
+    try:
+        rid = _send_tracked(send_func, path, *args, wait_for_ack=True)
+    except Exception:
+        log.exception("HmIP-Befehl konnte nicht gesendet werden: %s", path)
+        return None, (jsonify({"error": "WebSocket-Senden fehlgeschlagen"}), 503)
+
+    response = _wait_for_ack(rid)
+    if response is None:
+        return rid, (jsonify({
+            "error": "HCU-Antwort nicht rechtzeitig eingetroffen",
+            "request_id": rid,
+        }), 504)
+    code = (response.get("body") or {}).get("code")
+    if code == 503:
+        return rid, (jsonify({
+            "error": "WebSocket-Verbindung während des Befehls unterbrochen",
+            "request_id": rid,
+        }), 503)
+    if code != 200:
+        return rid, (jsonify({
+            "error": "HCU hat den Befehl abgelehnt",
+            "hcu_code": code,
+            "request_id": rid,
+        }), 502)
+    return rid, None
+
+
+def _execute_control(kind):
+    if state.conn is None or not state.WS_READY:
+        return jsonify({"error": "HCU noch nicht bereit"}), 503
+    try:
+        commands = plan_control(kind, request.get_json(silent=True), _load_snapshot())
+    except ControlError as error:
+        return jsonify({"error": str(error)}), error.status
+    results = []
+    for path, payload in commands:
+        rid, error = _send_hmip_command(send_hmip_request, path, path, payload)
+        if error:
+            response, status = error
+            return jsonify({"error": response.get_json()["error"], "completed": results,
+                            "failed_target": payload.get("deviceId") or payload.get("groupId"),
+                            "failure": response.get_json()}), status
+        results.append({"request_id": rid, "target": payload.get("deviceId") or payload.get("groupId")})
+    return jsonify({"status": "acknowledged", "results": results}), 200
+
+
+@bp.post("/hmipShutter")
+@require_api_key
+def hmip_shutter():
+    return _execute_control("shutter")
+
+
+@bp.post("/hmipHeating")
+@require_api_key
+def hmip_heating():
+    return _execute_control("heating")
+
+
+@bp.post("/hmipLight")
+@require_api_key
+def hmip_light():
+    return _execute_control("light")
+
+
+@bp.post("/control/<kind>")
+@require_web_auth
+@require_csrf
+def web_control(kind):
+    return _execute_control(kind)
+
+
+@bp.get("/controls")
+@require_web_auth
+def serve_controls():
+    from app.feature_views import prepare_controls
+    return render_template("controls.html", **prepare_controls(), csrf_token=generate_csrf_token())
+
+
+@bp.get("/security")
+@require_web_auth
+def serve_security():
+    from app.feature_views import prepare_security
+    return render_template("security.html", **prepare_security())
+
+
+@bp.get("/energy")
+@require_web_auth
+def serve_energy():
+    from app.view_helpers import _common_context
+    from app.energy import EnergyCollector
+    collector = state.runtime_services.energy if state.runtime_services is not None else EnergyCollector()
+    return render_template("energy.html", energy_status=collector.status(), energy_summary=collector.summary(),
+                           csrf_token=generate_csrf_token(), active_nav="energy",
+                           **_common_context(state.config_internal.get("system_state_path", "")))
+
+
+@bp.post("/energy/settings")
+@require_web_auth
+@require_csrf
+def energy_settings():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get("enabled"), bool):
+        return jsonify({"error": "enabled muss ein Boolean sein"}), 400
+    if state.runtime_services is None:
+        return jsonify({"error": "Hintergrunddienste nicht gestartet"}), 503
+    try:
+        state.runtime_services.set_energy_enabled(data["enabled"])
+    except (ValueError, OSError) as error:
+        return jsonify({"error": str(error)}), 400
+    return jsonify(state.runtime_services.energy.status())
+
+
+@bp.get("/api/energy")
+@require_api_key
+def energy_api():
+    if state.runtime_services is None:
+        return jsonify({"error": "Hintergrunddienste nicht gestartet"}), 503
+    return jsonify({"status": state.runtime_services.energy.status(), "summary": state.runtime_services.energy.summary()})
+
+
+def _resync_response():
+    if state.runtime_services is None:
+        return jsonify({"error": "Hintergrunddienste nicht gestartet"}), 503
+    try:
+        at = state.runtime_services.sync_snapshot()
+    except (ValueError, OSError) as error:
+        return jsonify({"error": str(error)}), 409
+    return jsonify({"status": "sent", "sent_at": at, "delivery": "UDP is not acknowledged"})
+
+
+@bp.post("/api/loxone/resync")
+@require_api_key
+def loxone_resync_api():
+    return _resync_response()
+
+
+@bp.post("/loxone/resync")
+@require_web_auth
+@require_csrf
+def loxone_resync_web():
+    return _resync_response()
+
+
+@bp.get("/api/security")
+@require_api_key
+def security_api():
+    from app.feature_views import security_data
+    return jsonify(security_data(_load_snapshot()))
+
+
+def _diagnostic_data():
+    from app import __version__
+    from app.controls import indexed, system_body
+    system = system_body(_load_snapshot())
+    services = state.runtime_services
+    return {"version": __version__, "build_commit": os.getenv("BRIDGE_BUILD_SHA", "unknown"),
+            "hcu": {"connected": state.conn is not None, "snapshot_ready": state.WS_READY,
+                    "reconnects": state.WS_RECONNECTS, "last_message_at": state.WS_LAST_MESSAGE_AT},
+            "counts": {"hmip_devices": len(indexed(system.get("devices"))),
+                       "hmip_groups": len(indexed(system.get("groups"))),
+                       "shelly_cached": len(shelly_mod.load_cached())},
+            "loxone": {"configured": bool(state.LOXONE_HOST),
+                       "last_snapshot_sent_at": services.last_sync_at if services else None,
+                       "delivery": "UDP, no acknowledgement"},
+            "energy": services.energy.status() if services else {"enabled": False},
+            "note": "No configuration, tokens, passwords or raw snapshots included."}
+
+
+@bp.get("/api/diagnostics")
+@require_api_key
+def diagnostics_api():
+    return jsonify(_diagnostic_data())
+
+
+@bp.get("/diagnostics")
+@require_web_auth
+def diagnostics_web():
+    return jsonify(_diagnostic_data())
+
+
 def _do_switch(device_id: Optional[str], on: Optional[bool], channel_index: Any):
     """Validiert Parameter und sendet einen Schaltbefehl."""
     if state.conn is None:
@@ -206,9 +449,12 @@ def _do_switch(device_id: Optional[str], on: Optional[bool], channel_index: Any)
         channel_index = int(channel_index)
     except (TypeError, ValueError):
         return jsonify({"error": "channelIndex muss eine ganze Zahl sein"}), 400
-    with state.send_lock:
-        rid = send_hmip_set_switch(state.conn, device_id, on, channel_index)
-    _register_pending(rid, "/hmip/device/control/setSwitchState")
+    rid, error = _send_hmip_command(
+        send_hmip_set_switch, "/hmip/device/control/setSwitchState",
+        device_id, on, channel_index,
+    )
+    if error:
+        return error
     return jsonify({"status": f"{device_id}: {'ON' if on else 'OFF'}", "request_id": rid}), 200
 
 
@@ -242,9 +488,12 @@ def hmip_dimmer_post():
         channel_index = int(channel_index)
     except (TypeError, ValueError):
         return jsonify({"error": "channelIndex muss eine ganze Zahl sein"}), 400
-    with state.send_lock:
-        rid = send_hmip_set_dim_level(state.conn, device_id, round(dim_level / 100.0, 2), channel_index)
-    _register_pending(rid, "/hmip/device/control/setDimLevel")
+    rid, error = _send_hmip_command(
+        send_hmip_set_dim_level, "/hmip/device/control/setDimLevel",
+        device_id, round(dim_level / 100.0, 2), channel_index,
+    )
+    if error:
+        return error
     return jsonify({"status": f"{device_id}: dimLevel={dim_level}%", "request_id": rid}), 200
 
 
@@ -270,117 +519,111 @@ def hmip_rgb_post():
         for part in rgb_str.replace(" ", "").split(","):
             key, val = part.split("=")
             parts[key.upper()] = float(val.rstrip("%")) / 100.0
+        if set(parts) != {"R", "G", "B"} or any(
+            not math.isfinite(value) or not 0 <= value <= 1 for value in parts.values()
+        ):
+            raise ValueError("RGB components must be finite percentages in 0..100")
         r = max(0.0, min(1.0, parts.get("R", 0.0)))
         g = max(0.0, min(1.0, parts.get("G", 0.0)))
         b = max(0.0, min(1.0, parts.get("B", 0.0)))
     except Exception:
         return jsonify({"error": f"Ungültiges RGB-Format. Erwartet: 'R=50%,G=30%,B=100%', erhalten: '{rgb_str}'"}), 400
     h, s, v = colorsys.rgb_to_hsv(r, g, b)
-    hue, saturation, dim_level = round(h * 360), round(s, 3), round(v, 3)
-    with state.send_lock:
-        if r == 0.0 and g == 0.0 and b == 0.0:
-            rid = send_hmip_set_switch(state.conn, device_id, False, channel_index)
-            _register_pending(rid, "/hmip/device/control/setSwitchState")
-            return jsonify({"status": f"{device_id}: off", "request_id": rid}), 200
-        rid = send_hmip_set_hue_saturation_dim_level(state.conn, device_id, hue, saturation, dim_level, channel_index)
-    _register_pending(rid, "/hmip/device/control/setHueSaturationDimLevel")
+    hue, saturation, dim_level = round(h * 360) % 360, round(s, 3), round(v, 3)
+    if r == 0.0 and g == 0.0 and b == 0.0:
+        rid, error = _send_hmip_command(
+            send_hmip_set_switch, "/hmip/device/control/setSwitchState",
+            device_id, False, channel_index,
+        )
+        if error:
+            return error
+        return jsonify({"status": f"{device_id}: off", "request_id": rid}), 200
+    rid, error = _send_hmip_command(
+        send_hmip_set_hue_saturation_dim_level,
+        "/hmip/device/control/setHueSaturationDimLevel",
+        device_id, hue, saturation, dim_level, channel_index,
+    )
+    if error:
+        return error
     return jsonify({"status": f"{device_id}: hue={hue}° sat={saturation} dim={dim_level}", "request_id": rid}), 200
 
 
 # ── API: Alarm (Rauchmelder als Sirene) ───────────────────────────────────────
 
-_VALID_ALARM_SIGNALS = {"FULL_ALARM", "INTRUSION_ALARM", "PRE_ALARM", "NO_ALARM"}
+def _find_alarm_switching_group(snap: Dict[str, Any]) -> Optional[str]:
+    """Ermittelt die von der HCU angelegte ALARM_SWITCHING-Gruppe."""
+    outer_body = snap.get("body") or {}
+    nested_body = outer_body.get("body") if isinstance(outer_body, dict) else None
+    system = nested_body if isinstance(nested_body, dict) else outer_body
+    if not isinstance(system, dict):
+        return None
 
+    home = system.get("home") or {}
+    functional_homes = home.get("functionalHomes") or {}
+    if isinstance(functional_homes, dict):
+        for functional_home in functional_homes.values():
+            if not isinstance(functional_home, dict):
+                continue
+            security_groups = functional_home.get("securitySwitchingGroups") or {}
+            siren_group = security_groups.get("SIREN") if isinstance(security_groups, dict) else None
+            if isinstance(siren_group, str) and siren_group:
+                return siren_group
 
-def _find_alarm_siren_devices(snap: Dict[str, Any]) -> list:
-    """Gibt Liste von (device_id, channel_index) für alle Geräte mit ALARM_SIREN_CHANNEL zurück."""
-    result = []
-    devices_container, _ = _locate_devices_container(snap)
-    devs = {}
-    if isinstance(devices_container, dict):
-        devs = devices_container
-    elif isinstance(devices_container, list):
-        devs = {d.get("id", ""): d for d in devices_container if isinstance(d, dict)}
-    for dev_id, dev in devs.items():
-        if not isinstance(dev, dict):
-            continue
-        for ch_idx, ch in (dev.get("functionalChannels") or {}).items():
-            if isinstance(ch, dict) and ch.get("functionalChannelType") == "ALARM_SIREN_CHANNEL":
-                result.append((str(dev_id), int(ch_idx)))
-    return result
+    groups = system.get("groups") or {}
+    if isinstance(groups, dict):
+        candidates = groups.values()
+    elif isinstance(groups, list):
+        candidates = groups
+    else:
+        candidates = []
+    for group in candidates:
+        if isinstance(group, dict) and group.get("type") == "ALARM_SWITCHING":
+            group_id = group.get("id")
+            if isinstance(group_id, str) and group_id:
+                return group_id
+    return None
 
 
 @bp.post("/hmipAlarm")
 @require_api_key
 def hmip_alarm_post():
-    """Rauchmelder / Alarmsirene steuern.
-
-    Body:
-      mode         (str)  – "optical" | "acoustic" | "both" | "off"
-      signal       (str)  – "FULL_ALARM" | "INTRUSION_ALARM" | "PRE_ALARM" | "NO_ALARM"
-                            (default: "FULL_ALARM" für mode != "off", "NO_ALARM" für "off")
-      device       (str)  – optional – Device-ID; fehlt → alle Geräte mit ALARM_SIREN_CHANNEL
-      channelIndex (int)  – optional – Standard: automatisch aus Snapshot
-    """
+    """Schaltet die dokumentierte ALARM_SWITCHING-Gruppe der HCU."""
     if state.conn is None:
         return jsonify({"error": "WebSocket nicht verbunden"}), 503
 
     data = request.get_json(silent=True, force=True) or {}
-    mode         = str(data.get("mode", "")).lower()
-    device_id    = data.get("device")
-    channel_override = data.get("channelIndex")
+    on = data.get("on")
+    if not isinstance(on, bool):
+        mode = str(data.get("mode", "")).lower()
+        if mode in {"on", "optical", "acoustic", "both", "test"}:
+            on = True
+        elif mode in {"off", "clear"}:
+            on = False
+        else:
+            return jsonify({"error": "Pflichtfeld: on (bool) oder mode (on/off)"}), 400
 
-    if mode not in {"optical", "acoustic", "both", "off"}:
-        return jsonify({"error": "mode muss 'optical', 'acoustic', 'both' oder 'off' sein"}), 400
+    group_id = data.get("group") or data.get("groupId")
+    if group_id is not None and (not isinstance(group_id, str) or not group_id.strip()):
+        return jsonify({"error": "group muss eine nicht-leere String-ID sein"}), 400
+    if not group_id:
+        snapshot = _load_snapshot()
+        group_id = _find_alarm_switching_group(snapshot) if snapshot else None
+    if not group_id:
+        return jsonify({"error": "Keine ALARM_SWITCHING-Gruppe im Snapshot gefunden"}), 404
 
-    # Signal ableiten
-    if mode == "off":
-        signal = data.get("signal", "NO_ALARM")
-    else:
-        signal = data.get("signal", "FULL_ALARM")
-
-    if signal not in _VALID_ALARM_SIGNALS:
-        return jsonify({"error": f"signal muss eines von {sorted(_VALID_ALARM_SIGNALS)} sein"}), 400
-
-    # Zielgeräte bestimmen
-    if device_id:
-        # Einzelnes Gerät – channel_index aus Snapshot ableiten oder Override nutzen
-        snap = _load_snapshot()
-        ch_idx = channel_override
-        if ch_idx is None and snap:
-            for _did, _cidx in _find_alarm_siren_devices(snap):
-                if _did == device_id:
-                    ch_idx = _cidx
-                    break
-        if ch_idx is None:
-            ch_idx = 2  # HmIP-Konvention: Kanal 2 = ALARM_SIREN_CHANNEL
-        try:
-            targets = [(device_id, int(ch_idx))]
-        except (TypeError, ValueError):
-            return jsonify({"error": "channelIndex muss eine ganze Zahl sein"}), 400
-    else:
-        # Alle Rauchmelder / Sirenen im Snapshot
-        snap = _load_snapshot()
-        if snap is None:
-            return jsonify({"error": "Kein Snapshot vorhanden – Gerätliste unbekannt"}), 503
-        targets = _find_alarm_siren_devices(snap)
-        if not targets:
-            return jsonify({"error": "Keine Geräte mit ALARM_SIREN_CHANNEL im Snapshot gefunden"}), 404
-
-    sent = []
-    with state.send_lock:
-        for did, cidx in targets:
-            if mode in {"optical", "both", "off"}:
-                rid = send_hmip_set_alarm_signal_optical(state.conn, did, signal, cidx)
-                _register_pending(rid, "/hmip/device/control/setAlarmSignalOptical")
-                sent.append({"device": did, "type": "optical", "request_id": rid})
-            if mode in {"acoustic", "both", "off"}:
-                rid = send_hmip_set_alarm_signal_acoustic(state.conn, did, signal, cidx)
-                _register_pending(rid, "/hmip/device/control/setAlarmSignalAcoustic")
-                sent.append({"device": did, "type": "acoustic", "request_id": rid})
-
-    log.info("Alarm %s / %s → %d Gerät(e)", mode, signal, len(targets))
-    return jsonify({"status": "ok", "mode": mode, "signal": signal, "sent": sent}), 200
+    rid, error = _send_hmip_command(
+        send_hmip_set_group_state,
+        "/hmip/group/switching/setState",
+        group_id, on,
+    )
+    if error:
+        return error
+    return jsonify({
+        "status": "on" if on else "off",
+        "group": group_id,
+        "request_id": rid,
+        "info": "Signalart und Laufzeit entsprechen der HCU-Gruppenkonfiguration",
+    }), 200
 
 
 # ── API: Thermostat ────────────────────────────────────────────────────────────
@@ -388,38 +631,36 @@ def hmip_alarm_post():
 @bp.post("/hmipThermostat")
 @require_api_key
 def hmip_thermostat_post():
-    """Solltemperatur eines Heizkörperthermostats oder Wandthermostats setzen.
+    """Solltemperatur einer Homematic-IP-Heizgruppe setzen.
 
     Body:
-      device        (str)   – Device-ID
-      temperature   (float) – Zieltemperatur in °C (4.5–30.5)
-      channelIndex  (int)   – optional, Standard: 1
+      group         (str)   – ID einer HEATING-Gruppe
+      temperature   (float) – Zieltemperatur in °C
     """
     if state.conn is None:
         return jsonify({"error": "WebSocket nicht verbunden"}), 503
 
     data = request.get_json(silent=True, force=True) or {}
-    device_id     = data.get("device")
-    temperature   = data.get("temperature")
-    channel_index = data.get("channelIndex", 1)
+    group_id = data.get("group")
+    temperature = data.get("temperature")
 
-    if not device_id or temperature is None:
-        return jsonify({"error": "Pflichtfelder: device (str), temperature (float)"}), 400
+    if not isinstance(group_id, str) or not group_id.strip() or temperature is None:
+        return jsonify({"error": "Pflichtfelder: group (str), temperature (float)"}), 400
     try:
         temperature = float(temperature)
     except (TypeError, ValueError):
         return jsonify({"error": "temperature muss eine Zahl sein"}), 400
-    if not 4.5 <= temperature <= 30.5:
-        return jsonify({"error": "temperature muss zwischen 4.5 und 30.5 °C liegen"}), 400
-    try:
-        ch_idx = int(channel_index)
-    except (TypeError, ValueError):
-        return jsonify({"error": "channelIndex muss eine ganze Zahl sein"}), 400
+    if not math.isfinite(temperature):
+        return jsonify({"error": "temperature muss endlich sein"}), 400
 
-    with state.send_lock:
-        rid = send_hmip_set_point_temperature(state.conn, device_id, temperature, ch_idx)
-    _register_pending(rid, "/hmip/device/control/setSetPointTemperature")
-    return jsonify({"status": f"{device_id}: setpoint={temperature:.1f}°C", "request_id": rid}), 200
+    rid, error = _send_hmip_command(
+        send_hmip_set_point_temperature,
+        "/hmip/group/heating/setSetPointTemperature",
+        group_id, temperature,
+    )
+    if error:
+        return error
+    return jsonify({"status": f"{group_id}: setpoint={temperature:.1f}°C", "request_id": rid}), 200
 
 
 # ── API: Bewässerung ───────────────────────────────────────────────────────────
@@ -449,9 +690,26 @@ def hmip_irrigation_post():
     except (TypeError, ValueError):
         return jsonify({"error": "channelIndex muss eine ganze Zahl sein"}), 400
 
-    with state.send_lock:
-        rid = send_hmip_set_switch(state.conn, device_id, on, ch_idx)
-    _register_pending(rid, "/hmip/device/control/setSwitchState")
+    snapshot = _load_snapshot()
+    device = None
+    if isinstance(snapshot, dict):
+        devices, _ = _locate_devices_container(snapshot)
+        if isinstance(devices, dict):
+            device = devices.get(device_id)
+        elif isinstance(devices, list):
+            device, _ = _find_device_in_list(devices, device_id)
+    channel = (device.get("functionalChannels") or {}).get(str(ch_idx), {}) if isinstance(device, dict) else {}
+    watering = isinstance(channel, dict) and (
+        "wateringActive" in channel or "WATERING" in str(channel.get("functionalChannelType", ""))
+    )
+    send_func = send_hmip_set_watering_switch if watering else send_hmip_set_switch
+    command_path = "/hmip/device/control/setWateringSwitchState" if watering else "/hmip/device/control/setSwitchState"
+    rid, error = _send_hmip_command(
+        send_func, command_path,
+        device_id, on, ch_idx,
+    )
+    if error:
+        return error
     return jsonify({
         "status": f"{device_id}: {'geöffnet' if on else 'geschlossen'}",
         "request_id": rid,
@@ -489,55 +747,6 @@ def hmip_state_get():
 
 
 # ── Web-UI: Alarm Test/Clear ──────────────────────────────────────────────────
-
-def _broadcast_alarm_signal(signal: str) -> int:
-    """Sendet optisches+akustisches Alarmsignal an alle Rauchmelder. Liefert Anzahl."""
-    snap = _load_snapshot()
-    if snap is None:
-        return -1  # Sentinel: kein Snapshot
-    targets = _find_alarm_siren_devices(snap)
-    if not targets:
-        return 0
-    with state.send_lock:
-        for did, cidx in targets:
-            rid = send_hmip_set_alarm_signal_optical(state.conn, did, signal, cidx)
-            _register_pending(rid, "/hmip/device/control/setAlarmSignalOptical")
-            rid = send_hmip_set_alarm_signal_acoustic(state.conn, did, signal, cidx)
-            _register_pending(rid, "/hmip/device/control/setAlarmSignalAcoustic")
-    return len(targets)
-
-
-@bp.post("/alarm/test-smoke")
-@require_web_auth
-@require_csrf
-def alarm_test_smoke():
-    """Löst auf allen Rauchmeldern kurz das Testsignal aus (Web-UI Aktion)."""
-    if state.conn is None:
-        return jsonify({"error": "WebSocket nicht verbunden"}), 503
-    n = _broadcast_alarm_signal("FULL_ALARM")
-    if n < 0:
-        return jsonify({"error": "Kein Snapshot vorhanden"}), 503
-    if n == 0:
-        return jsonify({"error": "Keine Rauchmelder mit Sirenenfunktion gefunden"}), 404
-    log.info("Alarm-Test durch Web-UI: %d Gerät(e)", n)
-    return jsonify({"triggered": n}), 200
-
-
-@bp.post("/alarm/clear-smoke")
-@require_web_auth
-@require_csrf
-def alarm_clear_smoke():
-    """Löscht alle aktiven Alarmsignale auf allen Rauchmeldern (Web-UI Aktion)."""
-    if state.conn is None:
-        return jsonify({"error": "WebSocket nicht verbunden"}), 503
-    n = _broadcast_alarm_signal("NO_ALARM")
-    if n < 0:
-        return jsonify({"error": "Kein Snapshot vorhanden"}), 503
-    if n == 0:
-        return jsonify({"cleared": 0, "info": "Keine Rauchmelder mit Sirenenfunktion gefunden"}), 200
-    log.info("Alarm-Clear durch Web-UI: %d Gerät(e)", n)
-    return jsonify({"cleared": n}), 200
-
 
 # ── Shelly / Config-Editor ───────────────────────────────────────────────────
 
@@ -618,6 +827,11 @@ def serve_shelly():
 @require_web_auth
 @require_csrf
 def shelly_scan():
+    data = request.get_json(silent=True)
+    if data is None:
+        data = {}
+    if not isinstance(data, dict) or not isinstance(data.get("replace_cache", False), bool):
+        return jsonify({"error": "replace_cache muss ein Boolean in einem JSON-Objekt sein"}), 400
     cfg = state.config.get("shelly", {})
     if not cfg.get("enabled", False):
         return jsonify({"error": "Shelly-Scanner ist in der config.yaml nicht aktiviert"}), 400
@@ -626,7 +840,9 @@ def shelly_scan():
         return jsonify({"error": "Kein subnet in config.yaml konfiguriert"}), 400
     timeout = float(cfg.get("timeout_sec", 1.5))
     shelly_mod.set_credentials(cfg.get("username"), cfg.get("password"))
-    started = shelly_mod.start_scan(subnet, timeout_sec=timeout)
+    started = shelly_mod.start_scan(
+        subnet, timeout_sec=timeout, replace_cache=data.get("replace_cache", False),
+    )
     if not started:
         return jsonify({"status": "already_running"}), 202
     return jsonify({"status": "started", "subnet": subnet}), 202
@@ -642,6 +858,25 @@ def shelly_scan_status():
 @require_web_auth
 def shelly_devices():
     return jsonify(shelly_mod.load_cached()), 200
+
+
+@bp.post("/shelly/<ip>/delete")
+@require_web_auth
+@require_csrf
+def shelly_delete(ip: str):
+    try:
+        address = ipaddress.ip_address(ip)
+        if address.version != 4:
+            raise ValueError
+    except ValueError:
+        return jsonify({"error": "Ungültige Shelly-IPv4-Adresse"}), 400
+    try:
+        removed = shelly_mod.delete_cached_device(str(address))
+    except shelly_mod.ScanInProgressError:
+        return jsonify({"error": "Bitte den laufenden Scan abwarten"}), 409
+    if not removed:
+        return jsonify({"error": "Gerät nicht im Cache gefunden"}), 404
+    return jsonify({"success": True, "ip": str(address)}), 200
 
 
 @bp.post("/shelly/refresh-status")
@@ -678,7 +913,20 @@ def shelly_update(ip: str):
 @require_web_auth
 @require_csrf
 def shelly_relay(ip: str, channel: int):
+    return _shelly_relay(ip, channel)
+
+
+@bp.post("/api/shelly/<ip>/relay/<int:channel>")
+@require_api_key
+def shelly_relay_api(ip: str, channel: int):
+    """External HTTP control; browser endpoint remains session/CSRF protected."""
+    return _shelly_relay(ip, channel)
+
+
+def _shelly_relay(ip: str, channel: int):
     data = request.get_json(silent=True, force=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Body muss ein JSON-Objekt sein"}), 400
     on = data.get("on")
     if not isinstance(on, bool):
         return jsonify({"error": "Parameter 'on' (bool) fehlt"}), 400
@@ -687,6 +935,8 @@ def shelly_relay(ip: str, channel: int):
     device = cached.get(ip)
     if not device:
         return jsonify({"error": f"Gerät {ip} nicht im Cache – zuerst scannen"}), 404
+    if str(channel) not in device.get("channels", {}):
+        return jsonify({"error": "Kanal nicht im Geräte-Cache gefunden"}), 404
     gen = device.get("gen", 1)
     cfg = state.config.get("shelly", {})
     shelly_mod.set_credentials(cfg.get("username"), cfg.get("password"))
@@ -714,19 +964,33 @@ def healthz():
     snap         = _load_snapshot()
     devices_count = _devices_count_from_snapshot(snap)
     with state.pending_lock:
-        pending_count = len(state.pending)
+        pending_count = sum(
+            1 for meta in state.pending.values() if meta.get("response") is None
+        )
+
+    adapter_health = (
+        state.adapter_registry.health() if state.adapter_registry is not None else {}
+    )
 
     if not ws_connected:
         status = "degraded"
-    elif age_ms is None or age_ms > state.STALE_SEC * 1000:
+    elif not state.WS_READY or not _snapshot_is_valid(snap):
+        status = "degraded"
+    elif any(not healthy for healthy in adapter_health.values()):
         status = "degraded"
     else:
         status = "ok"
 
     return jsonify({
         "ws_connected":    ws_connected,
+        "snapshot_ready": state.WS_READY,
         "snapshot_age_ms": age_ms,
         "devices_count":   devices_count,
         "pending_requests": pending_count,
+        "adapters":         adapter_health,
+        "ws_connected_at":  state.WS_CONNECTED_AT,
+        "ws_last_message_at": state.WS_LAST_MESSAGE_AT,
+        "ws_last_error":    state.WS_LAST_ERROR,
+        "ws_reconnects":    state.WS_RECONNECTS,
         "status":          status,
-    }), 200
+    }), 200 if status == "ok" else 503

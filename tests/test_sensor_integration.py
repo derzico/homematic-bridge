@@ -2,13 +2,15 @@
 """Tests für Sensor-Integration: Alarm-Endpoints, Thermostat, Bewässerung, Loxone UDP."""
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 from flask import Flask
 
 import app.state as state
 from app.routes import bp
+
+_ACK_OK = {"body": {"code": 200}}
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -29,158 +31,122 @@ def _headers():
     return {"X-API-Key": "test-key", "Content-Type": "application/json"}
 
 
-def _snap_with_smoke_detector():
-    """Minimaler Snapshot mit einem Rauchmelder der ALARM_SIREN_CHANNEL hat."""
-    return {
-        "body": {
-            "devices": {
-                "SD001": {
-                    "id": "SD001",
-                    "label": "Rauchmelder Wohnzimmer",
-                    "type": "SMOKE_DETECTOR",
-                    "functionalChannels": {
-                        "0": {"functionalChannelType": "DEVICE_BASE"},
-                        "1": {"functionalChannelType": "SMOKE_DETECTOR_CHANNEL", "smokeDetectorAlarmType": "IDLE_OFF"},
-                        "2": {"functionalChannelType": "ALARM_SIREN_CHANNEL", "opticalAlarmSignal": "NO_ALARM"},
-                    },
-                },
-                "SWITCH001": {
-                    "id": "SWITCH001",
-                    "label": "Schalter",
-                    "type": "PLUGGABLE_SWITCH",
-                    "functionalChannels": {
-                        "0": {"functionalChannelType": "DEVICE_BASE"},
-                        "1": {"functionalChannelType": "SWITCH_CHANNEL", "on": False},
-                    },
-                },
-            }
-        }
-    }
-
-
 # ── Alarm-Endpoint ─────────────────────────────────────────────────────────────
-
-class TestHmipAlarm:
-    def test_no_websocket_returns_503(self, client):
-        state.conn = None
-        r = client.post("/hmipAlarm", data=json.dumps({"mode": "optical"}), headers=_headers())
-        assert r.status_code == 503
-
-    def test_invalid_mode_returns_400(self, client):
-        state.conn = MagicMock()
-        r = client.post("/hmipAlarm", data=json.dumps({"mode": "blinking"}), headers=_headers())
-        assert r.status_code == 400
-        assert "mode" in r.get_json()["error"]
-
-    def test_invalid_signal_returns_400(self, client):
-        state.conn = MagicMock()
-        r = client.post("/hmipAlarm",
-                        data=json.dumps({"mode": "optical", "signal": "LOUD_NOISE"}),
-                        headers=_headers())
-        assert r.status_code == 400
-        assert "signal" in r.get_json()["error"]
-
-    def test_no_devices_in_snapshot_returns_404(self, client):
-        state.conn = MagicMock()
-        empty_snap = {"body": {"devices": {}}}
-        with patch("app.routes._load_snapshot", return_value=empty_snap):
-            r = client.post("/hmipAlarm", data=json.dumps({"mode": "optical"}), headers=_headers())
-        assert r.status_code == 404
-
-    def test_optical_alarm_all_devices(self, client):
-        state.conn = MagicMock()
-        snap = _snap_with_smoke_detector()
-        with patch("app.routes._load_snapshot", return_value=snap), \
-             patch("app.routes.send_hmip_set_alarm_signal_optical", return_value="rid-1") as mock_optical, \
-             patch("app.routes._register_pending"):
-            r = client.post("/hmipAlarm",
-                            data=json.dumps({"mode": "optical", "signal": "FULL_ALARM"}),
-                            headers=_headers())
-        assert r.status_code == 200
-        body = r.get_json()
-        assert body["mode"] == "optical"
-        assert body["signal"] == "FULL_ALARM"
-        # Nur SD001 hat ALARM_SIREN_CHANNEL
-        assert len(body["sent"]) == 1
-        assert body["sent"][0]["device"] == "SD001"
-        mock_optical.assert_called_once_with(state.conn, "SD001", "FULL_ALARM", 2)
-
-    def test_both_sends_optical_and_acoustic(self, client):
-        state.conn = MagicMock()
-        snap = _snap_with_smoke_detector()
-        with patch("app.routes._load_snapshot", return_value=snap), \
-             patch("app.routes.send_hmip_set_alarm_signal_optical", return_value="rid-o") as mock_o, \
-             patch("app.routes.send_hmip_set_alarm_signal_acoustic", return_value="rid-a") as mock_a, \
-             patch("app.routes._register_pending"):
-            r = client.post("/hmipAlarm",
-                            data=json.dumps({"mode": "both"}),
-                            headers=_headers())
-        assert r.status_code == 200
-        assert len(r.get_json()["sent"]) == 2
-        mock_o.assert_called_once()
-        mock_a.assert_called_once()
-
-    def test_off_sends_no_alarm_signal(self, client):
-        state.conn = MagicMock()
-        snap = _snap_with_smoke_detector()
-        with patch("app.routes._load_snapshot", return_value=snap), \
-             patch("app.routes.send_hmip_set_alarm_signal_optical", return_value="rid-o") as mock_o, \
-             patch("app.routes.send_hmip_set_alarm_signal_acoustic", return_value="rid-a") as mock_a, \
-             patch("app.routes._register_pending"):
-            r = client.post("/hmipAlarm",
-                            data=json.dumps({"mode": "off"}),
-                            headers=_headers())
-        assert r.status_code == 200
-        mock_o.assert_called_once_with(state.conn, "SD001", "NO_ALARM", 2)
-        mock_a.assert_called_once_with(state.conn, "SD001", "NO_ALARM", 2)
-
-    def test_single_device_with_channel_override(self, client):
-        state.conn = MagicMock()
-        with patch("app.routes._load_snapshot", return_value=_snap_with_smoke_detector()), \
-             patch("app.routes.send_hmip_set_alarm_signal_optical", return_value="rid") as mock_o, \
-             patch("app.routes._register_pending"):
-            r = client.post("/hmipAlarm",
-                            data=json.dumps({"mode": "optical", "device": "SD001", "channelIndex": 3}),
-                            headers=_headers())
-        assert r.status_code == 200
-        mock_o.assert_called_once_with(state.conn, "SD001", "FULL_ALARM", 3)
-
 
 # ── Thermostat-Endpoint ────────────────────────────────────────────────────────
 
+class TestHmipAlarm:
+    def test_explicit_group_uses_documented_group_endpoint(self, client):
+        state.conn = MagicMock()
+        with patch("app.routes.send_hmip_set_group_state", return_value="rid-a") as sender, \
+             patch("app.routes._wait_for_ack", return_value=_ACK_OK):
+            response = client.post(
+                "/hmipAlarm", json={"group": "SIREN1", "on": True}, headers=_headers()
+            )
+        assert response.status_code == 200
+        assert response.get_json()["status"] == "on"
+        sender.assert_called_once_with(state.conn, "SIREN1", True, request_id=ANY)
+
+    def test_legacy_off_mode_stops_siren(self, client):
+        state.conn = MagicMock()
+        with patch("app.routes.send_hmip_set_group_state", return_value="rid-a") as sender, \
+             patch("app.routes._wait_for_ack", return_value=_ACK_OK):
+            response = client.post(
+                "/hmipAlarm", json={"group": "SIREN1", "mode": "off"}, headers=_headers()
+            )
+        assert response.status_code == 200
+        sender.assert_called_once_with(state.conn, "SIREN1", False, request_id=ANY)
+
+    def test_finds_siren_group_in_hcu_snapshot(self, client):
+        state.conn = MagicMock()
+        snapshot = {"body": {"body": {
+            "groups": {"SIREN1": {"id": "SIREN1", "type": "ALARM_SWITCHING"}},
+            "home": {},
+        }}}
+        with patch("app.routes._load_snapshot", return_value=snapshot), \
+             patch("app.routes.send_hmip_set_group_state", return_value="rid-a") as sender, \
+             patch("app.routes._wait_for_ack", return_value=_ACK_OK):
+            response = client.post("/hmipAlarm", json={"on": True}, headers=_headers())
+        assert response.status_code == 200
+        sender.assert_called_once_with(state.conn, "SIREN1", True, request_id=ANY)
+
+    def test_message_uses_documented_group_state_shape(self):
+        from app.adapters.hmip_messages import send_hmip_set_group_state
+
+        connection = MagicMock()
+        send_hmip_set_group_state(connection, "SIREN1", True, request_id="request-1")
+        payload = json.loads(connection.send.call_args.args[0])
+        assert payload["body"] == {
+            "path": "/hmip/group/switching/setState",
+            "body": {"on": True, "groupId": "SIREN1"},
+        }
+
+
 class TestHmipThermostat:
-    def test_missing_device_returns_400(self, client):
+    def test_missing_group_returns_400(self, client):
         state.conn = MagicMock()
         r = client.post("/hmipThermostat",
                         data=json.dumps({"temperature": 21.0}),
                         headers=_headers())
         assert r.status_code == 400
 
-    def test_temperature_out_of_range_returns_400(self, client):
+    def test_non_finite_temperature_returns_400(self, client):
         state.conn = MagicMock()
         r = client.post("/hmipThermostat",
-                        data=json.dumps({"device": "DEV1", "temperature": 40.0}),
+                        data=json.dumps({"group": "HEATING1", "temperature": float("nan")}),
                         headers=_headers())
         assert r.status_code == 400
 
     def test_valid_request_sends_command(self, client):
         state.conn = MagicMock()
         with patch("app.routes.send_hmip_set_point_temperature", return_value="rid-t") as mock_t, \
-             patch("app.routes._register_pending"):
+             patch("app.routes._wait_for_ack", return_value=_ACK_OK):
             r = client.post("/hmipThermostat",
-                            data=json.dumps({"device": "TRV001", "temperature": 22.5}),
+                            data=json.dumps({"group": "HEATING1", "temperature": 22.5}),
                             headers=_headers())
         assert r.status_code == 200
-        mock_t.assert_called_once_with(state.conn, "TRV001", 22.5, 1)
+        mock_t.assert_called_once_with(
+            state.conn, "HEATING1", 22.5, request_id=ANY
+        )
 
-    def test_custom_channel_index(self, client):
+    def test_uses_documented_heating_group_shape(self, client):
         state.conn = MagicMock()
         with patch("app.routes.send_hmip_set_point_temperature", return_value="rid") as mock_t, \
-             patch("app.routes._register_pending"):
+             patch("app.routes._wait_for_ack", return_value=_ACK_OK):
             client.post("/hmipThermostat",
-                        data=json.dumps({"device": "TRV001", "temperature": 20.0, "channelIndex": 2}),
+                        data=json.dumps({"group": "HEATING1", "temperature": 20.0}),
                         headers=_headers())
-        mock_t.assert_called_once_with(state.conn, "TRV001", 20.0, 2)
+        mock_t.assert_called_once_with(
+            state.conn, "HEATING1", 20.0, request_id=ANY
+        )
+
+    def test_message_uses_documented_group_path_and_body(self):
+        from app.adapters.hmip_messages import send_hmip_set_point_temperature
+
+        connection = MagicMock()
+        send_hmip_set_point_temperature(
+            connection, "HEATING1", 20.5, request_id="request-1"
+        )
+        payload = json.loads(connection.send.call_args.args[0])
+        assert payload["body"] == {
+            "path": "/hmip/group/heating/setSetPointTemperature",
+            "body": {"setPointTemperature": 20.5, "groupId": "HEATING1"},
+        }
+
+
+class TestHmipRgb:
+    def test_hue_is_wrapped_to_documented_range(self, client):
+        state.conn = MagicMock()
+        with patch("app.routes.send_hmip_set_hue_saturation_dim_level", return_value="rid") as sender, \
+             patch("app.routes._wait_for_ack", return_value=_ACK_OK):
+            response = client.post(
+                "/hmipRGB",
+                json={"device": "RGB1", "rgb": "R=100%,G=0%,B=0.1%"},
+                headers=_headers(),
+            )
+        assert response.status_code == 200
+        hue = sender.call_args.args[2]
+        assert 0 <= hue <= 359
 
 
 # ── Bewässerungs-Endpoint ─────────────────────────────────────────────────────
@@ -196,18 +162,20 @@ class TestHmipIrrigation:
     def test_open_valve(self, client):
         state.conn = MagicMock()
         with patch("app.routes.send_hmip_set_switch", return_value="rid-w") as mock_sw, \
-             patch("app.routes._register_pending"):
+             patch("app.routes._wait_for_ack", return_value=_ACK_OK):
             r = client.post("/hmipIrrigation",
                             data=json.dumps({"device": "WHS001", "on": True}),
                             headers=_headers())
         assert r.status_code == 200
-        mock_sw.assert_called_once_with(state.conn, "WHS001", True, 1)
+        mock_sw.assert_called_once_with(
+            state.conn, "WHS001", True, 1, request_id=ANY
+        )
         assert "geöffnet" in r.get_json()["status"]
 
     def test_close_valve(self, client):
         state.conn = MagicMock()
         with patch("app.routes.send_hmip_set_switch", return_value="rid-w") as mock_sw, \
-             patch("app.routes._register_pending"):
+             patch("app.routes._wait_for_ack", return_value=_ACK_OK):
             r = client.post("/hmipIrrigation",
                             data=json.dumps({"device": "WHS001", "on": False}),
                             headers=_headers())

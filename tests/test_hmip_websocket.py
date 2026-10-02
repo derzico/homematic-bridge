@@ -40,6 +40,16 @@ class _TimeoutConnection:
         state.stop_event.set()
 
 
+class _FailedSnapshotConnection(_SnapshotConnection):
+    def recv(self) -> str:
+        state.stop_event.set()
+        return json.dumps({
+            "id": "request-state",
+            "type": "HMIP_SYSTEM_RESPONSE",
+            "body": {"code": 500, "body": {"errorCode": "INTERNAL_ERROR"}},
+        })
+
+
 def _configure_websocket() -> None:
     state.config = {
         "homematic_hcu": "hcu.test.local",
@@ -55,6 +65,7 @@ def test_ws_loop_correlates_and_saves_initial_snapshot():
     connection = _SnapshotConnection()
 
     with patch("app.adapters.hmip_websocket.websocket.create_connection", return_value=connection) as create, \
+         patch("app.adapters.hmip_websocket.uuid.uuid4", return_value="request-state"), \
          patch("app.adapters.hmip_websocket.send_plugin_state") as send_plugin_state, \
          patch("app.adapters.hmip_websocket.send_get_system_state", return_value="request-state"), \
          patch("app.adapters.hmip_websocket.save_system_state") as save_system_state:
@@ -63,6 +74,8 @@ def test_ws_loop_correlates_and_saves_initial_snapshot():
     create.assert_called_once()
     assert create.call_args.args[0] == "wss://hcu.test.local:9001"
     assert create.call_args.kwargs["header"]["authtoken"] == "secret-token"
+    assert create.call_args.kwargs["header"]["plugin-id"] == "test-plugin"
+    assert create.call_args.kwargs["header"]["hmip-system-events"] == "true"
     assert connection.timeout == 30
     send_plugin_state.assert_called_once_with(connection)
     save_system_state.assert_called_once()
@@ -79,6 +92,20 @@ def test_ws_loop_sends_keepalive_after_read_timeout():
         ws_loop()
 
     assert connection.ping_calls == 1
+
+
+def test_ws_loop_does_not_save_failed_initial_snapshot():
+    _configure_websocket()
+    connection = _FailedSnapshotConnection()
+
+    with patch("app.adapters.hmip_websocket.websocket.create_connection", return_value=connection), \
+         patch("app.adapters.hmip_websocket.uuid.uuid4", return_value="request-state"), \
+         patch("app.adapters.hmip_websocket.send_plugin_state"), \
+         patch("app.adapters.hmip_websocket.send_get_system_state", return_value="request-state"), \
+         patch("app.adapters.hmip_websocket.save_system_state") as save_system_state:
+        ws_loop()
+
+    save_system_state.assert_not_called()
 
 
 def test_ws_loop_clears_connection_and_pending_before_reconnect_wait():

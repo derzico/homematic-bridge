@@ -13,6 +13,7 @@
     </div>
   </div>
   <div class="actions">
+    <button class="btn ghost" id="resyncLoxone" type="button">{{ _("Send full state to Loxone") }}</button>
     <button class="btn ghost" onclick="location.reload()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
       {{ _("Sync") }}
@@ -26,8 +27,8 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
     </span>
     <div>
-      <div class="label">{{ _("Alarm active") if alarm.any_active else _("Alarm disarmed") }}</div>
-      <div class="desc">{{ _("Currently active") if alarm.any_active else _("Currently disarmed") }}</div>
+      <div class="label">{{ _("Alarm active") if alarm.any_active else (_("Alarm inactive") if alarm.any_active is not none else _("unknown")) }}</div>
+      <div class="desc">{{ _("Arming state") }}: {{ {"armed": _("Armed"), "partly_armed": _("Partly armed"), "disarmed": _("Disarmed"), "unknown": _("unknown")}.get(armed_state, _("unknown")) }}</div>
     </div>
   </div>
   <div class="status-cell">
@@ -36,7 +37,7 @@
     </span>
     <div>
       <div class="label">{{ _("Presence") }}</div>
-      <div class="desc">{{ _("At home") }}</div>
+      <div class="desc">{{ _("Detected") if presence_reported else (_("Not detected") if presence_reported is not none else _("unknown")) }}</div>
     </div>
   </div>
   <div class="status-cell">
@@ -44,8 +45,8 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
     </span>
     <div>
-      <div class="label">{{ _("Night mode") }}</div>
-      <div class="desc">{{ _("Inactive") }}</div>
+      <div class="label"><a href="/security">{{ _("Security zones") }}</a></div>
+      <div class="desc">{{ {"armed": _("Armed"), "partly_armed": _("Partly armed"), "disarmed": _("Disarmed"), "unknown": _("unknown")}.get(armed_state, _("unknown")) }}</div>
     </div>
   </div>
   <div class="status-cell">
@@ -53,8 +54,8 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     </span>
     <div>
-      <div class="label">{{ _("Lighting") }}</div>
-      <div class="desc">{{ _("%(n)s heating zones active", n=heating_count) }}</div>
+      <div class="label">{{ _("Heating groups") }}</div>
+      <div class="desc">{{ heating_count }}</div>
     </div>
   </div>
 </div>
@@ -169,15 +170,6 @@
         </div>
       </div>
 
-      <div style="margin-top:18px;display:flex;gap:8px;flex-wrap:wrap">
-        <button id="btn-test-smoke" class="btn" onclick="testSmokeAlarm()">
-          <span style="color:#d97706">⚠</span> {{ _("Test smoke detectors") }}
-        </button>
-        <button id="btn-clear-smoke" class="btn ghost" onclick="clearSmokeAlarm()">
-          {{ _("Clear alarm") }}
-        </button>
-      </div>
-      <div id="alarm-msg" style="margin-top:10px;font-size:12.5px;display:none"></div>
     </div>
   </div>
 
@@ -245,95 +237,16 @@
 
 {% block scripts %}
 <script>
-const CSRF_TOKEN = {{ csrf_token | tojson }};
-const I18N = {
-  test_confirm: {{ _("Start smoke detector test?\n\nAll smoke detectors will beep and flash for {s} seconds,\nthen the signal stops automatically.") | tojson }},
-  test_running: {{ _("Test running…") | tojson }},
-  test_active:  {{ _("Test active on {n} device(s) – stops in {s}s") | tojson }},
-  test_error:   {{ _("Error:") | tojson }},
-  net_error:    {{ _("Network error – please try again.") | tojson }},
-  clear_confirm:{{ _("Clear smoke alarm?\n\nThis turns off the optical and acoustic alarm signal\non all smoke detectors.") | tojson }},
-  cleared_n:    {{ _("✓ Alarm signal cleared on {n} device(s).") | tojson }},
-  no_smoke:     {{ _("No smoke detectors found.") | tojson }},
-  sent:         {{ _("✓ Sent") | tojson }},
-  test_btn:     {{ _("Test smoke detectors") | tojson }},
-  clear_btn:    {{ _("Clear alarm") | tojson }},
-};
-
-function fmt(t, vars) { return t.replace(/\{(\w+)\}/g, (_, k) => vars[k]); }
-
-async function testSmokeAlarm() {
-  const TEST_SEC = 5;
-  if (!confirm(fmt(I18N.test_confirm, {s: TEST_SEC}))) return;
-  const btn  = document.getElementById('btn-test-smoke');
-  const btnC = document.getElementById('btn-clear-smoke');
-  const msg  = document.getElementById('alarm-msg');
-  btn.disabled = true; btnC.disabled = true; msg.style.display = 'none';
+document.getElementById('resyncLoxone').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
   try {
-    const r = await fetch('/alarm/test-smoke', {
-      method: 'POST',
-      headers: {'X-CSRF-Token': CSRF_TOKEN},
-    });
-    const d = await r.json();
-    if (!r.ok) {
-      msg.style.color = 'var(--red)';
-      msg.textContent = `${I18N.test_error} ${d.error || r.status}`;
-      msg.style.display = 'block';
-      btn.disabled = false; btnC.disabled = false; return;
-    }
-    let remaining = TEST_SEC;
-    msg.style.color = '#d97706'; msg.style.display = 'block';
-    const tick = setInterval(() => {
-      remaining--;
-      btn.innerHTML = `🔔 ${I18N.test_running} ${remaining}s`;
-      msg.textContent = fmt(I18N.test_active, {n: d.triggered, s: remaining});
-      if (remaining <= 0) { clearInterval(tick); clearSmokeAlarm(true); }
-    }, 1000);
-    btn.innerHTML = `🔔 ${I18N.test_running} ${TEST_SEC}s`;
-    msg.textContent = fmt(I18N.test_active, {n: d.triggered, s: TEST_SEC});
-  } catch (e) {
-    msg.style.color = 'var(--red)';
-    msg.textContent = I18N.net_error;
-    msg.style.display = 'block';
-    btn.disabled = false; btnC.disabled = false;
-  }
-}
-
-async function clearSmokeAlarm(auto = false) {
-  if (!auto && !confirm(I18N.clear_confirm)) return;
-  const btn  = document.getElementById('btn-clear-smoke');
-  const btnT = document.getElementById('btn-test-smoke');
-  const msg  = document.getElementById('alarm-msg');
-  btn.disabled = true; if (!auto) msg.style.display = 'none';
-  try {
-    const r = await fetch('/alarm/clear-smoke', {
-      method: 'POST',
-      headers: {'X-CSRF-Token': CSRF_TOKEN},
-    });
-    const d = await r.json();
-    if (r.ok) {
-      msg.style.color = 'var(--green)';
-      msg.textContent = d.cleared > 0
-        ? fmt(I18N.cleared_n, {n: d.cleared})
-        : `ℹ ${d.info || I18N.no_smoke}`;
-      btn.textContent  = I18N.sent;
-      btnT.innerHTML   = '<span style="color:#d97706">⚠</span> ' + I18N.test_btn;
-      btnT.disabled    = false;
-    } else {
-      msg.style.color = 'var(--red)';
-      msg.textContent = `${I18N.test_error} ${d.error || r.status}`;
-      btn.disabled = false; btn.textContent = I18N.clear_btn;
-      btnT.disabled = false;
-      btnT.innerHTML = '<span style="color:#d97706">⚠</span> ' + I18N.test_btn;
-    }
-  } catch (e) {
-    msg.style.color = 'var(--red)';
-    msg.textContent = I18N.net_error;
-    btn.disabled = false; btn.textContent = I18N.clear_btn;
-    btnT.disabled = false;
-    btnT.innerHTML = '<span style="color:#d97706">⚠</span> ' + I18N.test_btn;
-  }
-  msg.style.display = 'block';
-}
+    const response = await fetch('/loxone/resync', {method:'POST',headers:{'X-CSRF-Token':{{ csrf_token | tojson }}}});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || String(response.status));
+    alert({{ _("Full state sent. UDP delivery cannot be confirmed.") | tojson }});
+  } catch (error) { alert(error.message); }
+  finally { button.disabled = false; }
+});
 </script>
 {% endblock %}

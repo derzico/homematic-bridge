@@ -14,6 +14,8 @@ from app.adapters.hmip_adapter import HmIPAdapter
 from app.adapters.registry import AdapterRegistry
 from app.adapters.shelly_adapter import ShellyAdapter
 from app.auth import _ensure_api_key
+from app.lifecycle import install_shutdown_handlers
+from app.runtime_services import RuntimeServices
 from app.routes import bp as routes_bp
 from app.security import load_or_create_secret_key
 from config.loader import (load_config, load_internal_config, resolve_api_key_file,
@@ -35,6 +37,7 @@ state.config          = config
 state.config_internal = config_internal
 state.STALE_SEC       = float(config_internal.get("health_stale_seconds", 60.0))
 state.PENDING_TTL     = float(config_internal.get("pending_ttl_seconds", 60.0))
+state.ACK_TIMEOUT_SEC = float(config_internal.get("ack_timeout_seconds", 3.0))
 state.REQUIRE_API_KEY = bool(config_internal.get("require_api_key", config.get("require_api_key", True)))
 state.API_KEY_FILE    = resolve_api_key_file(config, config_internal)
 state.API_KEY         = os.getenv("BRIDGE_API_KEY") or config_internal.get("api_key") or config.get("api_key")
@@ -99,11 +102,15 @@ if _shelly_cfg.get("enabled"):
 
 # Registry im State verfügbar machen (für Routes, Health, etc.)
 state.adapter_registry = registry
+state.runtime_services = RuntimeServices()
 
 
 # ── Start ─────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
+    state.stop_event.clear()
+    install_shutdown_handlers(registry)
     registry.start_all()
+    state.runtime_services.start()
     host, port = "0.0.0.0", 8080
     try:
         from waitress import serve
@@ -112,3 +119,8 @@ if __name__ == "__main__":
     except ImportError:
         log.info("Waitress nicht installiert – nutze Flask-Dev-Server")
         app.run(host=host, port=port)
+    except KeyboardInterrupt:
+        log.info("HTTP-Server wird beendet")
+    finally:
+        state.runtime_services.stop()
+        registry.stop_all()

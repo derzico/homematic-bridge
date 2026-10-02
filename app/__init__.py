@@ -2,4 +2,4 @@
 
 """Homematic Bridge – Python-Bridge zwischen HmIP und externen Systemen."""
 
-__version__ = "1.18.6"
+__version__ = "1.19.0"

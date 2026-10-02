@@ -10,12 +10,7 @@
     <div class="sub">{{ _("Absence mode:") }} <strong style="color:var(--text)">{{ absence | e }}</strong> · {{ _("Outdoor temperature") }} {{ out_temp_str }}</div>
   </div>
   <div class="actions">
-    <div class="segmented" id="modeSeg">
-      <button class="active" data-mode="auto">{{ _("Automatic") }}</button>
-      <button data-mode="absent">{{ _("Absent") }}</button>
-      <button data-mode="party">{{ _("Party") }}</button>
-    </div>
-    <button class="btn" id="boostAllBtn" type="button">{{ _("Boost all") }}</button>
+    <button class="btn ghost" type="button" onclick="location.reload()">{{ _("Refresh") }}</button>
   </div>
 </div>
 
@@ -36,6 +31,7 @@
       <th>{{ _("Humidity") }}</th>
       <th>{{ _("Valve") }}</th>
       <th>{{ _("Mode") }}</th>
+      <th>{{ _("Controls") }}</th>
     </tr>
   </thead>
   <tbody>
@@ -83,25 +79,30 @@
           <span class="pill">{{ hg.mode_str | e or _("Auto") }}</span>
         {% endif %}
       </td>
+      <td>
+      {% if hg.id and hg.controllable %}
+      <form data-control="heating">
+        <input type="hidden" name="group" value="{{ hg.id }}"><input type="hidden" name="action" value="temperature">
+        <label>{{ _("Target") }} <input type="number" name="temperature" min="{{ hg.min_temperature }}" max="{{ hg.max_temperature }}" step="0.5" value="{{ hg.setpoint if hg.setpoint is not none else '' }}" required style="width:80px"></label>
+        <button class="btn" type="submit">{{ _("Apply") }}</button>
+      </form>
+      <form data-control="heating">
+        <input type="hidden" name="group" value="{{ hg.id }}"><input type="hidden" name="action" value="mode">
+        <select name="mode"><option value="AUTOMATIC" {% if hg.control_mode == 'AUTOMATIC' %}selected{% endif %}>{{ _("Automatic") }}</option><option value="MANUAL" {% if hg.control_mode == 'MANUAL' %}selected{% endif %}>{{ _("Manual") }}</option></select>
+        <button class="btn ghost" type="submit">{{ _("Apply mode") }}</button>
+      </form>
+      {% if hg.boost_allowed %}<form data-control="heating">
+        <input type="hidden" name="group" value="{{ hg.id }}"><input type="hidden" name="action" value="boost">
+        <select name="boost" data-boolean="true"><option value="true">{{ _("Boost on") }}</option><option value="false" {% if hg.boost %}selected{% endif %}>{{ _("Boost off") }}</option></select>
+        <button class="btn ghost" type="submit">{{ _("Apply boost") }}</button>
+      </form>{% endif %}
+      {% else %}{{ _("Not controllable") }}{% endif %}
+      </td>
     </tr>
     {% else %}
-    <tr><td colspan="7" class="empty-cell">{{ _("No heating groups found.") }}</td></tr>
+    <tr><td colspan="8" class="empty-cell">{{ _("No heating groups found.") }}</td></tr>
     {% endfor %}
   </tbody>
 </table>
-{% endblock %}
-
-{% block scripts %}
-<script>
-const I18N_HEAT = {
-  not_implemented: {{ _("Boost all: not implemented yet") | tojson }},
-};
-document.querySelectorAll('#modeSeg button').forEach(b => b.addEventListener('click', () => {
-  document.querySelectorAll('#modeSeg button').forEach(x => x.classList.remove('active'));
-  b.classList.add('active');
-}));
-document.getElementById('boostAllBtn').addEventListener('click', () => {
-  alert(I18N_HEAT.not_implemented);
-});
-</script>
+{% include "control_script.html" %}
 {% endblock %}

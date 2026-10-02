@@ -10,7 +10,7 @@ from typing import Any, Dict, Tuple, Optional
 from config.loader import load_internal_config
 
 config_internal = load_internal_config()
-SNAPSHOT_PATH = config_internal["system_state_path"]
+SNAPSHOT_PATH = config_internal.get("system_state_path", "data/system_state.json")
 log = logging.getLogger("bridge-ws")
 _snapshot_lock = threading.Lock()
 
@@ -83,6 +83,41 @@ def _find_device_in_list(devs_list: list, dev_id: str) -> Tuple[Optional[Dict[st
             return d, idx
     return None, None
 
+
+def _event_sort_key(item: tuple) -> tuple:
+    """Sortiert HCU-Eventindizes numerisch; unbekannte Schlüssel folgen stabil danach."""
+    key = item[0]
+    try:
+        return 0, int(key)
+    except (TypeError, ValueError):
+        return 1, str(key)
+
+
+def _replace_indexed(container: Any, item: Dict[str, Any]) -> None:
+    """Fügt ein vollständiges HCU-Objekt hinzu oder ersetzt es anhand seiner ID."""
+    item_id = item.get("id")
+    if not item_id:
+        return
+    if isinstance(container, dict):
+        container[item_id] = item
+    elif isinstance(container, list):
+        current, index = _find_device_in_list(container, item_id)
+        if current is None:
+            container.append(item)
+        else:
+            container[index] = item
+
+
+def _remove_indexed(container: Any, item_id: Any) -> None:
+    """Entfernt ein HCU-Objekt aus einem ID-Mapping oder einer Objektliste."""
+    if not item_id:
+        return
+    if isinstance(container, dict):
+        container.pop(item_id, None)
+    elif isinstance(container, list):
+        container[:] = [item for item in container
+                        if not isinstance(item, dict) or item.get("id") != item_id]
+
 # --------- Helpers: Merge-Logik ---------
 def _merge_functional_channels(current: Dict[str, Any], incoming: Dict[str, Any]) -> Dict[str, Any]:
     """Merget functionalChannels: pro Index flach überlagern."""
@@ -127,8 +162,8 @@ def _merge_group(current: Dict[str, Any], incoming: Dict[str, Any]) -> Dict[str,
 # --------- Public: Save + Merge ---------
 def save_system_state(msg: Dict[str, Any]) -> None:
     """
-    - HMIP_SYSTEM_RESPONSE  -> gesamten Snapshot atomar speichern
-    - HMIP_SYSTEM_EVENT     -> bestehende Datei laden, Devices daraus mit Event-Devices mergen, zurückschreiben
+    - erfolgreicher HMIP_SYSTEM_RESPONSE -> gesamten Snapshot atomar speichern
+    - HMIP_SYSTEM_EVENT -> vollständige geänderte Objekte ersetzen und Entfernungen anwenden
     """
     try:
         if not isinstance(msg, dict):
@@ -136,9 +171,13 @@ def save_system_state(msg: Dict[str, Any]) -> None:
 
         msg_type = msg.get("type")
         if msg_type == "HMIP_SYSTEM_RESPONSE":
+            response = msg.get("body") or {}
+            if response.get("code") != 200 or not isinstance(response.get("body"), dict):
+                log.warning("Ungültiger/fehlgeschlagener Vollsnapshot wird nicht gespeichert.")
+                return
             _write_snapshot(msg)
             log.info("Systemzustand (Vollsnapshot) gespeichert → %s", SNAPSHOT_PATH)
-            return
+            return True
 
         if msg_type == "HMIP_SYSTEM_EVENT":
             with _snapshot_lock:
@@ -147,50 +186,43 @@ def save_system_state(msg: Dict[str, Any]) -> None:
                     log.warning("Kein vorhandener Snapshot – HMIP_SYSTEM_EVENT wird ignoriert (warte auf Vollsnapshot).")
                     return
 
-                body_inner = (snapshot.get("body") or {}).get("body") or {}
-                devices_container, hint = _locate_devices_container(snapshot)
-                groups_container = body_inner.get("groups")
-
-                if devices_container is None:
-                    log.warning("Devices-Container im Snapshot nicht gefunden (%s) – Event kann nicht gemerged werden.", hint)
+                body_inner = (snapshot.get("body") or {}).get("body")
+                if not isinstance(body_inner, dict):
+                    log.warning("Systemzustand enthält keinen gültigen Response-Body.")
                     return
+
+                devices_container, _ = _locate_devices_container(snapshot)
+                groups_container = body_inner.get("groups")
+                clients_container = body_inner.get("clients")
 
                 tx = (msg.get("body") or {}).get("eventTransaction") or {}
                 events = tx.get("events") or {}
 
-                for _, ev in sorted(events.items(), key=lambda kv: kv[0]):
+                for _, ev in sorted(events.items(), key=_event_sort_key):
                     if not isinstance(ev, dict):
                         continue
 
-                    # ── Device-Event ──
-                    dev = ev.get("device")
-                    if isinstance(dev, dict):
-                        dev_id = dev.get("id")
-                        if dev_id:
-                            if isinstance(devices_container, list):
-                                cur, idx = _find_device_in_list(devices_container, dev_id)
-                                if cur is None:
-                                    devices_container.append(dev)
-                                    log.debug("Neues Device angelegt (Liste): %s", dev_id)
-                                else:
-                                    devices_container[idx] = _merge_device(cur, dev)
-                                    log.debug("Device gemerged: %s", dev_id)
-                            elif isinstance(devices_container, dict):
-                                cur = devices_container.get(dev_id, {})
-                                devices_container[dev_id] = _merge_device(cur, dev)
-                                log.debug("Device gemerged: %s", dev_id)
-
-                    # ── Group-Event ──
-                    grp = ev.get("group")
-                    if isinstance(grp, dict) and isinstance(groups_container, dict):
-                        grp_id = grp.get("id")
-                        if grp_id:
-                            cur = groups_container.get(grp_id, {})
-                            groups_container[grp_id] = _merge_group(cur, grp)
-                            log.debug("Group gemerged: %s (%s)", grp_id, grp.get("label", "–"))
+                    event_type = ev.get("pushEventType")
+                    if event_type == "HOME_CHANGED" and isinstance(ev.get("home"), dict):
+                        body_inner["home"] = ev["home"]
+                    elif event_type in {"DEVICE_ADDED", "DEVICE_CHANGED"}:
+                        if isinstance(ev.get("device"), dict):
+                            _replace_indexed(devices_container, ev["device"])
+                    elif event_type == "DEVICE_REMOVED":
+                        _remove_indexed(devices_container, ev.get("id"))
+                    elif event_type in {"GROUP_ADDED", "GROUP_CHANGED"}:
+                        if isinstance(ev.get("group"), dict):
+                            _replace_indexed(groups_container, ev["group"])
+                    elif event_type == "GROUP_REMOVED":
+                        _remove_indexed(groups_container, ev.get("id"))
+                    elif event_type in {"CLIENT_ADDED", "CLIENT_CHANGED"}:
+                        if isinstance(ev.get("client"), dict):
+                            _replace_indexed(clients_container, ev["client"])
+                    elif event_type == "CLIENT_REMOVED":
+                        _remove_indexed(clients_container, ev.get("id"))
 
                 _write_snapshot(snapshot)
-                log.debug("Systemzustand (Delta-Event) in Snapshot gemerged.")
+                log.debug("Systemzustand mit HCU-Events aktualisiert.")
             return
 
         # Andere Typen ignorieren wir still (oder debug-loggen)
@@ -198,3 +230,4 @@ def save_system_state(msg: Dict[str, Any]) -> None:
 
     except Exception as e:
         log.exception("Fehler beim Aktualisieren des Systemzustands")
+        return False

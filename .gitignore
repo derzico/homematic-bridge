@@ -1,4 +1,9 @@
 __pycache__/
+.DS_Store
+config/energy.yaml
+# Private installation audits and server-specific rollback instructions.
+docs/reviews/2026-10-02-*.md
+docs/operations/container-update-and-rollback.md
 *.pyc
 .env
 .venv/
@@ -16,4 +21,3 @@ htmlcov/
 
 # Compiled translations (auto-generated from .po by app/i18n.py at startup)
 *.mo
-

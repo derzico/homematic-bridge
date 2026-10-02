@@ -14,6 +14,15 @@ friendly_name:
 loxone:
   miniserver_ip: # z.B. 192.168.1.100 (leer lassen = deaktiviert)
   udp_port: 7777
+  resync_interval_seconds: 300 # 0 = nur Initialzustand und manuelle Synchronisation
+
+# Optionale lokale Energiehistorie, nur vorhandene erreichbare Shelly-Zähler.
+# Die Web-Auswahl unter /energy wird separat in config/energy.yaml gespeichert.
+energy:
+  enabled: false
+  interval_seconds: 60
+  retention_days: 90
+  timezone: Europe/Berlin
 
 # Shelly Netzwerk-Scanner (optional)
 # Wenn enabled: true, erscheint unter /shelly eine Übersicht aller Shelly-Geräte im Netz.

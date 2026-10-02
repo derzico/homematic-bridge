@@ -63,6 +63,17 @@ def _reset_state():
         "config_internal": state.config_internal,
         "pending": state.pending.copy(),
         "conn": state.conn,
+        "ACK_TIMEOUT_SEC": state.ACK_TIMEOUT_SEC,
+        "WS_CONNECTED_AT": state.WS_CONNECTED_AT,
+        "WS_LAST_MESSAGE_AT": state.WS_LAST_MESSAGE_AT,
+        "WS_LAST_ERROR": state.WS_LAST_ERROR,
+        "WS_RECONNECTS": state.WS_RECONNECTS,
+        "WS_READY": state.WS_READY,
+        "WS_PLUGIN_ID": state.WS_PLUGIN_ID,
+        "adapter_registry": state.adapter_registry,
+        "runtime_services": state.runtime_services,
+        "LOXONE_HOST": state.LOXONE_HOST,
+        "LOXONE_UDP_PORT": state.LOXONE_UDP_PORT,
     }
     yield
     state.API_KEY = saved["API_KEY"]
@@ -71,6 +82,17 @@ def _reset_state():
     state.config = saved["config"]
     state.config_internal = saved["config_internal"]
     state.conn = saved["conn"]
+    state.ACK_TIMEOUT_SEC = saved["ACK_TIMEOUT_SEC"]
+    state.WS_CONNECTED_AT = saved["WS_CONNECTED_AT"]
+    state.WS_LAST_MESSAGE_AT = saved["WS_LAST_MESSAGE_AT"]
+    state.WS_LAST_ERROR = saved["WS_LAST_ERROR"]
+    state.WS_RECONNECTS = saved["WS_RECONNECTS"]
+    state.WS_READY = saved["WS_READY"]
+    state.WS_PLUGIN_ID = saved["WS_PLUGIN_ID"]
+    state.adapter_registry = saved["adapter_registry"]
+    state.runtime_services = saved["runtime_services"]
+    state.LOXONE_HOST = saved["LOXONE_HOST"]
+    state.LOXONE_UDP_PORT = saved["LOXONE_UDP_PORT"]
     state.stop_event.clear()
     with state.pending_lock:
         state.pending.clear()

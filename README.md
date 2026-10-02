@@ -30,12 +30,47 @@ HCU (WebSocket) ──► homematic-bridge ──► Loxone Miniserver (UDP)
 | Feature | Beschreibung |
 |---|---|
 | **Echtzeit-Events** | WebSocket-Verbindung zur HCU mit Delta-Merge |
-| **Loxone UDP-Push** | Jede HmIP-Zustandsänderung als UDP-Paket an den Miniserver |
-| **HTTP-API** | Schalten, Dimmen, RGB, Rollläden, Thermostat, Alarm, Bewässerung |
+| **Loxone UDP-Push** | Geräte-, Home- und Gruppenereignisse; Vollzustand beim Verbinden, periodisch und auf Anfrage |
+| **HTTP-API** | Schalten, Dimmen, RGB, Rollladenposition/Stop, Heizgruppen-Sollwert/Modus/Boost, Sirenengruppe, Bewässerung |
 | **Shelly-Integration** | Auto-Scan (Gen1 + Gen2), Steuerung, sicherer Link zur Geräte-WebUI |
-| **Web-Interface** | Dashboard, Heizung, Geräteübersicht, Konfigurationseditor |
+| **Web-Interface** | Dashboard, echte Heiz-/Licht-/Rollladensteuerung, Sicherheitsstatus, Diagnose, Konfiguration |
+| **Lokale Energiehistorie** | Optional: vorhandene erreichbare Shelly-Zähler, Leistung und Bezugs-/Einspeisesummen; ohne Cloud |
 | **API-Key-Auth** | Optionale Absicherung aller Endpunkte |
 | **Docker-Deployment** | Ein Befehl, sofort einsatzbereit |
+
+Steuerbefehle gelten erst nach einem erfolgreichen HCU-ACK als angenommen. Bei
+Verbindungsfehlern, Ablehnung oder Timeout liefert die API `503`, `502` bzw. `504`.
+`/healthz` antwortet bei getrennter Verbindung, fehlendem/ungültigem Vollsnapshot
+oder einem ausgefallenen Adapter mit `503`. Ein alter Änderungszeitpunkt allein
+ist kein Ausfall. Nach 30 Sekunden ohne Nachricht wird eine rein lesende HCU-Abfrage
+mit Antwortfrist gesendet; bleibt die Antwort aus, erfolgt ein Reconnect.
+
+Externe Shelly-Steuerung: `POST /api/shelly/<ip>/relay/<channel>` mit
+`X-API-Key` und JSON `{"on": true}`. IP und Kanal müssen im Geräte-Cache stehen.
+Der Browser-Endpunkt `/shelly/<ip>/relay/<channel>` benötigt weiterhin Session
+und CSRF-Token. Gen2+ verwendet Digest-Authentifizierung und ermittelt die
+tatsächlichen Switch-Komponenten bei jedem Statusabruf.
+
+Änderungen an HCU-Host, Token, Plugin-ID oder TLS-Einstellungen bauen die
+Verbindung kontrolliert neu auf. Docker mountet das Konfigurationsverzeichnis,
+damit Konfigurationsdateien atomar ersetzt werden können; das Zertifikat bleibt
+separat schreibgeschützt. Beim Update vorhandene Konfiguration und Daten behalten.
+
+In der Shelly-Übersicht (`/shelly`) können einzelne Geräte nach Bestätigung aus
+dem Cache gelöscht werden. **Geräte vollständig neu einlesen** ersetzt die
+Liste nach einem erfolgreichen Scan durch die aktuell gefundenen Geräte;
+auch vorübergehend offline Geräte werden dabei entfernt. **Netzwerk scannen**
+behält bekannte Offline-Geräte weiterhin bei. Ein noch erreichbares, gelöschtes
+Gerät wird bei einem späteren Scan wieder erkannt.
+
+Neu in **1.19.0**: `/controls`, `/security`, `/energy` und `/diagnostics`.
+Die Energieaufzeichnung ist standardmäßig aus und kann auf `/energy` aktiviert
+werden. Lokale Auswahl: `config/energy.yaml`; Historie: `data/energy.sqlite3`.
+Erste Messungen sind nur Ausgangswerte, keine nachträglich rekonstruierte Historie.
+Lichtfunktionen folgen den vom HCU-Kanal gemeldeten Fähigkeiten, nicht dem
+Gerätenamen oder `channelActive`. Scharfschaltung folgt den Sicherheitszonen,
+nicht dem Aktivierungsflag der Sicherheitslösung.
+Payloads, Einheiten, Grenzen und Updatehinweise: [Version 1.19.0](docs/releases/1.19.0.md).
 
 ---
 
@@ -66,6 +101,13 @@ plugin_id: de.schnellniclas.homematic-bridge
 loxone:
   miniserver_ip:   # z.B. 192.168.1.100 (leer = deaktiviert)
   udp_port: 7777
+  resync_interval_seconds: 300 # 0 = keine periodische Vollsynchronisation
+
+energy:
+  enabled: false
+  interval_seconds: 60
+  retention_days: 90
+  timezone: Europe/Berlin
 
 # Shelly-Scanner (optional)
 shelly:
@@ -76,6 +118,21 @@ shelly:
 api_key:
 require_api_key: true
 ```
+
+### Sirene per HTTP/Loxone schalten
+
+```http
+POST /hmipAlarm
+X-API-Key: <api-key>
+Content-Type: application/json
+
+{"on": true}
+```
+
+`{"on": false}` schaltet die Sirene wieder aus. Die Bridge ermittelt die
+`ALARM_SWITCHING`-Gruppe automatisch; alternativ kann sie mit
+`{"group": "<gruppen-id>", "on": true}` explizit angegeben werden. Signalart
+und Laufzeit werden in der HCU-Gruppenkonfiguration festgelegt.
 
 ---
 

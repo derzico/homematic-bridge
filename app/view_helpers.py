@@ -28,6 +28,14 @@ _WEATHER_ICON = {
 
 # ── JSON-Navigation ──────────────────────────────────────────────────────────
 
+def _load_view_snapshot(path: str) -> Dict[str, Any]:
+    try:
+        with open(path, "r", encoding="utf-8") as stream:
+            snapshot = json.load(stream)
+        return snapshot if isinstance(snapshot, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
 def _build_room_map(snapshot: Dict[str, Any]) -> Dict[str, str]:
     """Gibt {device_id: room_label} zurück, basierend auf META-Gruppen."""
     room_map: Dict[str, str] = {}
@@ -78,9 +86,14 @@ def _find_device(snapshot: Dict[str, Any], device_id: str) -> Optional[Dict[str,
 
 def _get_home_and_groups(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Gibt (home_dict, groups_dict) zurück."""
-    body = data.get("body", {}).get("body", {}) or data.get("body", {})
+    body = data.get("body")
+    if not isinstance(body, dict):
+        return {}, {}
+    body = body.get("body") if isinstance(body.get("body"), dict) else body
     home = body.get("home", {})
     groups = body.get("groups", {})
+    home = home if isinstance(home, dict) else {}
+    groups = groups if isinstance(groups, dict) else {}
     return home, groups
 
 
@@ -132,6 +145,8 @@ def _common_context(system_state_path: str, hmip_count: int = 0) -> Dict[str, An
 
     return {
         "ws_connected": state.conn is not None,
+        "snapshot_ready": state.WS_READY,
+        "app_version": __import__("app").__version__,
         "snapshot_time_str": (datetime.datetime.fromtimestamp(snap_mtime).strftime("%H:%M")
                               if snap_mtime else "–"),
         "snapshot_age_str": _age_str(snap_mtime) if snap_mtime else "–",
@@ -161,8 +176,7 @@ def _categorize(dev_type: str) -> str:
 
 def prepare_device_overview(system_state_path: str) -> Dict[str, Any]:
     """Daten für die Geräteübersicht."""
-    with open(system_state_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    data = _load_view_snapshot(system_state_path)
     room_map = _build_room_map(data)
     devices = []
     counts = {"heating": 0, "sensor": 0, "actor": 0, "other": 0}
@@ -190,8 +204,7 @@ def prepare_device_overview(system_state_path: str) -> Dict[str, Any]:
 
 def prepare_device_detail(system_state_path: str, device_id: str) -> Dict[str, Any]:
     """Daten für die Gerätedetail-Seite."""
-    with open(system_state_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    data = _load_view_snapshot(system_state_path)
     dev_raw = _find_device(data, device_id)
     if not isinstance(dev_raw, dict):
         return {"dev": None, "device_id": device_id, "active_nav": "devices"}
@@ -226,8 +239,7 @@ def prepare_device_detail(system_state_path: str, device_id: str) -> Dict[str, A
 
 def prepare_device_status(system_state_path: str) -> Dict[str, Any]:
     """Daten für die Gerätestatus-Seite."""
-    with open(system_state_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    data = _load_view_snapshot(system_state_path)
     room_map = _build_room_map(data)
     entries = []
     for dev_id, dev in _iter_devices(data):
@@ -280,8 +292,7 @@ def prepare_device_status(system_state_path: str) -> Dict[str, Any]:
 
 def prepare_dashboard(system_state_path: str) -> Dict[str, Any]:
     """Daten für das Dashboard."""
-    with open(system_state_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    data = _load_view_snapshot(system_state_path)
     home, groups = _get_home_and_groups(data)
     weather_raw = home.get("weather") or {}
 
@@ -319,6 +330,10 @@ def prepare_dashboard(system_state_path: str) -> Dict[str, Any]:
         "last_event_type": sec_fh.get("alarmSecurityJournalEntryType", "") if sec_fh else "",
         "last_event_ts": _ts_format(sec_fh.get("alarmEventTimestamp") if sec_fh else None),
     }
+    from app.feature_views import security_data
+    security = security_data(data)
+    presence = [sensor["values"].get("presenceDetected") for sensor in security["sensors"]
+                if isinstance(sensor["values"].get("presenceDetected"), bool)]
 
     # System
     system = {
@@ -365,6 +380,8 @@ def prepare_dashboard(system_state_path: str) -> Dict[str, Any]:
     ctx = {
         "weather": weather,
         "alarm": alarm,
+        "armed_state": security["armed_state"],
+        "presence_reported": any(presence) if presence else None,
         "system": system,
         "heating_groups": heating_groups,
         "heating_count": len(heating_groups_raw),
@@ -378,8 +395,7 @@ def prepare_dashboard(system_state_path: str) -> Dict[str, Any]:
 
 def prepare_heating(system_state_path: str) -> Dict[str, Any]:
     """Daten für die Heizungsseite."""
-    with open(system_state_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    data = _load_view_snapshot(system_state_path)
     home, groups = _get_home_and_groups(data)
 
     # Abwesenheitsmodus
@@ -433,6 +449,13 @@ def prepare_heating(system_state_path: str) -> Dict[str, Any]:
 
         heating_groups.append({
             "label": str(hg.get("label", "–")),
+            "id": hg.get("id", ""),
+            "min_temperature": hg.get("minTemperature") or 5,
+            "max_temperature": hg.get("maxTemperature") or 30,
+            "setpoint": setp,
+            "control_mode": hg.get("controlMode", ""),
+            "controllable": hg.get("controllable") is not False,
+            "boost_allowed": hg.get("boostAllowed") is not False,
             "actual_str": f"{actual:.1f} °C" if isinstance(actual, (int, float)) else "–",
             "setp_str": f"{setp:.1f} °C" if isinstance(setp, (int, float)) else "–",
             "hum_str": f"{hum_val} %" if isinstance(hum_val, (int, float)) else "–",
@@ -534,5 +557,6 @@ def prepare_shelly() -> Dict[str, Any]:
         "offline_names": offline_names,
         "updates_count": updates_count,
         "scan_info": scan_info,
+        "scan_running": status["running"],
         "active_nav": "shelly",
     }

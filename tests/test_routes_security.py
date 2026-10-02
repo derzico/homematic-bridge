@@ -17,23 +17,6 @@ def _authenticate(client, csrf_token: str = "csrf-test-token") -> None:
 
 
 class TestWebPostCsrf:
-    def test_alarm_post_requires_csrf(self, flask_client):
-        state.REQUIRE_API_KEY = True
-        _authenticate(flask_client)
-
-        resp = flask_client.post("/alarm/test-smoke")
-
-        assert resp.status_code == 403
-
-    def test_alarm_post_accepts_valid_csrf(self, flask_client):
-        state.REQUIRE_API_KEY = True
-        _authenticate(flask_client)
-        state.conn = None
-
-        resp = flask_client.post("/alarm/test-smoke", headers={"X-CSRF-Token": "csrf-test-token"})
-
-        assert resp.status_code == 503
-
     def test_shelly_actions_require_csrf(self, flask_client):
         state.REQUIRE_API_KEY = True
         state.config = {"shelly": {"enabled": False}}
@@ -45,6 +28,7 @@ class TestWebPostCsrf:
             ("/shelly/check-updates", None),
             ("/shelly/192.168.1.2/update", None),
             ("/shelly/192.168.1.2/relay/0", {"on": True}),
+            ("/shelly/192.168.1.2/delete", None),
         ]
 
         for path, body in endpoints:
@@ -122,7 +106,7 @@ class TestSafeRedirects:
 
 
 class TestTemplateRendering:
-    def test_dashboard_renders_js_i18n_strings(self, tmp_path):
+    def test_dashboard_omits_unsupported_alarm_controls(self, tmp_path):
         app = Flask(__name__, template_folder="../templates")
         app.secret_key = b"test-secret-key"
         app.config["TESTING"] = True
@@ -136,9 +120,8 @@ class TestTemplateRendering:
         state.REQUIRE_API_KEY = False
         state.config_internal = {"system_state_path": str(snapshot_path)}
 
-        # Force English so the assertion can match the source string verbatim.
         resp = app.test_client().get("/", headers={"Accept-Language": "en"})
 
         assert resp.status_code == 200
-        assert b"test_confirm" in resp.data
-        assert b"{s} seconds" in resp.data
+        assert b"/alarm/test-smoke" not in resp.data
+        assert b"/alarm/clear-smoke" not in resp.data

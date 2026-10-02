@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-05-04 15:55+0200\n"
+"POT-Creation-Date: 2026-10-02 18:40+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -31,39 +31,60 @@ msgstr ""
 msgid "Status"
 msgstr ""
 
-#: templates/base.html:628 templates/dashboard.html:225
+#: templates/base.html:628 templates/dashboard.html:217
 #: templates/devices.html:26 templates/heating.html:3 templates/heating.html:9
 msgid "Heating"
 msgstr ""
 
-#: templates/base.html:629 templates/config.html:36 templates/shelly.html:4
+#: templates/base.html:629 templates/controls.html:2 templates/controls.html:4
+#: templates/heating.html:34
+msgid "Controls"
+msgstr ""
+
+#: templates/base.html:630 templates/security.html:3 templates/security.html:5
+msgid "Security"
+msgstr ""
+
+#: templates/base.html:631 templates/shelly.html:69
+msgid "Energy"
+msgstr ""
+
+#: templates/base.html:632 templates/config.html:36 templates/shelly.html:4
 #: templates/shelly.html:10 templates/shelly.html:27 templates/shelly.html:28
 msgid "Shelly"
 msgstr ""
 
-#: templates/base.html:630
+#: templates/base.html:633
 msgid "Config"
 msgstr ""
 
-#: templates/base.html:631
+#: templates/base.html:634 templates/status.html:9
+msgid "Diagnostics"
+msgstr ""
+
+#: templates/base.html:635
 msgid "Health"
 msgstr ""
 
-#: templates/base.html:641
+#: templates/base.html:645
 msgid "HCU connected"
 msgstr ""
 
-#: templates/base.html:641
+#: templates/base.html:645
 msgid "HCU disconnected"
 msgstr ""
 
-#: templates/base.html:645
+#: templates/base.html:649
 #, python-format
 msgid "%(n)s devices"
 msgstr ""
 
-#: templates/base.html:652
+#: templates/base.html:656
 msgid "Sign out"
+msgstr ""
+
+#: templates/base.html:660
+msgid "Waiting for the HCU snapshot. Existing values may be outdated."
 msgstr ""
 
 #: templates/config.html:3 templates/config.html:9
@@ -148,7 +169,7 @@ msgstr ""
 msgid "lines"
 msgstr ""
 
-#: templates/config.html:133 templates/shelly.html:196
+#: templates/config.html:133 templates/shelly.html:206
 msgid "Checking…"
 msgstr ""
 
@@ -185,6 +206,127 @@ msgstr ""
 msgid "Network error while loading sample"
 msgstr ""
 
+#: templates/control_script.html:23
+msgid "Please sign in again."
+msgstr ""
+
+#: templates/control_script.html:26
+msgid "already applied"
+msgstr ""
+
+#: templates/control_script.html:28
+msgid "HCU acknowledged. The displayed state updates after synchronization."
+msgstr ""
+
+#: templates/controls.html:4 templates/device_detail.html:55
+#: templates/energy.html:12 templates/heating.html:13 templates/security.html:5
+#: templates/status.html:18
+msgid "Refresh"
+msgstr ""
+
+#: templates/controls.html:5
+msgid ""
+"Only configured channels from the current HCU snapshot are offered. "
+"Commands wait for the HCU response."
+msgstr ""
+
+#: templates/controls.html:6
+msgid "Shutters"
+msgstr ""
+
+#: templates/controls.html:7
+msgid ""
+"HCU level: 0–100 percent maps directly to 0–1. Position follows the "
+"configured reference running time, not measured height."
+msgstr ""
+
+#: templates/controls.html:9 templates/controls.html:19
+#: templates/macros.html:129
+msgid "Channel"
+msgstr ""
+
+#: templates/controls.html:12
+msgid "HCU level (percent)"
+msgstr ""
+
+#: templates/controls.html:13
+msgid "Apply position"
+msgstr ""
+
+#: templates/controls.html:14
+msgid "Stop"
+msgstr ""
+
+#: templates/controls.html:16
+msgid "No configured shutter channels found."
+msgstr ""
+
+#: templates/controls.html:17
+msgid "Lights"
+msgstr ""
+
+#: templates/controls.html:22 templates/controls.html:43
+msgid "Dim level (percent)"
+msgstr ""
+
+#: templates/controls.html:24 templates/controls.html:46
+msgid "Hue (0–359)"
+msgstr ""
+
+#: templates/controls.html:25 templates/controls.html:47
+msgid "Saturation (percent)"
+msgstr ""
+
+#: templates/controls.html:26
+msgid "Apply color"
+msgstr ""
+
+#: templates/controls.html:29
+msgid "Color temperature (K)"
+msgstr ""
+
+#: templates/controls.html:30
+msgid "Apply color temperature"
+msgstr ""
+
+#: templates/controls.html:32
+msgid "Apply dim level"
+msgstr ""
+
+#: templates/controls.html:34 templates/controls.html:50
+msgid "HCU scene ID"
+msgstr ""
+
+#: templates/controls.html:35 templates/controls.html:50
+msgid "Start configured scene"
+msgstr ""
+
+#: templates/controls.html:38
+msgid "No configured light channels found."
+msgstr ""
+
+#: templates/controls.html:39
+msgid "Light groups"
+msgstr ""
+
+#: templates/controls.html:44
+msgid "Apply group dim level"
+msgstr ""
+
+#: templates/controls.html:48
+msgid "Apply group color"
+msgstr ""
+
+#: templates/controls.html:52
+msgid "No configured light groups found."
+msgstr ""
+
+#: templates/controls.html:53
+msgid ""
+"Scenes refer to existing HCU scene IDs. No device mode or wiring "
+"configuration is changed."
+msgstr ""
+
 #: templates/dashboard.html:6
 msgid "Overview"
 msgstr ""
@@ -196,247 +338,213 @@ msgid ""
 "%(a)s ago"
 msgstr ""
 
-#: templates/dashboard.html:18
+#: templates/dashboard.html:16
+msgid "Send full state to Loxone"
+msgstr ""
+
+#: templates/dashboard.html:19
 msgid "Sync"
 msgstr ""
 
-#: templates/dashboard.html:29 templates/dashboard.html:138
+#: templates/dashboard.html:30 templates/dashboard.html:139
+#: templates/security.html:9
 msgid "Alarm active"
 msgstr ""
 
-#: templates/dashboard.html:29
-msgid "Alarm disarmed"
-msgstr ""
-
 #: templates/dashboard.html:30
-msgid "Currently active"
+msgid "Alarm inactive"
 msgstr ""
 
-#: templates/dashboard.html:30
-msgid "Currently disarmed"
+#: templates/dashboard.html:30 templates/dashboard.html:31
+#: templates/dashboard.html:40 templates/dashboard.html:49
+#: templates/security.html:8
+msgid "unknown"
 msgstr ""
 
-#: templates/dashboard.html:38
+#: templates/dashboard.html:31 templates/security.html:8
+msgid "Arming state"
+msgstr ""
+
+#: templates/dashboard.html:31 templates/dashboard.html:49
+#: templates/security.html:8 templates/security.html:15
+msgid "Armed"
+msgstr ""
+
+#: templates/dashboard.html:31 templates/dashboard.html:49
+#: templates/security.html:8
+msgid "Partly armed"
+msgstr ""
+
+#: templates/dashboard.html:31 templates/dashboard.html:49
+#: templates/security.html:8
+msgid "Disarmed"
+msgstr ""
+
+#: templates/dashboard.html:39 templates/security.html:15
 msgid "Presence"
 msgstr ""
 
-#: templates/dashboard.html:39
-msgid "At home"
+#: templates/dashboard.html:40
+msgid "Detected"
 msgstr ""
 
-#: templates/dashboard.html:47
-msgid "Night mode"
+#: templates/dashboard.html:40
+msgid "Not detected"
 msgstr ""
 
-#: templates/dashboard.html:48
-msgid "Inactive"
-msgstr ""
-
-#: templates/dashboard.html:56
-msgid "Lighting"
+#: templates/dashboard.html:48 templates/security.html:14
+msgid "Security zones"
 msgstr ""
 
 #: templates/dashboard.html:57
-#, python-format
-msgid "%(n)s heating zones active"
-msgstr ""
-
-#: templates/dashboard.html:66
-msgid "Weather"
+msgid "Heating groups"
 msgstr ""
 
 #: templates/dashboard.html:67
+msgid "Weather"
+msgstr ""
+
+#: templates/dashboard.html:68
 msgid "updated"
 msgstr ""
 
-#: templates/dashboard.html:81 templates/heating.html:36
+#: templates/dashboard.html:82 templates/heating.html:31
 msgid "Humidity"
 msgstr ""
 
-#: templates/dashboard.html:82
+#: templates/dashboard.html:83
 msgid "Wind"
 msgstr ""
 
-#: templates/dashboard.html:83
+#: templates/dashboard.html:84
 msgid "Pressure"
 msgstr ""
 
-#: templates/dashboard.html:90
+#: templates/dashboard.html:91
 msgid "Indoor climate"
 msgstr ""
 
-#: templates/dashboard.html:95
+#: templates/dashboard.html:96
 #, python-format
 msgid "Average across %(n)s heating zones · last 12 h"
 msgstr ""
 
-#: templates/dashboard.html:97 templates/heating.html:33
+#: templates/dashboard.html:98 templates/heating.html:28
 msgid "Actual"
 msgstr ""
 
-#: templates/dashboard.html:98 templates/heating.html:34
-#: templates/macros.html:112
+#: templates/dashboard.html:99 templates/heating.html:29
+#: templates/heating.html:86 templates/macros.html:112
 msgid "Target"
 msgstr ""
 
-#: templates/dashboard.html:105
+#: templates/dashboard.html:106
 msgid "System"
 msgstr ""
 
-#: templates/dashboard.html:107
+#: templates/dashboard.html:108
 msgid "Connected"
 msgstr ""
 
-#: templates/dashboard.html:107
+#: templates/dashboard.html:108
 msgid "Disconnected"
 msgstr ""
 
-#: templates/dashboard.html:111
+#: templates/dashboard.html:112
 msgid "HCU"
 msgstr ""
 
-#: templates/dashboard.html:112 templates/shelly.html:81
+#: templates/dashboard.html:113 templates/shelly.html:82
 msgid "Firmware"
 msgstr ""
 
-#: templates/dashboard.html:114 templates/status.html:83
+#: templates/dashboard.html:115 templates/status.html:83
 msgid "Duty cycle"
 msgstr ""
 
-#: templates/dashboard.html:130
+#: templates/dashboard.html:131
 msgid "Alarm & Security"
 msgstr ""
 
-#: templates/dashboard.html:138
+#: templates/dashboard.html:139
 msgid "No alarm"
 msgstr ""
 
-#: templates/dashboard.html:141
+#: templates/dashboard.html:142
 #, python-format
 msgid "Trigger: %(t)s"
 msgstr ""
 
-#: templates/dashboard.html:143
+#: templates/dashboard.html:144
 #, python-format
 msgid "No triggers since %(t)s"
 msgstr ""
 
-#: templates/dashboard.html:150
+#: templates/dashboard.html:151
 msgid "Intrusion"
 msgstr ""
 
-#: templates/dashboard.html:152 templates/dashboard.html:159
+#: templates/dashboard.html:153 templates/dashboard.html:160
 msgid "ACTIVE"
 msgstr ""
 
-#: templates/dashboard.html:154 templates/dashboard.html:161
+#: templates/dashboard.html:155 templates/dashboard.html:162
 #: templates/status.html:81 templates/status.html:83 templates/status.html:84
 msgid "OK"
 msgstr ""
 
-#: templates/dashboard.html:157
+#: templates/dashboard.html:158
 msgid "Safety"
 msgstr ""
 
-#: templates/dashboard.html:164
+#: templates/dashboard.html:165
 msgid "Last event"
 msgstr ""
 
-#: templates/dashboard.html:167
+#: templates/dashboard.html:168
 msgid "Time"
 msgstr ""
 
-#: templates/dashboard.html:174 templates/dashboard.html:259
-msgid "Test smoke detectors"
-msgstr ""
-
-#: templates/dashboard.html:177 templates/dashboard.html:260
-msgid "Clear alarm"
-msgstr ""
-
-#: templates/dashboard.html:186
+#: templates/dashboard.html:178
 msgid "Device warnings"
 msgstr ""
 
-#: templates/dashboard.html:187
+#: templates/dashboard.html:179
 msgid "All events →"
 msgstr ""
 
-#: templates/dashboard.html:196
+#: templates/dashboard.html:188
 msgid "warning"
 msgstr ""
 
-#: templates/dashboard.html:203
+#: templates/dashboard.html:195
 #, python-format
 msgid "+%(n)s more warnings"
 msgstr ""
 
-#: templates/dashboard.html:212
+#: templates/dashboard.html:204
 msgid "All devices OK"
 msgstr ""
 
-#: templates/dashboard.html:213
+#: templates/dashboard.html:205
 msgid "No warnings in the current snapshot"
 msgstr ""
 
-#: templates/dashboard.html:226
+#: templates/dashboard.html:218
 #, python-format
 msgid "All %(n)s rooms →"
 msgstr ""
 
-#: templates/dashboard.html:236 templates/heating.html:83
+#: templates/dashboard.html:228 templates/heating.html:79
 msgid "Auto"
 msgstr ""
 
-#: templates/dashboard.html:250
-#, python-brace-format
-msgid ""
-"Start smoke detector test?\n"
-"\n"
-"All smoke detectors will beep and flash for {s} seconds,\n"
-"then the signal stops automatically."
-msgstr ""
-
-#: templates/dashboard.html:251
-msgid "Test running…"
-msgstr ""
-
-#: templates/dashboard.html:252
-#, python-brace-format
-msgid "Test active on {n} device(s) – stops in {s}s"
-msgstr ""
-
-#: templates/dashboard.html:253
-msgid "Error:"
-msgstr ""
-
-#: templates/dashboard.html:254
-msgid "Network error – please try again."
-msgstr ""
-
-#: templates/dashboard.html:255
-msgid ""
-"Clear smoke alarm?\n"
-"\n"
-"This turns off the optical and acoustic alarm signal\n"
-"on all smoke detectors."
-msgstr ""
-
-#: templates/dashboard.html:256
-#, python-brace-format
-msgid "✓ Alarm signal cleared on {n} device(s)."
-msgstr ""
-
-#: templates/dashboard.html:257
-msgid "No smoke detectors found."
-msgstr ""
-
-#: templates/dashboard.html:258
-msgid "✓ Sent"
+#: templates/dashboard.html:247
+msgid "Full state sent. UDP delivery cannot be confirmed."
 msgstr ""
 
 #: templates/device_detail.html:4 templates/device_detail.html:10
-#: templates/device_detail.html:12
+#: templates/device_detail.html:12 templates/security.html:19
 msgid "Device"
 msgstr ""
 
@@ -453,7 +561,7 @@ msgid "Back"
 msgstr ""
 
 #: templates/device_detail.html:41 templates/macros.html:90
-#: templates/status.html:39 templates/status.html:82
+#: templates/security.html:15 templates/status.html:39 templates/status.html:82
 msgid "Unreachable"
 msgstr ""
 
@@ -476,12 +584,8 @@ msgstr ""
 msgid "Raw data"
 msgstr ""
 
-#: templates/device_detail.html:55 templates/status.html:18
-msgid "Refresh"
-msgstr ""
-
 #: templates/device_detail.html:61 templates/devices.html:42
-#: templates/devices.html:130 templates/heating.html:32
+#: templates/devices.html:130 templates/heating.html:27
 #: templates/status.html:64
 msgid "Room"
 msgstr ""
@@ -515,7 +619,7 @@ msgstr ""
 msgid "Search by ID, label, room, type …"
 msgstr ""
 
-#: templates/devices.html:25 templates/shelly.html:66
+#: templates/devices.html:25 templates/shelly.html:67
 msgid "All"
 msgstr ""
 
@@ -550,7 +654,7 @@ msgid "Type"
 msgstr ""
 
 #: templates/devices.html:44 templates/devices.html:130
-#: templates/shelly.html:80
+#: templates/shelly.html:81
 msgid "Model"
 msgstr ""
 
@@ -574,6 +678,185 @@ msgstr ""
 msgid "ID"
 msgstr ""
 
+#: templates/energy.html:3 templates/energy.html:9
+msgid "Energy history"
+msgstr ""
+
+#: templates/energy.html:8
+msgid "Private local history"
+msgstr ""
+
+#: templates/energy.html:10
+msgid "Enabled"
+msgstr ""
+
+#: templates/energy.html:10
+msgid "Disabled"
+msgstr ""
+
+#: templates/energy.html:12
+msgid "Disable collection"
+msgstr ""
+
+#: templates/energy.html:12
+msgid "Enable local collection"
+msgstr ""
+
+#: templates/energy.html:16
+msgid ""
+"Energy history is disabled by default. Enable local collection to start a"
+" new history; past consumption cannot be reconstructed."
+msgstr ""
+
+#: templates/energy.html:22
+msgid ""
+"Only existing online Shelly energy meters are read. No scanning or device"
+" commands."
+msgstr ""
+
+#: templates/energy.html:26
+msgid ""
+"Deltas are assigned to the interval end. Daily and monthly totals are "
+"approximate during outages or across midnight; resets and unknown values "
+"are excluded. The first reading only establishes a baseline."
+msgstr ""
+
+#: templates/energy.html:29
+msgid "Collector running"
+msgstr ""
+
+#: templates/energy.html:29
+msgid "Collector stopped"
+msgstr ""
+
+#: templates/energy.html:30
+msgid "Interval (seconds)"
+msgstr ""
+
+#: templates/energy.html:31
+msgid "Retention (days)"
+msgstr ""
+
+#: templates/energy.html:32
+msgid "Timezone"
+msgstr ""
+
+#: templates/energy.html:35
+msgid "Collection or push failed. Existing history is preserved."
+msgstr ""
+
+#: templates/energy.html:38
+msgid "Today"
+msgstr ""
+
+#: templates/energy.html:38
+msgid "This month"
+msgstr ""
+
+#: templates/energy.html:41
+msgid "Import"
+msgstr ""
+
+#: templates/energy.html:42
+msgid "Export"
+msgstr ""
+
+#: templates/energy.html:46
+msgid "Meter details"
+msgstr ""
+
+#: templates/energy.html:48
+msgid "No valid readings yet. Missing values are shown as a dash, not zero."
+msgstr ""
+
+#: templates/energy.html:53
+msgid "Meter"
+msgstr ""
+
+#: templates/energy.html:55
+msgid "Last reading"
+msgstr ""
+
+#: templates/energy.html:55
+msgid "Stale"
+msgstr ""
+
+#: templates/energy.html:56
+msgid "Power"
+msgstr ""
+
+#: templates/energy.html:57
+msgid "Voltage"
+msgstr ""
+
+#: templates/energy.html:58
+msgid "Current"
+msgstr ""
+
+#: templates/energy.html:59
+msgid "Power factor"
+msgstr ""
+
+#: templates/energy.html:60
+msgid "Raw import counter"
+msgstr ""
+
+#: templates/energy.html:61
+msgid "Raw export counter"
+msgstr ""
+
+#: templates/energy.html:62
+msgid "Today (import / export)"
+msgstr ""
+
+#: templates/energy.html:63
+msgid "Month (import / export)"
+msgstr ""
+
+#: templates/energy.html:67
+msgid "Daily totals"
+msgstr ""
+
+#: templates/energy.html:67
+msgid "Monthly totals"
+msgstr ""
+
+#: templates/energy.html:72
+msgid "Period"
+msgstr ""
+
+#: templates/energy.html:72
+msgid "Import (kWh)"
+msgstr ""
+
+#: templates/energy.html:72
+msgid "Export (kWh)"
+msgstr ""
+
+#: templates/energy.html:72
+msgid "Notes"
+msgstr ""
+
+#: templates/energy.html:77
+msgid "Approximation"
+msgstr ""
+
+#: templates/energy.html:77
+msgid "Sampling gap"
+msgstr ""
+
+#: templates/energy.html:77
+msgid "Across midnight"
+msgstr ""
+
+#: templates/energy.html:78
+msgid "Counter resets (import / export)"
+msgstr ""
+
+#: templates/energy.html:80
+msgid "No history yet."
+msgstr ""
+
 #: templates/heating.html:8
 msgid "Climate"
 msgstr ""
@@ -586,60 +869,72 @@ msgstr ""
 msgid "Outdoor temperature"
 msgstr ""
 
-#: templates/heating.html:14
-msgid "Automatic"
-msgstr ""
-
-#: templates/heating.html:15
-msgid "Absent"
-msgstr ""
-
-#: templates/heating.html:16 templates/heating.html:79
-msgid "Party"
-msgstr ""
-
 #: templates/heating.html:18
-msgid "Boost all"
-msgstr ""
-
-#: templates/heating.html:23
 msgid "Avg actual"
 msgstr ""
 
-#: templates/heating.html:24
+#: templates/heating.html:19
 msgid "Avg target"
 msgstr ""
 
-#: templates/heating.html:25
+#: templates/heating.html:20
 msgid "Avg valve"
 msgstr ""
 
-#: templates/heating.html:26
+#: templates/heating.html:21
 msgid "Avg humidity"
 msgstr ""
 
-#: templates/heating.html:37
+#: templates/heating.html:32
 msgid "Valve"
 msgstr ""
 
-#: templates/heating.html:38
+#: templates/heating.html:33
 msgid "Mode"
 msgstr ""
 
-#: templates/heating.html:77
+#: templates/heating.html:73
 msgid "Boost"
 msgstr ""
 
-#: templates/heating.html:81
+#: templates/heating.html:75
+msgid "Party"
+msgstr ""
+
+#: templates/heating.html:77 templates/heating.html:91
 msgid "Manual"
 msgstr ""
 
-#: templates/heating.html:88
-msgid "No heating groups found."
+#: templates/heating.html:87
+msgid "Apply"
+msgstr ""
+
+#: templates/heating.html:91
+msgid "Automatic"
+msgstr ""
+
+#: templates/heating.html:92
+msgid "Apply mode"
+msgstr ""
+
+#: templates/heating.html:96
+msgid "Boost on"
+msgstr ""
+
+#: templates/heating.html:96
+msgid "Boost off"
 msgstr ""
 
 #: templates/heating.html:97
-msgid "Boost all: not implemented yet"
+msgid "Apply boost"
+msgstr ""
+
+#: templates/heating.html:99
+msgid "Not controllable"
+msgstr ""
+
+#: templates/heating.html:103
+msgid "No heating groups found."
 msgstr ""
 
 #: templates/login.html:3 templates/login.html:13 templates/login.html:30
@@ -674,7 +969,7 @@ msgstr ""
 msgid "No data"
 msgstr ""
 
-#: templates/macros.html:101 templates/shelly.html:67
+#: templates/macros.html:101 templates/shelly.html:68
 msgid "On"
 msgstr ""
 
@@ -690,8 +985,54 @@ msgstr ""
 msgid "Window closed"
 msgstr ""
 
-#: templates/macros.html:129
-msgid "Channel"
+#: templates/security.html:6
+msgid "Read-only overview. Armed zones and active alarms are separate states."
+msgstr ""
+
+#: templates/security.html:10
+msgid "Intrusion alarm"
+msgstr ""
+
+#: templates/security.html:11
+msgid "Safety alarm"
+msgstr ""
+
+#: templates/security.html:13
+msgid "Activation in progress"
+msgstr ""
+
+#: templates/security.html:15
+msgid "Zone"
+msgstr ""
+
+#: templates/security.html:15
+msgid "Windows"
+msgstr ""
+
+#: templates/security.html:15
+msgid "Motion"
+msgstr ""
+
+#: templates/security.html:16
+msgid "No security zone state available."
+msgstr ""
+
+#: templates/security.html:18
+msgid "Contacts, presence and smoke detectors"
+msgstr ""
+
+#: templates/security.html:19
+msgid "Reported values"
+msgstr ""
+
+#: templates/security.html:20
+msgid "No sensor state available."
+msgstr ""
+
+#: templates/security.html:22
+msgid ""
+"Missing values mean unknown, not safe or disarmed. Smoke alarms are never"
+" automatically acknowledged."
 msgstr ""
 
 #: templates/shelly.html:11
@@ -715,161 +1056,182 @@ msgstr ""
 msgid "%(on)s/%(total)s online · auto-refresh: 60s"
 msgstr ""
 
-#: templates/shelly.html:35 templates/shelly.html:195
+#: templates/shelly.html:35 templates/shelly.html:205
 msgid "Check for updates"
 msgstr ""
 
-#: templates/shelly.html:36 templates/shelly.html:198
+#: templates/shelly.html:36 templates/shelly.html:208
 msgid "Refresh status"
 msgstr ""
 
-#: templates/shelly.html:37 templates/shelly.html:189
+#: templates/shelly.html:37 templates/shelly.html:194
 msgid "Scan network"
 msgstr ""
 
-#: templates/shelly.html:43
+#: templates/shelly.html:38 templates/shelly.html:195
+msgid "Rebuild device list"
+msgstr ""
+
+#: templates/shelly.html:44
 #, python-format
 msgid "%(num)s device unreachable"
 msgid_plural "%(num)s devices unreachable"
 msgstr[0] ""
 msgstr[1] ""
 
-#: templates/shelly.html:45
+#: templates/shelly.html:46
 msgid "– may be temporary, will be updated on next scan/refresh"
 msgstr ""
 
-#: templates/shelly.html:51
+#: templates/shelly.html:52
 #, python-format
 msgid "%(num)s firmware update available"
 msgid_plural "%(num)s firmware updates available"
 msgstr[0] ""
 msgstr[1] ""
 
-#: templates/shelly.html:52
+#: templates/shelly.html:53
 msgid "– update button in the firmware column"
 msgstr ""
 
-#: templates/shelly.html:59
+#: templates/shelly.html:60
 msgid "Search…"
 msgstr ""
 
-#: templates/shelly.html:68
-msgid "Energy"
-msgstr ""
-
-#: templates/shelly.html:69
+#: templates/shelly.html:70
 msgid "Offline"
 msgstr ""
 
-#: templates/shelly.html:75
+#: templates/shelly.html:76
 msgid "No devices found yet. Start a scan."
 msgstr ""
 
-#: templates/shelly.html:80
+#: templates/shelly.html:81
 msgid "Name"
 msgstr ""
 
-#: templates/shelly.html:80
+#: templates/shelly.html:81
 msgid "Gen"
 msgstr ""
 
-#: templates/shelly.html:80
+#: templates/shelly.html:81
 msgid "IP"
 msgstr ""
 
-#: templates/shelly.html:80
+#: templates/shelly.html:81
 msgid "MAC"
 msgstr ""
 
-#: templates/shelly.html:81
+#: templates/shelly.html:82
 msgid "WLAN"
 msgstr ""
 
-#: templates/shelly.html:81
+#: templates/shelly.html:82
 msgid "Status / Control"
 msgstr ""
 
-#: templates/shelly.html:81
+#: templates/shelly.html:82
 msgid "Last seen"
 msgstr ""
 
-#: templates/shelly.html:90
+#: templates/shelly.html:82
+msgid "Actions"
+msgstr ""
+
+#: templates/shelly.html:91
 msgid "offline"
 msgstr ""
 
-#: templates/shelly.html:108
+#: templates/shelly.html:109
 msgid "unreachable"
 msgstr ""
 
-#: templates/shelly.html:133
+#: templates/shelly.html:134
 msgid "Total:"
 msgstr ""
 
-#: templates/shelly.html:144 templates/shelly.html:160
+#: templates/shelly.html:145 templates/shelly.html:161
 msgid "ON"
 msgstr ""
 
-#: templates/shelly.html:144 templates/shelly.html:160
+#: templates/shelly.html:145 templates/shelly.html:161
 msgid "OFF"
 msgstr ""
 
-#: templates/shelly.html:185
-msgid "Failed to switch"
-msgstr ""
-
-#: templates/shelly.html:186
-msgid "Network error"
-msgstr ""
-
-#: templates/shelly.html:187
-msgid "Scan running…"
-msgstr ""
-
-#: templates/shelly.html:188
-msgid "Scan started – please wait…"
+#: templates/shelly.html:175 templates/shelly.html:199
+msgid "Delete"
 msgstr ""
 
 #: templates/shelly.html:190
+msgid "Failed to switch"
+msgstr ""
+
+#: templates/shelly.html:191
+msgid "Network error"
+msgstr ""
+
+#: templates/shelly.html:192
+msgid "Scan running…"
+msgstr ""
+
+#: templates/shelly.html:193
+msgid "Scan started – please wait…"
+msgstr ""
+
+#: templates/shelly.html:196
+msgid ""
+"Rebuild the device list? Only devices found in this scan will be kept. "
+"Devices that are currently offline will also be removed."
+msgstr ""
+
+#: templates/shelly.html:197
+#, python-brace-format
+msgid ""
+"Remove {name} ({ip}) from the device list? The device itself will not be "
+"changed. If it is still reachable, a future scan will discover it again."
+msgstr ""
+
+#: templates/shelly.html:198
+msgid "Deleting…"
+msgstr ""
+
+#: templates/shelly.html:200
 #, python-brace-format
 msgid ""
 "Start firmware update for {ip}?\n"
 "Device will be unreachable during update."
 msgstr ""
 
-#: templates/shelly.html:191
+#: templates/shelly.html:201
 msgid "Update running…"
 msgstr ""
 
-#: templates/shelly.html:192
+#: templates/shelly.html:202
 msgid "Restarting…"
 msgstr ""
 
-#: templates/shelly.html:193
+#: templates/shelly.html:203
 msgid "Update failed"
 msgstr ""
 
-#: templates/shelly.html:194
+#: templates/shelly.html:204
 msgid "Update"
 msgstr ""
 
-#: templates/shelly.html:197
+#: templates/shelly.html:207
 msgid "Waiting for devices (5s)…"
 msgstr ""
 
-#: templates/shelly.html:199
+#: templates/shelly.html:209
 msgid "Refreshing…"
 msgstr ""
 
-#: templates/shelly.html:200
+#: templates/shelly.html:210
 msgid "Error"
 msgstr ""
 
 #: templates/status.html:4 templates/status.html:10
 msgid "Device status"
-msgstr ""
-
-#: templates/status.html:9
-msgid "Diagnostics"
 msgstr ""
 
 #: templates/status.html:11

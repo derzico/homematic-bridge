@@ -87,6 +87,12 @@ class TestValidateConfig:
         errors = validate_config(cfg)
         assert any("friendly_name" in e for e in errors)
 
+    def test_friendly_name_requires_german_name(self):
+        cfg = _valid_config()
+        cfg["friendly_name"] = {"en": "Bridge"}
+        errors = validate_config(cfg)
+        assert any("friendly_name.de" in e for e in errors)
+
 
 class TestValidateInternalConfig:
     def test_valid(self):
@@ -101,6 +107,11 @@ class TestValidateInternalConfig:
         cfg = {"system_state_path": "x", "log_level": "verbose"}
         errors = validate_internal_config(cfg)
         assert any("log_level" in e for e in errors)
+
+    def test_ack_timeout_range(self):
+        cfg = {"system_state_path": "x", "ack_timeout_seconds": 0}
+        errors = validate_internal_config(cfg)
+        assert any("ack_timeout_seconds" in e for e in errors)
 
     def test_not_a_dict(self):
         errors = validate_internal_config("string")

@@ -27,6 +27,15 @@ LOXONE_UDP_PORT: int = 7777
 # Health / Timeouts
 STALE_SEC: float = 60.0
 PENDING_TTL: float = 60.0
+ACK_TIMEOUT_SEC: float = 3.0
+
+# WebSocket-Telemetrie
+WS_CONNECTED_AT: Optional[float] = None
+WS_LAST_MESSAGE_AT: Optional[float] = None
+WS_LAST_ERROR: Optional[str] = None
+WS_RECONNECTS: int = 0
+WS_READY: bool = False
+WS_PLUGIN_ID: Optional[str] = None
 
 # Konfiguration (wird von main.py gesetzt)
 config: Dict[str, Any] = {}
@@ -35,3 +44,4 @@ config_lock = Lock()  # schützt config / config_internal vor gleichzeitigem Les
 
 # Adapter-Registry (wird von main.py gesetzt)
 adapter_registry: Optional[Any] = None  # Type: AdapterRegistry (vermeidet zirkulären Import)
+runtime_services: Optional[Any] = None

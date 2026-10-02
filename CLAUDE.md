@@ -82,15 +82,23 @@ Neue Drittsysteme werden als Adapter unter `app/adapters/` integriert:
 ### HTTP-API Endpunkte (Übersicht)
 - `POST /hmipSwitch` – Schalten
 - `POST /hmipDimmer` – Dimmen
-- `POST /hmipRGB` – RGB-Licht (Format: `R=255,G=128,B=0`)
-- `POST /hmipThermostat` – Solltemperatur setzen (4.5–30.5 °C)
-- `POST /hmipAlarm` – Alarmsirenen (mode: optical/acoustic/both/off)
+- `POST /hmipRGB` – RGB-Licht (Format: `R=100,G=50,B=0`, Prozentwerte)
+- `POST /hmipThermostat` – Solltemperatur einer Heizgruppe setzen (`group`, `temperature`)
+- `POST /hmipAlarm` – ALARM_SWITCHING-Gruppe schalten (`on`, optional `group`)
 - `POST /hmipIrrigation` – Bewässerungsventil
 - `GET /hmipState` – Gerätezustand aus Snapshot
-- `POST /alarm/test-smoke` / `POST /alarm/clear-smoke` – Rauchmelder-Test/-Reset (Web-Auth)
 - `POST /shelly/<ip>/relay/<ch>` – Shelly schalten
 - `GET /shelly/<ip>/webui/` – Weiterleitung zur isolierten Shelly WebUI
 - `GET /healthz` – Healthcheck
+
+HmIP-Steuerbefehle warten bis zu `ack_timeout_seconds` auf die korrelierte
+HCU-Antwort. `/healthz` liefert bei getrennter Verbindung, fehlendem gültigem
+Vollsnapshot oder ausgefallenem Adapter HTTP 503, nicht allein bei alter Datei-mtime.
+
+Version 1.19: snapshotvalidierte `/hmipShutter`, `/hmipHeating`, `/hmipLight`;
+session-/CSRF-geschützte Browsersteuerung `/control/<kind>`, Security-Anzeige,
+Loxone-Vollsync und optionale lokale Shelly-Energiehistorie. Details unter
+`docs/releases/1.19.0.md`. Keine echten Gerätebefehle in Tests verwenden.
 
 ## Konventionen
 

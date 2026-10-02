@@ -30,12 +30,43 @@ HCU (WebSocket) --> homematic-bridge --> Loxone Miniserver (UDP)
 | Feature | Description |
 |---|---|
 | **Real-time events** | WebSocket connection to the HCU with snapshot and delta merge |
-| **Loxone UDP push** | Sends every HmIP state change as a UDP packet to the Miniserver |
-| **HTTP API** | Switches, dimmers, RGB lights, shutters, thermostats, alarms, irrigation |
+| **Loxone UDP push** | Device, home and group events; initial, periodic and manually requested full state |
+| **HTTP API** | Switching, dimming, RGB, shutter position/stop, heating-group setpoint/mode/boost, siren group and irrigation |
 | **Shelly integration** | Auto scan for Gen1/Gen2/Gen3 devices, control, and safe device Web UI links |
-| **Web interface** | Dashboard, heating view, device overview, configuration editor |
+| **Web interface** | Dashboard, working heating/light/shutter controls, security status, diagnostics and configuration |
+| **Local energy history** | Optional: existing online Shelly meters, power and import/export totals, no cloud |
 | **API key auth** | Optional protection for API endpoints |
 | **Docker deployment** | Production-oriented setup with Docker Compose |
+
+Control commands are accepted only after a successful HCU acknowledgement. The
+API returns `503`, `502`, or `504` for connection failures, rejected commands,
+or timeouts. `/healthz` returns `503` for disconnected connections, missing/invalid
+full snapshots or unhealthy adapters. An old state-change timestamp alone is not
+a failure. After 30 seconds without messages, a read-only HCU request checks
+end-to-end liveness with a response deadline; a missing response causes reconnect.
+
+External Shelly control: `POST /api/shelly/<ip>/relay/<channel>` with `X-API-Key`
+and JSON `{"on": true}`. The device and channel must be present in the cache.
+The browser endpoint still requires a session and CSRF token. Gen2+ uses Digest
+authentication and discovers actual switch component IDs on every refresh.
+
+Changes to HCU host, token, plugin ID or TLS settings rebuild the connection.
+Docker mounts the configuration directory for atomic file replacement, while
+the certificate remains separately read-only. Preserve existing config/data on update.
+
+The Shelly page (`/shelly`) allows individual devices to be deleted from the
+cache after confirmation. **Rebuild device list** replaces the list with the
+devices found by a successful scan; temporarily offline devices are removed
+as well. **Scan network** continues to retain known offline devices. A deleted
+device that is still reachable will be discovered again by a future scan.
+
+New in **1.19.0**: `/controls`, `/security`, `/energy` and `/diagnostics`.
+Energy collection is off by default; enable it explicitly on `/energy`.
+The local override lives in `config/energy.yaml`, history in `data/energy.sqlite3`.
+The first reading establishes a baseline, not reconstructed past consumption.
+Light controls follow declared channel capabilities, not model names or
+`channelActive`. Arming follows security zones, not the security solution flag.
+Payloads, units and update notes: [1.19.0 release documentation (German)](docs/releases/1.19.0.md).
 
 ---
 
@@ -84,6 +115,21 @@ api_key:
 require_api_key: true
 api_key_file: data/api_key.txt
 ```
+
+### Triggering the siren via HTTP/Loxone
+
+```http
+POST /hmipAlarm
+X-API-Key: <api-key>
+Content-Type: application/json
+
+{"on": true}
+```
+
+Use `{"on": false}` to stop the siren. The bridge automatically resolves the
+HCU's `ALARM_SWITCHING` group; alternatively provide it explicitly with
+`{"group": "<group-id>", "on": true}`. Signal pattern and duration are defined
+by the HCU group configuration.
 
 ---
 

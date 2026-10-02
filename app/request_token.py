@@ -20,7 +20,10 @@ config_internal = load_internal_config()
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 PLUGIN_ID = config.get("plugin_id") or "de.schnellniclas.homematic-bridge"
-FRIENDLY_NAME = config.get("friendly_name") or {"en": "Homematic Bridge"}
+FRIENDLY_NAME = config.get("friendly_name") or {
+    "de": "Homematic Bridge",
+    "en": "Homematic Bridge",
+}
 CONFIG_FILE = "config/config.yaml"
 
 HEADERS = {

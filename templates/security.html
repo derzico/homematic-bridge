@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "macros.html" import val_html %}
+{% block title %}{{ _("Security") }} – Homematic Bridge{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{{ _("Security") }}</h1><button class="btn ghost" onclick="location.reload()">{{ _("Refresh") }}</button></div>
+<p>{{ _("Read-only overview. Armed zones and active alarms are separate states.") }}</p>
+<div class="stat-row">
+<div class="stat-card"><div class="k">{{ _("Arming state") }}</div><div class="v">{{ {"armed": _("Armed"), "partly_armed": _("Partly armed"), "disarmed": _("Disarmed"), "unknown": _("unknown")}.get(armed_state, _("unknown")) }}</div></div>
+<div class="stat-card"><div class="k">{{ _("Alarm active") }}</div><div class="v">{{ val_html(alarm_active) }}</div></div>
+<div class="stat-card"><div class="k">{{ _("Intrusion alarm") }}</div><div class="v">{{ val_html(intrusion_alarm_active) }}</div></div>
+<div class="stat-card"><div class="k">{{ _("Safety alarm") }}</div><div class="v">{{ val_html(safety_alarm_active) }}</div></div>
+</div>
+<p>{{ _("Activation in progress") }}: {{ val_html(activation_in_progress) }}</p>
+<h2>{{ _("Security zones") }}</h2>
+<table class="data-table"><thead><tr><th>{{ _("Zone") }}</th><th>{{ _("Armed") }}</th><th>{{ _("Windows") }}</th><th>{{ _("Presence") }}</th><th>{{ _("Motion") }}</th><th>{{ _("Unreachable") }}</th></tr></thead><tbody>
+{% for zone in zones %}<tr><td>{{ zone.label }}</td><td>{{ val_html(zone.active) }}</td><td>{{ val_html(zone.windowState) }}</td><td>{{ val_html(zone.presenceDetected) }}</td><td>{{ val_html(zone.motionDetected) }}</td><td>{{ val_html(zone.unreach) }}</td></tr>{% else %}<tr><td colspan="6">{{ _("No security zone state available.") }}</td></tr>{% endfor %}
+</tbody></table>
+<h2>{{ _("Contacts, presence and smoke detectors") }}</h2>
+<table class="data-table"><thead><tr><th>{{ _("Device") }}</th><th>{{ _("Reported values") }}</th></tr></thead><tbody>
+{% for sensor in sensors %}<tr><td><a href="/devices/{{ sensor.id | urlencode }}">{{ sensor.label }}</a></td><td>{% for key,value in sensor['values'].items() %}<span class="pill">{{ key }}: {{ val_html(value) }}</span> {% endfor %}</td></tr>{% else %}<tr><td colspan="2">{{ _("No sensor state available.") }}</td></tr>{% endfor %}
+</tbody></table>
+<p>{{ _("Missing values mean unknown, not safe or disarmed. Smoke alarms are never automatically acknowledged.") }}</p>
+{% endblock %}

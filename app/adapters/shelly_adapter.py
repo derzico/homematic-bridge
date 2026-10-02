@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 
 import requests
+from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 
 import app.state as state
 from app.adapters.base import BaseAdapter, Device, DeviceCapability, DeviceChannel
@@ -52,6 +53,10 @@ _scan_started: Optional[float] = None
 _scan_error: Optional[str] = None
 
 
+class ScanInProgressError(RuntimeError):
+    """Cache-Löschung ist während einer Geräteerkennung nicht möglich."""
+
+
 def scan_status() -> Dict[str, Any]:
     with _scan_lock:
         return {
@@ -63,19 +68,29 @@ def scan_status() -> Dict[str, Any]:
 
 # ── HTTP-Helpers ──────────────────────────────────────────────────────────────
 
-def _get(ip: str, path: str, timeout: float) -> Optional[Dict]:
-    """GET mit optionaler Auth. Bei 401 wird ohne Auth wiederholt (gemischte Umgebungen)."""
-    url = f"http://{ip}{path}"
+def _http_auth(path: str):
     creds = get_credentials()
+    if not creds:
+        return None
+    # RPC devices use a fixed admin account and SHA-256 Digest challenges.
+    return HTTPDigestAuth("admin", creds[1]) if path.startswith("/rpc/") else HTTPBasicAuth(*creds)
+
+
+def _get(ip: str, path: str, timeout: float) -> Optional[Dict]:
+    """Read-only request with generation-appropriate authentication."""
+    url = f"http://{ip}{path}"
     try:
-        r = requests.get(url, auth=creds, timeout=timeout)
+        r = requests.get(url, auth=_http_auth(path), timeout=timeout)
         if r.status_code == 200:
-            return r.json()
-        if r.status_code == 401 and creds:
-            # Gerät hat kein Passwort – ohne Auth nochmals versuchen
-            r2 = requests.get(url, timeout=timeout)
-            if r2.status_code == 200:
-                return r2.json()
+            payload = r.json()
+            return payload if isinstance(payload, dict) else None
+        if r.status_code == 401 and get_credentials() and not path.startswith("/rpc/"):
+            # Retain compatibility with Gen1 devices rejecting a Basic header
+            # on public endpoints. Never bypass/retry a failed RPC challenge.
+            response = requests.get(url, timeout=timeout)
+            if response.status_code == 200:
+                payload = response.json()
+                return payload if isinstance(payload, dict) else None
     except Exception:
         log.debug("Shelly GET %s fehlgeschlagen", url, exc_info=True)
     return None
@@ -84,11 +99,8 @@ def _get(ip: str, path: str, timeout: float) -> Optional[Dict]:
 def _post(ip: str, path: str, timeout: float, **kwargs) -> Optional[requests.Response]:
     """POST mit optionaler Auth."""
     url = f"http://{ip}{path}"
-    creds = get_credentials()
     try:
-        r = requests.post(url, auth=creds, timeout=timeout, **kwargs)
-        if r.status_code == 401 and creds:
-            r = requests.post(url, timeout=timeout, **kwargs)
+        r = requests.post(url, auth=_http_auth(path), timeout=timeout, **kwargs)
         return r
     except Exception:
         log.exception("Shelly POST %s fehlgeschlagen", url)
@@ -151,10 +163,12 @@ def _get_status_gen1(ip: str, timeout: float) -> Dict:
 
 
 def _get_status_gen2(ip: str, num_channels: int, timeout: float) -> Dict:
+    """Discover actual switch component IDs on every refresh (including gaps)."""
+    data = _get(ip, "/rpc/Shelly.GetStatus", timeout) or {}
     channels: Dict[str, Any] = {}
-    for i in range(num_channels):
-        sw = _get(ip, f"/rpc/Switch.GetStatus?id={i}", timeout) or {}
-        if sw:
+    for key, sw in data.items():
+        if key.startswith("switch:") and key[7:].isdecimal() and isinstance(sw, dict):
+            i = int(key[7:])
             aenergy = sw.get("aenergy") or {}
             channels[str(i)] = {
                 "on":        sw.get("output", False),
@@ -163,8 +177,8 @@ def _get_status_gen2(ip: str, num_channels: int, timeout: float) -> Dict:
                 "current":   sw.get("current"),
                 "total_kwh": round(aenergy.get("total", 0) / 1000, 3) if aenergy.get("total") is not None else None,
             }
-    wifi = _get(ip, "/rpc/Wifi.GetStatus", timeout) or {}
-    sys_status = _get(ip, "/rpc/Sys.GetStatus", timeout) or {}
+    wifi = data.get("wifi") or {}
+    sys_status = data.get("sys") or {}
     avail = sys_status.get("available_updates") or {}
     new_fw = (avail.get("stable") or {}).get("version", "")
     return {
@@ -232,11 +246,19 @@ def _probe_ip(ip: str, timeout: float) -> Optional[Dict[str, Any]]:
 
 # ── Scan ──────────────────────────────────────────────────────────────────────
 
-def _run_scan(subnet: str, timeout_sec: float, include_mdns: bool) -> None:
+def _run_scan(
+    subnet: str, timeout_sec: float, include_mdns: bool, replace_cache: bool = False,
+) -> None:
     global _scan_running, _scan_error
     try:
         found: List[Dict] = []
         seen_ips: set = set()
+
+        subnet_error = validate_shelly_subnet(subnet)
+        if subnet_error:
+            with _scan_lock:
+                _scan_error = f"Ungültiges Subnet '{subnet}': {subnet_error}"
+            return
 
         # mDNS-Scan (optional)
         if include_mdns:
@@ -246,12 +268,6 @@ def _run_scan(subnet: str, timeout_sec: float, include_mdns: bool) -> None:
                 seen_ips.add(dev["ip"])
 
         # Netzwerk-Sweep
-        subnet_error = validate_shelly_subnet(subnet)
-        if subnet_error:
-            with _scan_lock:
-                _scan_error = f"Ungültiges Subnet '{subnet}': {subnet_error}"
-                _scan_running = False
-            return
         network = ipaddress.ip_network(subnet, strict=False)
 
         hosts = [str(h) for h in network.hosts() if str(h) not in seen_ips]
@@ -266,7 +282,8 @@ def _run_scan(subnet: str, timeout_sec: float, include_mdns: bool) -> None:
                     log.info(f"Shelly: {dev['name']} ({dev['ip']}, Gen{dev['gen']})")
 
         # Geräte aus altem Cache die nicht mehr gefunden wurden → offline markieren
-        old_cache = {d["ip"]: d for d in load_cached()}
+        # Vollständiges Neueinlesen ersetzt erst nach erfolgreichem Scan den Cache.
+        old_cache = {} if replace_cache else {d["ip"]: d for d in load_cached()}
         new_ips = {d["ip"] for d in found}
         for ip, old_dev in old_cache.items():
             if ip not in new_ips:
@@ -293,8 +310,11 @@ def _run_scan(subnet: str, timeout_sec: float, include_mdns: bool) -> None:
             _scan_running = False
 
 
-def start_scan(subnet: str, timeout_sec: float = 1.5, include_mdns: bool = True) -> bool:
-    """Startet Scan im Hintergrund. Gibt False zurück wenn Scan bereits läuft."""
+def start_scan(
+    subnet: str, timeout_sec: float = 1.5, include_mdns: bool = True,
+    *, replace_cache: bool = False,
+) -> bool:
+    """Startet Scan; replace_cache verwirft nicht mehr gefundene Geräte."""
     global _scan_running, _scan_started, _scan_error
     with _scan_lock:
         if _scan_running:
@@ -303,7 +323,7 @@ def start_scan(subnet: str, timeout_sec: float = 1.5, include_mdns: bool = True)
         _scan_started = time.time()
         _scan_error = None
     t = threading.Thread(
-        target=_run_scan, args=(subnet, timeout_sec, include_mdns), daemon=True
+        target=_run_scan, args=(subnet, timeout_sec, include_mdns, replace_cache), daemon=True
     )
     t.start()
     return True
@@ -347,43 +367,75 @@ def _mdns_scan(timeout_sec: float = 3.0) -> List[Dict[str, Any]]:
 
 # ── Cache ─────────────────────────────────────────────────────────────────────
 
+def _load_cached_unlocked() -> List[Dict[str, Any]]:
+    """Lädt den Cache; Aufrufer muss _cache_lock halten."""
+    try:
+        with open(_SHELLY_CACHE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
 def load_cached() -> List[Dict[str, Any]]:
     with _cache_lock:
-        try:
-            with open(_SHELLY_CACHE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return []
+        return _load_cached_unlocked()
 
 
-def save_cache(devices: List[Dict[str, Any]]) -> None:
+def _save_cache_unlocked(devices: List[Dict[str, Any]]) -> None:
+    """Schreibt den Cache atomar; Aufrufer muss _cache_lock halten."""
     cache_dir = os.path.dirname(_SHELLY_CACHE) or "."
     os.makedirs(cache_dir, exist_ok=True)
     data = json.dumps(devices, indent=2)
-    with _cache_lock:
-        fd, tmp = tempfile.mkstemp(prefix=".shelly_", suffix=".json", dir=cache_dir)
+    fd, tmp = tempfile.mkstemp(prefix=".shelly_", suffix=".json", dir=cache_dir)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(data)
+        os.replace(tmp, _SHELLY_CACHE)
+    except Exception:
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(data)
-            os.replace(tmp, _SHELLY_CACHE)
-        except Exception:
-            try:
-                os.remove(tmp)
-            except OSError:
-                pass
-            raise
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def save_cache(devices: List[Dict[str, Any]]) -> None:
+    with _cache_lock:
+        _save_cache_unlocked(devices)
+
+
+def delete_cached_device(ip: str) -> bool:
+    """Entfernt einen Cache-Eintrag, ohne das Gerät selbst zu verändern."""
+    with _scan_lock:
+        if _scan_running:
+            raise ScanInProgressError("Gerätelöschung während eines Scans nicht möglich")
+        with _cache_lock:
+            cached = _load_cached_unlocked()
+            remaining = [device for device in cached if device.get("ip") != ip]
+            if len(remaining) == len(cached):
+                return False
+            _save_cache_unlocked(remaining)
+    log.info("Shelly aus Geräteübersicht entfernt: %s", ip)
+    return True
 
 
 def refresh_device(ip: str, gen: int) -> Optional[Dict]:
     """Aktualisiert Status eines einzelnen Geräts und speichert in Cache."""
     cached = {d["ip"]: d for d in load_cached()}
-    num_ch = len(cached[ip].get("channels", {"0": None})) if ip in cached else 1
+    if ip not in cached:
+        return None
+    num_ch = len(cached[ip].get("channels", {"0": None}))
     if gen == 2:
         status = _get_status_gen2(ip, num_ch, timeout=3.0)
     else:
         status = _get_status_gen1(ip, timeout=3.0)
 
-    if ip in cached:
+    # Nach der Netzwerkanfrage den aktuellen Cache lesen: zwischenzeitliche
+    # Löschungen oder ein vollständiger Scan dürfen nicht rückgängig werden.
+    with _cache_lock:
+        cached = {d["ip"]: d for d in _load_cached_unlocked()}
+        if ip not in cached:
+            return None
         # Gerät nicht erreichbar wenn keine Channel/Emeter-Daten zurückkamen
         reachable = bool(status.get("channels") or status.get("emeters") or status.get("rssi") is not None)
         cached[ip].update({
@@ -395,7 +447,7 @@ def refresh_device(ip: str, gen: int) -> Optional[Dict]:
             "new_fw":          status.get("new_fw", ""),
             "last_seen":       int(time.time()) if reachable else cached[ip].get("last_seen"),
         })
-        save_cache(list(cached.values()))
+        _save_cache_unlocked(list(cached.values()))
         return cached[ip]
     return None
 
@@ -405,22 +457,20 @@ def refresh_all_devices() -> int:
     devices = load_cached()
     if not devices:
         return 0
-    updated = []
-
     def _refresh_one(dev):
         try:
-            result = refresh_device(dev["ip"], dev["gen"])
-            return result or dev
+            return refresh_device(dev["ip"], dev["gen"]) is not None
         except Exception:
-            return dev
+            log.debug("Shelly-Refresh fehlgeschlagen: %s", dev.get("ip"), exc_info=True)
+            return False
 
     with ThreadPoolExecutor(max_workers=min(32, len(devices))) as ex:
-        updated = list(ex.map(_refresh_one, devices))
+        updated_count = sum(ex.map(_refresh_one, devices))
 
-    updated.sort(key=lambda d: d["ip"])
-    save_cache(updated)
-    log.info(f"Shelly: Status von {len(updated)} Geräten aktualisiert")
-    return len(updated)
+    # refresh_device schreibt nur noch vorhandene Einträge. Ein erneutes
+    # Speichern der ursprünglichen Liste würde gelöschte Geräte wieder anlegen.
+    log.info("Shelly: Status von %d Geräten aktualisiert", updated_count)
+    return updated_count
 
 
 # ── Steuerung ─────────────────────────────────────────────────────────────────
@@ -540,6 +590,10 @@ class ShellyAdapter(BaseAdapter):
     def stop(self) -> None:
         # stop_event wird global gesetzt – periodischer Scan-Thread beendet sich.
         state.stop_event.set()
+        if (self._scan_thread is not None
+                and self._scan_thread.is_alive()
+                and self._scan_thread is not threading.current_thread()):
+            self._scan_thread.join(timeout=5)
 
     def is_connected(self) -> bool:
         return self._get_config().get("enabled", False)

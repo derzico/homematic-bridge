@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ _("Controls") }} – Homematic Bridge{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{{ _("Controls") }}</h1><button class="btn ghost" onclick="location.reload()">{{ _("Refresh") }}</button></div>
+<p>{{ _("Only configured channels from the current HCU snapshot are offered. Commands wait for the HCU response.") }}</p>
+<h2>{{ _("Shutters") }}</h2>
+<p>{{ _("HCU level: 0–100 percent maps directly to 0–1. Position follows the configured reference running time, not measured height.") }}</p>
+{% for shutter in shutters %}
+<div class="card"><div class="card-body"><h3>{{ shutter.label }} · {{ _("Channel") }} {{ shutter.channel }}</h3>
+<form data-control="shutter">
+  <input type="hidden" name="device" value="{{ shutter.id }}"><input type="number" name="channelIndex" value="{{ shutter.channel }}" hidden>
+  <label>{{ _("HCU level (percent)") }} <input type="number" name="level" min="0" max="100" step="1" value="{{ shutter.level if shutter.level is not none else '' }}"></label>
+  <button class="btn" type="submit" name="action" value="position">{{ _("Apply position") }}</button>
+  <button class="btn ghost" type="submit" name="action" value="stop" formnovalidate>{{ _("Stop") }}</button>
+</form></div></div>
+{% else %}<p>{{ _("No configured shutter channels found.") }}</p>{% endfor %}
+<h2>{{ _("Lights") }}</h2>
+{% for light in lights %}
+<div class="card"><div class="card-body"><h3>{{ light.label }} · {{ _("Channel") }} {{ light.channel }}</h3>
+<form data-control="light">
+  <input type="hidden" name="device" value="{{ light.id }}"><input type="number" name="channelIndex" value="{{ light.channel }}" hidden>
+  <label>{{ _("Dim level (percent)") }} <input type="number" name="dimLevel" min="0" max="100" value="{{ light.level }}" required></label>
+  {% if 'rgb' in light.capabilities %}
+  <label>{{ _("Hue (0–359)") }} <input type="number" name="hue" min="0" max="359" value="{{ light.hue }}"></label>
+  <label>{{ _("Saturation (percent)") }} <input type="number" name="saturation" min="0" max="100" value="{{ light.saturation }}"></label>
+  <button class="btn" name="action" value="rgb">{{ _("Apply color") }}</button>
+  {% endif %}
+  {% if 'temperature' in light.capabilities %}
+  <label>{{ _("Color temperature (K)") }} <input type="number" name="colorTemperature" min="{{ light.minimum_kelvin }}" max="{{ light.maximum_kelvin }}" value="{{ light.kelvin or '' }}"></label>
+  <button class="btn" name="action" value="temperature">{{ _("Apply color temperature") }}</button>
+  {% endif %}
+  {% if 'dim' in light.capabilities %}<button class="btn" name="action" value="dim">{{ _("Apply dim level") }}</button>{% endif %}
+  {% if 'scene' in light.capabilities %}
+  <label>{{ _("HCU scene ID") }} <input type="number" name="sceneId" min="0" max="2147483647" placeholder="ID"></label>
+  <button class="btn ghost" name="action" value="scene">{{ _("Start configured scene") }}</button>
+  {% endif %}
+</form></div></div>
+{% else %}<p>{{ _("No configured light channels found.") }}</p>{% endfor %}
+<h2>{{ _("Light groups") }}</h2>
+{% for group in light_groups %}
+<div class="card"><div class="card-body"><h3>{{ group.label }}</h3><form data-control="light">
+  <input type="hidden" name="group" value="{{ group.id }}">
+  <label>{{ _("Dim level (percent)") }} <input type="number" name="dimLevel" min="0" max="100" value="50" required></label>
+  {% if 'dim' in group.capabilities %}<button class="btn" name="action" value="dim">{{ _("Apply group dim level") }}</button>{% endif %}
+  {% if 'rgb' in group.capabilities %}
+  <label>{{ _("Hue (0–359)") }} <input type="number" name="hue" min="0" max="359" value="0"></label>
+  <label>{{ _("Saturation (percent)") }} <input type="number" name="saturation" min="0" max="100" value="100"></label>
+  <button class="btn" name="action" value="rgb">{{ _("Apply group color") }}</button>
+  {% endif %}
+  {% if 'scene' in group.capabilities %}<input type="number" name="sceneId" min="0" max="2147483647" placeholder="{{ _('HCU scene ID') }}"><button class="btn ghost" name="action" value="scene">{{ _("Start configured scene") }}</button>{% endif %}
+</form></div></div>
+{% else %}<p>{{ _("No configured light groups found.") }}</p>{% endfor %}
+<p>{{ _("Scenes refer to existing HCU scene IDs. No device mode or wiring configuration is changed.") }}</p>
+{% include "control_script.html" %}
+{% endblock %}

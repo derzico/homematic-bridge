@@ -155,13 +155,25 @@ class TestFindDeviceInList:
 
 class TestSaveSystemState:
     def test_full_snapshot(self, tmp_snapshot):
-        msg = {"type": "HMIP_SYSTEM_RESPONSE", "body": {"devices": {"d1": {}}}}
+        msg = {
+            "type": "HMIP_SYSTEM_RESPONSE",
+            "body": {"code": 200, "body": {"devices": {"d1": {}}}},
+        }
         with patch("app.utils.SNAPSHOT_PATH", tmp_snapshot):
             save_system_state(msg)
         with open(tmp_snapshot, "r", encoding="utf-8") as f:
             saved = json.load(f)
         assert saved["type"] == "HMIP_SYSTEM_RESPONSE"
-        assert saved["body"]["devices"]["d1"] == {}
+        assert saved["body"]["body"]["devices"]["d1"] == {}
+
+    def test_failed_snapshot_does_not_replace_existing_file(self, tmp_snapshot):
+        with open(tmp_snapshot, "w", encoding="utf-8") as f:
+            json.dump({"valid": True}, f)
+        msg = {"type": "HMIP_SYSTEM_RESPONSE", "body": {"code": 500, "body": {}}}
+        with patch("app.utils.SNAPSHOT_PATH", tmp_snapshot):
+            save_system_state(msg)
+        with open(tmp_snapshot, "r", encoding="utf-8") as f:
+            assert json.load(f) == {"valid": True}
 
     def test_delta_merge(self, tmp_snapshot):
         # Write base snapshot first
@@ -169,7 +181,8 @@ class TestSaveSystemState:
             "type": "HMIP_SYSTEM_RESPONSE",
             "body": {
                 "body": {
-                    "devices": {"d1": {"id": "d1", "label": "Old", "functionalChannels": {"0": {"on": True}}}},
+                    "devices": {"d1": {"id": "d1", "label": "Old", "obsolete": True,
+                                       "functionalChannels": {"0": {"on": True}}}},
                     "groups": {},
                 },
             },
@@ -182,7 +195,10 @@ class TestSaveSystemState:
             "body": {
                 "eventTransaction": {
                     "events": {
-                        "0": {"device": {"id": "d1", "label": "New", "functionalChannels": {"0": {"on": False}}}}
+                        "0": {
+                            "pushEventType": "DEVICE_CHANGED",
+                            "device": {"id": "d1", "label": "New", "functionalChannels": {"0": {"on": False}}},
+                        }
                     }
                 }
             },
@@ -195,6 +211,38 @@ class TestSaveSystemState:
         dev = saved["body"]["body"]["devices"]["d1"]
         assert dev["label"] == "New"
         assert dev["functionalChannels"]["0"]["on"] is False
+        assert "obsolete" not in dev
+
+    def test_applies_all_documented_state_event_types_in_numeric_order(self, tmp_snapshot):
+        base = {
+            "type": "HMIP_SYSTEM_RESPONSE",
+            "body": {"code": 200, "body": {
+                "devices": {"old-device": {"id": "old-device"}},
+                "groups": {"old-group": {"id": "old-group"}},
+                "clients": {"old-client": {"id": "old-client"}},
+                "home": {"id": "home", "label": "Old"},
+            }},
+        }
+        with open(tmp_snapshot, "w", encoding="utf-8") as f:
+            json.dump(base, f)
+        event = {"type": "HMIP_SYSTEM_EVENT", "body": {"eventTransaction": {"events": {
+            "10": {"pushEventType": "DEVICE_REMOVED", "id": "new-device"},
+            "2": {"pushEventType": "DEVICE_ADDED", "device": {"id": "new-device"}},
+            "3": {"pushEventType": "DEVICE_REMOVED", "id": "old-device"},
+            "4": {"pushEventType": "GROUP_ADDED", "group": {"id": "new-group"}},
+            "5": {"pushEventType": "GROUP_REMOVED", "id": "old-group"},
+            "6": {"pushEventType": "CLIENT_ADDED", "client": {"id": "new-client"}},
+            "7": {"pushEventType": "CLIENT_REMOVED", "id": "old-client"},
+            "8": {"pushEventType": "HOME_CHANGED", "home": {"id": "home", "label": "New"}},
+        }}}}
+        with patch("app.utils.SNAPSHOT_PATH", tmp_snapshot):
+            save_system_state(event)
+        with open(tmp_snapshot, "r", encoding="utf-8") as f:
+            body = json.load(f)["body"]["body"]
+        assert body["devices"] == {}
+        assert body["groups"] == {"new-group": {"id": "new-group"}}
+        assert body["clients"] == {"new-client": {"id": "new-client"}}
+        assert body["home"]["label"] == "New"
 
     def test_event_without_snapshot(self, tmp_snapshot):
         event = {"type": "HMIP_SYSTEM_EVENT", "body": {"eventTransaction": {"events": {}}}}

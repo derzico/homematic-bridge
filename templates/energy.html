@@ -1,0 +1,100 @@
+{# SPDX-License-Identifier: Apache-2.0 #}
+{% extends "base.html" %}
+{% block title %}{{ _("Energy history") }} – Homematic Bridge{% endblock %}
+{% block content %}
+{% macro kwh(value) -%}{{ "%.4f" | format(value) if value is not none else "–" }}{%- endmacro %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">{{ _("Private local history") }}</div>
+    <h1>{{ _("Energy history") }}</h1>
+    <div class="sub">{{ _("Enabled") if energy_status.enabled else _("Disabled") }} · {{ energy_status.timezone }}</div>
+  </div>
+  <div class="actions"><button class="btn" id="energyToggle" type="button">{{ _("Disable collection") if energy_status.enabled else _("Enable local collection") }}</button><button class="btn ghost" onclick="location.reload()">{{ _("Refresh") }}</button></div>
+</div>
+{% if not energy_status.enabled %}
+<div class="card"><div class="card-body">
+  <p>{{ _("Energy history is disabled by default. Enable local collection to start a new history; past consumption cannot be reconstructed.") }}</p>
+  <pre class="json-raw">energy:
+  enabled: true
+  interval_seconds: 60
+  retention_days: 90
+  timezone: Europe/Berlin</pre>
+  <p>{{ _("Only existing online Shelly energy meters are read. No scanning or device commands.") }}</p>
+</div></div>
+{% else %}
+<div class="alert">
+  {{ _("Deltas are assigned to the interval end. Daily and monthly totals are approximate during outages or across midnight; resets and unknown values are excluded. The first reading only establishes a baseline.") }}
+</div>
+<p style="color:var(--muted);margin-bottom:16px">
+  {{ _("Collector running") if energy_status.running else _("Collector stopped") }} ·
+  {{ _("Interval (seconds)") }}: {{ energy_status.interval_seconds }} ·
+  {{ _("Retention (days)") }}: {{ energy_status.retention_days }} ·
+  {{ _("Timezone") }}: {{ energy_summary.timezone }}
+</p>
+{% if energy_status.last_error %}
+<div class="alert error">{{ _("Collection or push failed. Existing history is preserved.") }}</div>
+{% endif %}
+<div class="cards-grid" style="margin-bottom:24px">
+  {% for label, total in [(_("Today"), energy_summary.today), (_("This month"), energy_summary.month)] %}
+  <div class="card"><div class="card-body">
+    <h2 style="font-size:16px">{{ label }} <span class="muted">{{ total.period }}</span></h2>
+    <p>{{ _("Import") }}: <strong class="mono">{{ kwh(total.import_kwh) }} kWh</strong></p>
+    <p>{{ _("Export") }}: <strong class="mono">{{ kwh(total.export_kwh) }} kWh</strong></p>
+  </div></div>
+  {% endfor %}
+</div>
+<h2 style="font-size:18px;margin-bottom:12px">{{ _("Meter details") }}</h2>
+{% if not energy_summary.meters %}
+<div class="card"><div class="card-body">{{ _("No valid readings yet. Missing values are shown as a dash, not zero.") }}</div></div>
+{% endif %}
+<div class="cards-grid" style="margin-bottom:24px">
+{% for meter in energy_summary.meters %}
+<div class="card"><div class="card-body">
+  <h3>{{ meter.name }} · {{ _("Meter") }} {{ meter.meter_index + 1 }}</h3>
+  <p class="mono" style="font-size:11px;overflow-wrap:anywhere">{{ meter.source_id }}</p>
+  <p>{{ _("Last reading") }}: {{ meter.sampled_at_local }} {% if meter.stale %}· {{ _("Stale") }}{% endif %}</p>
+  <p>{{ _("Power") }}: {{ "%.2f W" | format(meter.power_w) if meter.power_w is not none else "–" }}</p>
+  <p>{{ _("Voltage") }}: {{ "%.2f V" | format(meter.voltage) if meter.voltage is not none else "–" }} ·
+     {{ _("Current") }}: {{ "%.3f A" | format(meter.current) if meter.current is not none else "–" }}</p>
+  <p>{{ _("Power factor") }}: {{ "%.3f" | format(meter.pf) if meter.pf is not none else "–" }}</p>
+  <p>{{ _("Raw import counter") }}: {{ "%.4f Wh" | format(meter.import_total_wh) if meter.import_total_wh is not none else "–" }}</p>
+  <p>{{ _("Raw export counter") }}: {{ "%.4f Wh" | format(meter.export_total_wh) if meter.export_total_wh is not none else "–" }}</p>
+  <p>{{ _("Today (import / export)") }}: {{ kwh(meter.today.import_kwh) }} / {{ kwh(meter.today.export_kwh) }} kWh</p>
+  <p>{{ _("Month (import / export)") }}: {{ kwh(meter.month.import_kwh) }} / {{ kwh(meter.month.export_kwh) }} kWh</p>
+</div></div>
+{% endfor %}
+</div>
+{% for label, periods in [(_("Daily totals"), energy_summary.days), (_("Monthly totals"), energy_summary.months)] %}
+<section style="margin-bottom:24px">
+  <h2 style="font-size:18px;margin-bottom:12px">{{ label }}</h2>
+  <div style="overflow-x:auto">
+  <table class="data-table">
+    <thead><tr><th>{{ _("Period") }}</th><th>{{ _("Import (kWh)") }}</th><th>{{ _("Export (kWh)") }}</th><th>{{ _("Notes") }}</th></tr></thead>
+    <tbody>
+    {% for total in periods | reverse %}
+    <tr>
+      <td>{{ total.period }}</td><td class="mono">{{ kwh(total.import_kwh) }}</td><td class="mono">{{ kwh(total.export_kwh) }}</td>
+      <td>{{ _("Approximation") }}{% if total.gap %} · {{ _("Sampling gap") }}{% endif %}{% if total.crosses_midnight %} · {{ _("Across midnight") }}{% endif %}
+        {% if total.import_resets or total.export_resets %} · {{ _("Counter resets (import / export)") }}: {{ total.import_resets }} / {{ total.export_resets }}{% endif %}</td>
+    </tr>
+    {% else %}<tr><td colspan="4" class="empty-cell">{{ _("No history yet.") }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endfor %}
+{% endif %}
+<p id="energyResult" role="status"></p>
+<script>
+document.getElementById('energyToggle').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const response = await fetch('/energy/settings', {method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':{{ csrf_token | default('') | tojson }}},body:JSON.stringify({enabled:{{ 'false' if energy_status.enabled else 'true' }}})});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || String(response.status));
+    location.reload();
+  } catch(error) { document.getElementById('energyResult').textContent = error.message; button.disabled = false; }
+});
+</script>
+{% endblock %}

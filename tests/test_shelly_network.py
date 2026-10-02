@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
+from requests.auth import HTTPBasicAuth
 
 import app.adapters.shelly_adapter as shelly
 
@@ -36,7 +37,9 @@ def test_get_retries_without_credentials_after_unauthorized():
 
     assert result == {"app": "Plus1PM"}
     assert get.call_count == 2
-    assert get.call_args_list[0].kwargs["auth"] == ("admin", "secret")
+    auth = get.call_args_list[0].kwargs["auth"]
+    assert isinstance(auth, HTTPBasicAuth)
+    assert (auth.username, auth.password) == ("admin", "secret")
     assert "auth" not in get.call_args_list[1].kwargs
 
 

@@ -4,7 +4,14 @@
 import time
 
 import app.state as state
-from app.adapters.hmip_websocket import _cleanup_pending, _register_pending, _resolve_pending
+from app.adapters.hmip_websocket import (
+    _cleanup_pending,
+    _fail_all_pending,
+    _register_pending,
+    _resolve_pending,
+    _send_tracked,
+    _wait_for_ack,
+)
 
 
 class TestPendingRegistry:
@@ -53,3 +60,43 @@ class TestCleanupPending:
         with state.pending_lock:
             assert "old" not in state.pending
             assert "new" in state.pending
+
+
+class TestTrackedRequests:
+    def test_request_is_registered_before_send(self):
+        class Connection:
+            def send(self, _payload):
+                pass
+
+        state.conn = Connection()
+
+        def sender(_connection, request_id=None):
+            assert request_id in state.pending
+            return request_id
+
+        rid = _send_tracked(sender, "/test")
+
+        assert rid in state.pending
+
+    def test_ack_can_arrive_before_wait_starts(self):
+        _register_pending("req-ack", "/test", wait_for_ack=True)
+        response = {"body": {"code": 200}}
+
+        _resolve_pending("req-ack", response)
+
+        assert _wait_for_ack("req-ack", timeout=0) == response
+        assert "req-ack" not in state.pending
+
+    def test_timeout_removes_pending_request(self):
+        _register_pending("req-timeout", "/test", wait_for_ack=True)
+
+        assert _wait_for_ack("req-timeout", timeout=0) is None
+        assert "req-timeout" not in state.pending
+
+    def test_connection_failure_wakes_ack_waiter(self):
+        _register_pending("req-failed", "/test", wait_for_ack=True)
+
+        _fail_all_pending("offline")
+
+        response = _wait_for_ack("req-failed", timeout=0)
+        assert response["body"]["code"] == 503

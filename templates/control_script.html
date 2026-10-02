@@ -1,0 +1,33 @@
+<p id="controlResult" role="status" aria-live="polite"></p>
+<script>
+const controlCsrf = {{ csrf_token | tojson }};
+document.querySelectorAll('form[data-control]').forEach(form => {
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const data = {};
+    for (const input of form.elements) {
+      if (!input.name || input.tagName === 'BUTTON') continue;
+      data[input.name] = input.type === 'number' ? input.valueAsNumber : input.value;
+      if (input.dataset.boolean) data[input.name] = input.value === 'true';
+    }
+    if (event.submitter && event.submitter.name) data[event.submitter.name] = event.submitter.value;
+    const buttons = form.querySelectorAll('button');
+    buttons.forEach(button => { button.disabled = true; });
+    const result = document.getElementById('controlResult');
+    try {
+      const response = await fetch('/control/' + form.dataset.control, {
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': controlCsrf},
+        body: JSON.stringify(data)
+      });
+      let payload;
+      try { payload = await response.json(); } catch (_) { throw new Error({{ _("Please sign in again.") | tojson }}); }
+      if (!response.ok) {
+        const count = Array.isArray(payload.completed) ? payload.completed.length : 0;
+        throw new Error((payload.error || String(response.status)) + (count ? ' (' + count + ' ' + {{ _("already applied") | tojson }} + ')' : ''));
+      }
+      result.textContent = {{ _("HCU acknowledged. The displayed state updates after synchronization.") | tojson }};
+    } catch (error) { result.textContent = error.message; }
+    finally { buttons.forEach(button => { button.disabled = false; }); }
+  });
+});
+</script>

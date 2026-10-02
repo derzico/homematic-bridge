@@ -34,7 +34,8 @@
     <div class="actions">
       <button id="upd-check-btn" class="btn ghost" onclick="checkUpdates()">{{ _("Check for updates") }}</button>
       <button id="refresh-btn" class="btn" onclick="refreshStatus()">{{ _("Refresh status") }}</button>
-      <button id="scan-btn" class="btn primary" onclick="startScan()">{{ _("Scan network") }}</button>
+      <button id="scan-btn" class="btn primary" onclick="startScan()" {{ 'disabled' if scan_running }}>{{ _("Scan network") }}</button>
+      <button id="rescan-btn" class="btn ghost" onclick="startScan(true)" {{ 'disabled' if scan_running }}>{{ _("Rebuild device list") }}</button>
     </div>
   </div>
 
@@ -78,7 +79,7 @@
       <thead>
         <tr>
           <th>{{ _("Name") }}</th><th>{{ _("Model") }}</th><th>{{ _("Gen") }}</th><th>{{ _("IP") }}</th><th>{{ _("MAC") }}</th>
-          <th>{{ _("Firmware") }}</th><th>{{ _("WLAN") }}</th><th>{{ _("Status / Control") }}</th><th>{{ _("Last seen") }}</th>
+          <th>{{ _("Firmware") }}</th><th>{{ _("WLAN") }}</th><th>{{ _("Status / Control") }}</th><th>{{ _("Last seen") }}</th><th>{{ _("Actions") }}</th>
         </tr>
       </thead>
       <tbody>
@@ -169,6 +170,10 @@
             {% endif %}
           </td>
           <td class="mono muted">{{ dev.age_str }}</td>
+          <td>
+            <button class="btn ghost shelly-delete" data-ip="{{ dev.ip }}" data-name="{{ dev.name }}"
+              {{ 'disabled' if scan_running }}>{{ _("Delete") }}</button>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -187,6 +192,11 @@ const I18N_SH = {
   scan_running:  {{ _("Scan running…") | tojson }},
   scan_started:  {{ _("Scan started – please wait…") | tojson }},
   scan_btn:      {{ _("Scan network") | tojson }},
+  rescan_btn:    {{ _("Rebuild device list") | tojson }},
+  rescan_confirm: {{ _("Rebuild the device list? Only devices found in this scan will be kept. Devices that are currently offline will also be removed.") | tojson }},
+  delete_confirm: {{ _("Remove {name} ({ip}) from the device list? The device itself will not be changed. If it is still reachable, a future scan will discover it again.") | tojson }},
+  deleting:     {{ _("Deleting…") | tojson }},
+  delete_btn:   {{ _("Delete") | tojson }},
   upd_confirm:   {{ _("Start firmware update for {ip}?\nDevice will be unreachable during update.") | tojson }},
   upd_running:   {{ _("Update running…") | tojson }},
   upd_restart:   {{ _("Restarting…") | tojson }},
@@ -201,6 +211,39 @@ const I18N_SH = {
 };
 
 function fmtSh(t, vars) { return t.replace(/\{(\w+)\}/g, (_, k) => vars[k]); }
+let scanInProgress = {{ scan_running | tojson }};
+
+function setScanBusy(busy) {
+  scanInProgress = busy;
+  document.getElementById('scan-btn').disabled = busy;
+  document.getElementById('scan-btn').textContent = busy ? I18N_SH.scan_running : I18N_SH.scan_btn;
+  document.getElementById('rescan-btn').disabled = busy;
+  document.getElementById('rescan-btn').textContent = busy ? I18N_SH.scan_running : I18N_SH.rescan_btn;
+  document.querySelectorAll('.shelly-delete').forEach(btn => { btn.disabled = busy; });
+}
+
+document.querySelectorAll('.shelly-delete').forEach(btn => {
+  btn.addEventListener('click', () => deleteShelly(btn));
+});
+
+async function deleteShelly(btn) {
+  const ip = btn.dataset.ip;
+  if (!confirm(fmtSh(I18N_SH.delete_confirm, {name: btn.dataset.name, ip: ip}))) return;
+  btn.disabled = true;
+  btn.textContent = I18N_SH.deleting;
+  try {
+    const r = await fetch('/shelly/' + encodeURIComponent(ip) + '/delete', {
+      method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN}
+    });
+    const d = await r.json();
+    if (!r.ok || !d.success) throw new Error(d.error || I18N_SH.fail);
+    location.reload();
+  } catch(e) {
+    alert(e.message || I18N_SH.net_error);
+    btn.disabled = scanInProgress;
+    btn.textContent = I18N_SH.delete_btn;
+  }
+}
 
 (function() {
   let currentCat = 'all';
@@ -247,23 +290,49 @@ async function shellyRelay(ip, gen, channel, on) {
   } catch(e) { alert(I18N_SH.net_error); if (btn) btn.disabled = false; }
 }
 
-async function startScan() {
-  const btn = document.getElementById('scan-btn');
-  btn.disabled = true; btn.textContent = I18N_SH.scan_running;
+async function startScan(replaceCache = false) {
+  if (replaceCache && !confirm(I18N_SH.rescan_confirm)) return;
+  setScanBusy(true);
   document.getElementById('scan-info').textContent = I18N_SH.scan_started;
   try {
-    const r = await fetch('/shelly/scan', {method: 'POST', headers: {'X-CSRF-Token': CSRF_TOKEN}});
+    const r = await fetch('/shelly/scan', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN},
+      body: JSON.stringify({replace_cache: replaceCache})
+    });
     const d = await r.json();
+    if (!r.ok) throw new Error(d.error || I18N_SH.fail);
     if (d.status === 'started' || d.status === 'already_running') { pollScan(); }
-    else { document.getElementById('scan-info').textContent = d.error || I18N_SH.fail; btn.disabled = false; btn.textContent = I18N_SH.scan_btn; }
-  } catch(e) { document.getElementById('scan-info').textContent = I18N_SH.net_error; btn.disabled = false; btn.textContent = I18N_SH.scan_btn; }
+    else { throw new Error(d.error || I18N_SH.fail); }
+  } catch(e) {
+    document.getElementById('scan-info').textContent = e.message || I18N_SH.net_error;
+    setScanBusy(false);
+  }
 }
 
-function pollScan() {
-  fetch('/shelly/status').then(r => r.json()).then(d => {
-    if (d.running) { document.getElementById('scan-info').textContent = I18N_SH.scan_running; setTimeout(pollScan, 2000); }
-    else { location.reload(); }
-  });
+async function pollScan() {
+  try {
+    const r = await fetch('/shelly/status');
+    if (!r.ok) throw new Error(I18N_SH.fail);
+    const d = await r.json();
+    if (d.running) {
+      document.getElementById('scan-info').textContent = I18N_SH.scan_running;
+      setTimeout(pollScan, 2000);
+    } else if (d.error) {
+      document.getElementById('scan-info').textContent = d.error;
+      setScanBusy(false);
+    } else {
+      location.reload();
+    }
+  } catch(e) {
+    document.getElementById('scan-info').textContent = e.message || I18N_SH.net_error;
+    setScanBusy(false);
+  }
+}
+
+if (scanInProgress) {
+  setScanBusy(true);
+  pollScan();
 }
 
 async function shellyUpdate(ip) {
@@ -301,10 +370,18 @@ async function refreshStatus() {
   catch(e) { btn.disabled = false; btn.textContent = I18N_SH.refresh_btn; }
 }
 
-setTimeout(() => {
-  fetch('/shelly/refresh-status', {method:'POST', headers: {'X-CSRF-Token': CSRF_TOKEN}})
-    .then(() => location.reload());
-}, 60000);
+async function autoRefresh() {
+  if (!scanInProgress) {
+    try {
+      const r = await fetch('/shelly/refresh-status', {method:'POST', headers: {'X-CSRF-Token': CSRF_TOKEN}});
+      if (r.ok) { location.reload(); return; }
+    } catch(e) {
+      document.getElementById('scan-info').textContent = I18N_SH.net_error;
+    }
+  }
+  setTimeout(autoRefresh, 60000);
+}
+setTimeout(autoRefresh, 60000);
 </script>
 {% endif %}
 {% endblock %}

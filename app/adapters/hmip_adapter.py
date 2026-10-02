@@ -66,6 +66,8 @@ class HmIPAdapter(BaseAdapter):
         return "Homematic IP"
 
     def start(self) -> None:
+        if self._ws_thread is not None and self._ws_thread.is_alive():
+            return
         self._ws_thread = threading.Thread(target=ws_loop, daemon=True)
         self._ws_thread.start()
         log.info("HmIP-Adapter: WebSocket-Thread gestartet")
@@ -79,6 +81,10 @@ class HmIPAdapter(BaseAdapter):
                 except Exception:
                     log.debug("conn.close() Fehler ignoriert", exc_info=True)
                 state.conn = None
+        if (self._ws_thread is not None
+                and self._ws_thread.is_alive()
+                and self._ws_thread is not threading.current_thread()):
+            self._ws_thread.join(timeout=5)
 
     def is_connected(self) -> bool:
         return state.conn is not None
@@ -123,7 +129,7 @@ class HmIPAdapter(BaseAdapter):
 
     def control(self, device_id: str, action: str, params: Optional[Dict[str, Any]] = None) -> bool:
         from app.adapters.hmip_messages import send_hmip_set_switch, send_hmip_set_dim_level
-        from app.adapters.hmip_websocket import _register_pending
+        from app.adapters.hmip_websocket import _send_tracked
 
         params = params or {}
         if not state.conn:
@@ -133,18 +139,28 @@ class HmIPAdapter(BaseAdapter):
         if action == "switch":
             on = params.get("on", True)
             channel = params.get("channel", 0)
-            with state.send_lock:
-                rid = send_hmip_set_switch(state.conn, device_id, on, channel_index=channel)
-            _register_pending(rid, "/hmip/device/control/setSwitchState")
-            return True
+            try:
+                _send_tracked(
+                    send_hmip_set_switch, "/hmip/device/control/setSwitchState",
+                    device_id, on, channel,
+                )
+                return True
+            except Exception:
+                log.exception("HmIP: Schaltbefehl konnte nicht gesendet werden")
+                return False
 
         if action == "dim":
             level = params.get("level", 1.0)
             channel = params.get("channel", 1)
-            with state.send_lock:
-                rid = send_hmip_set_dim_level(state.conn, device_id, level, channel_index=channel)
-            _register_pending(rid, "/hmip/device/control/setDimLevel")
-            return True
+            try:
+                _send_tracked(
+                    send_hmip_set_dim_level, "/hmip/device/control/setDimLevel",
+                    device_id, level, channel,
+                )
+                return True
+            except Exception:
+                log.exception("HmIP: Dimmbefehl konnte nicht gesendet werden")
+                return False
 
         log.warning("HmIP: Unbekannte Action '%s' für %s", action, device_id)
         return False
@@ -199,7 +215,10 @@ class HmIPAdapter(BaseAdapter):
             adapter="hmip",
             model=model,
             firmware=fw,
-            online=raw.get("permanentlyReachable", True),
+            online=not (raw.get("unreach") is True or any(
+                isinstance(channel, dict) and channel.get("unreach") is True
+                for channel in func_channels.values()
+            )),
             rssi=raw.get("rssiDeviceValue"),
             capabilities=capabilities,
             channels=channels,

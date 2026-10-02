@@ -618,7 +618,7 @@ textarea:focus, input:focus, select:focus {
       <span class="logo">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h7l-1 8 11-13h-7l1-7z"/></svg>
       </span>
-      Homematic <span class="sub">Bridge</span>
+      Homematic <span class="sub">Bridge{% if app_version %} · {{ app_version }}{% endif %}</span>
     </a>
     <div class="nav-links">
       {% set nav_items = [
@@ -626,8 +626,12 @@ textarea:focus, input:focus, select:focus {
         ("/devices/html", _("Devices"), "devices"),
         ("/devices/status", _("Status"), "status"),
         ("/heating", _("Heating"), "heating"),
+        ("/controls", _("Controls"), "controls"),
+        ("/security", _("Security"), "security"),
+        ("/energy", _("Energy"), "energy"),
         ("/shelly", _("Shelly"), "shelly"),
         ("/config", _("Config"), "config"),
+        ("/diagnostics", _("Diagnostics"), "diagnostics"),
         ("/healthz", _("Health"), "health"),
       ] %}
       {% for href, label, key in nav_items %}
@@ -652,6 +656,9 @@ textarea:focus, input:focus, select:focus {
     <a href="/logout" class="avatar" title="{{ _('Sign out') }}">N</a>
   </nav>
   <div class="container">
+    {% if snapshot_ready is defined and not snapshot_ready %}
+    <p role="status">{{ _("Waiting for the HCU snapshot. Existing values may be outdated.") }}</p>
+    {% endif %}
     {% block content %}{% endblock %}
   </div>
   {% endblock %}
