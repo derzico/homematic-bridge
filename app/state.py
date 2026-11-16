@@ -19,6 +19,11 @@ pending_lock = Lock()
 API_KEY: Optional[str] = None
 REQUIRE_API_KEY: bool = True
 API_KEY_FILE: str = "data/api_key.txt"
+# Nur-Lese-Key (Inventar, Mapping, Diagnose, Zustände) – kann nichts schalten
+API_KEY_READONLY: Optional[str] = None
+API_KEY_READONLY_FILE: str = "data/api_key_readonly.txt"
+# Erlaubte Quellnetze für Steuerbefehle (leer = alle); Liste von ipaddress-Netzen
+CONTROL_ALLOWED_NETS: list = []
 
 # Loxone UDP-Push
 LOXONE_HOST: str = ""

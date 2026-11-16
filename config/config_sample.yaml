@@ -15,6 +15,36 @@ loxone:
   miniserver_ip: # z.B. 192.168.1.100 (leer lassen = deaktiviert)
   udp_port: 7777
   resync_interval_seconds: 300 # 0 = nur Initialzustand und manuelle Synchronisation
+  heartbeat_interval_seconds: 60 # bridge_heartbeat/bridge_hcuConnected; 0 = aus
+  numeric_states: true   # windowOpen 0/1/2, smokeAlarm, controlModeManual, absenceActive, weatherConditionCode
+  percent_values: true   # zusätzlich <feld>Pct 0..100 für dimLevel, shutterLevel, slatsLevel, valvePosition, saturationLevel
+  aggregates: true       # hmip_home_deviceCount/unreachCount/lowBatCount/sabotageCount
+  command_feedback: true # nach Steuerbefehlen hmip_<ID>_lastCmdOk 0/1 und _lastCmdCode (HTTP-Status)
+  # Auswahl, was gesendet wird (alles optional; leer = alles). Wirkt auch auf /api/loxone/mapping (sent).
+  filter:
+    groups: true         # Gruppenwerte (hmip_group_*) senden
+    diagnostics: true    # rssiDeviceValue, dutyCycle, configPending je Gerät/Gruppe
+    include_fields: []   # z.B. [on, windowOpen, smokeAlarm, actualTemperature, available]
+    exclude_fields: []
+    include_rooms: []    # Raumnamen wie in der HmIP-App
+    exclude_rooms: []
+    include_devices: []  # Geräte-IDs oder Labels
+    exclude_devices: []
+
+# Nur-Lese-Key für MCP/Auswertungen (kann nichts schalten). Ohne Angabe wird
+# data/api_key_readonly.txt automatisch erzeugt. Alternativ ENV BRIDGE_API_KEY_READONLY.
+# api_key_readonly:
+
+# Steuerbefehle nur von diesen Adressen/Netzen annehmen (leer = alle).
+# Lesende Endpunkte sind davon nicht betroffen. Hinter einem Reverse-Proxy sieht
+# die Bridge die Proxy-Adresse.
+control_allowed_ips: [] # z.B. ["192.168.2.20", "192.168.2.100"]  (Miniserver, eigener Rechner)
+
+# Schutz vor Funküberlastung (HmIP Duty Cycle)
+command_guard:
+  dedupe_window_ms: 500          # identische Befehle innerhalb dieser Zeit verwerfen
+  min_interval_ms: 150           # Abstand je Gerät/Gruppe; neuerer Befehl ersetzt wartenden
+  duty_cycle_limit_percent: 80   # ab hier nur noch Alarm/Sirene; 0 = aus
 
 # Optionale lokale Energiehistorie, nur vorhandene erreichbare Shelly-Zähler.
 # Die Web-Auswahl unter /energy wird separat in config/energy.yaml gespeichert.

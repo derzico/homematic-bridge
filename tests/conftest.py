@@ -52,6 +52,29 @@ def auth_app():
 
 
 @pytest.fixture(autouse=True)
+def _fresh_command_guard():
+    """Funk-Schutz ist Modulzustand: je Test frisch und ohne echtes Warten."""
+    import app.command_guard as command_guard
+    saved = command_guard.guard
+    command_guard.guard = command_guard.CommandGuard(sleep=lambda _seconds: None)
+    yield
+    command_guard.guard = saved
+
+
+@pytest.fixture(autouse=True)
+def _reset_loxone_options():
+    """Loxone-Optionen und Topologie sind Modulzustand: nach jedem Test zurücksetzen."""
+    from app import loxone_udp
+    loxone_udp.configure(None)
+    loxone_udp.update_topology({"devices": {}, "groups": {}})
+    loxone_udp._last_aggregates = None
+    yield
+    loxone_udp.configure(None)
+    loxone_udp.update_topology({"devices": {}, "groups": {}})
+    loxone_udp._last_aggregates = None
+
+
+@pytest.fixture(autouse=True)
 def _reset_state():
     """Save and restore state module globals around each test."""
     state.stop_event.clear()
@@ -59,6 +82,9 @@ def _reset_state():
         "API_KEY": state.API_KEY,
         "REQUIRE_API_KEY": state.REQUIRE_API_KEY,
         "API_KEY_FILE": state.API_KEY_FILE,
+        "API_KEY_READONLY": state.API_KEY_READONLY,
+        "API_KEY_READONLY_FILE": state.API_KEY_READONLY_FILE,
+        "CONTROL_ALLOWED_NETS": state.CONTROL_ALLOWED_NETS,
         "config": state.config,
         "config_internal": state.config_internal,
         "pending": state.pending.copy(),
@@ -79,6 +105,9 @@ def _reset_state():
     state.API_KEY = saved["API_KEY"]
     state.REQUIRE_API_KEY = saved["REQUIRE_API_KEY"]
     state.API_KEY_FILE = saved["API_KEY_FILE"]
+    state.API_KEY_READONLY = saved["API_KEY_READONLY"]
+    state.API_KEY_READONLY_FILE = saved["API_KEY_READONLY_FILE"]
+    state.CONTROL_ALLOWED_NETS = saved["CONTROL_ALLOWED_NETS"]
     state.config = saved["config"]
     state.config_internal = saved["config_internal"]
     state.conn = saved["conn"]

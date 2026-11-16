@@ -1,18 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 """MCP-Wrapper: JSON-RPC-Protokoll und Filter, ohne Netzwerk oder Geräte."""
 
-import importlib.util
 import io
+import sys
 import json
 import urllib.error
 from pathlib import Path
 
 import pytest
 
-SOURCE = Path(__file__).parents[1] / "ops/mcp_server.py"
-spec = importlib.util.spec_from_file_location("bridge_mcp", SOURCE)
-mcp = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(mcp)
+sys.path.insert(0, str(Path(__file__).parents[1] / "mcp-server"))
+import homematic_bridge_mcp.server as mcp  # noqa: E402
 
 INVENTORY = {
     "rooms": [{"id": "r1", "label": "Küche", "devices": ["a"]}],
@@ -27,16 +25,26 @@ MAPPING = {"count": 2, "variables": [
 ]}
 
 
+class Calls(list):
+    params = None
+
+
 @pytest.fixture
 def fake_get(monkeypatch):
-    calls = []
+    calls = Calls()
 
-    def _get(path):
+    def _get(path, params=None):
         calls.append(path)
+        calls.params = params
         return json.loads(json.dumps({"/api/inventory": INVENTORY,
                                       "/api/loxone/mapping": MAPPING,
                                       "/api/diagnostics": {"version": "x"}}[path]))
+
+    def _request(path, params=None):
+        calls.append(path)
+        return b'<VirtualInUdp><VirtualInUdpCmd Check="a@\\v"/></VirtualInUdp>'
     monkeypatch.setattr(mcp, "_get", _get)
+    monkeypatch.setattr(mcp, "_request", _request)
     return calls
 
 
@@ -48,7 +56,8 @@ def test_initialize_and_list_tools():
     init = rpc("initialize", {"protocolVersion": "2025-03-26"})["result"]
     assert init["protocolVersion"] == "2025-03-26" and "tools" in init["capabilities"]
     names = {t["name"] for t in rpc("tools/list")["result"]["tools"]}
-    assert names == {"hmip_inventory", "hmip_loxone_mapping", "hmip_diagnostics"}
+    assert names == {"hmip_summary", "hmip_inventory", "hmip_loxone_mapping",
+                     "hmip_loxone_template", "hmip_diagnostics"}
 
 
 def test_notifications_get_no_response():
@@ -70,9 +79,50 @@ def test_inventory_room_filter(fake_get):
 
 
 def test_mapping_filter(fake_get):
-    result = rpc("tools/call", {"name": "hmip_loxone_mapping", "arguments": {"filter": "BAD"}})["result"]
+    result = rpc("tools/call", {"name": "hmip_loxone_mapping",
+                                "arguments": {"filter": "BAD", "room": "Bad", "limit": 5000,
+                                              "sent_only": True}})["result"]
     data = json.loads(result["content"][0]["text"])
     assert data["count"] == 1 and data["variables"][0]["variable"] == "hmip_b_ch1_windowState"
+    assert fake_get.params["room"] == "Bad" and fake_get.params["limit"] == mcp.MAX_LIMIT
+    assert fake_get.params["sent"] == "1"
+
+
+def test_mapping_default_page_and_compact(fake_get):
+    MAPPING["variables"][0]["extra"] = "x"
+    try:
+        result = rpc("tools/call", {"name": "hmip_loxone_mapping"})["result"]
+    finally:
+        MAPPING["variables"][0].pop("extra")
+    data = json.loads(result["content"][0]["text"])
+    assert fake_get.params["limit"] == mcp.DEFAULT_LIMIT and fake_get.params["offset"] == 0
+    assert "extra" not in data["variables"][0]
+
+
+def test_summary_and_template(fake_get):
+    summary = json.loads(rpc("tools/call", {"name": "hmip_summary"})["result"]["content"][0]["text"])
+    assert summary["rooms"] == {"Küche": 1} and summary["loxone"]["variables_total"] == 2
+    template = json.loads(rpc("tools/call", {"name": "hmip_loxone_template",
+                                             "arguments": {"room": "Bad"}})["result"]["content"][0]["text"])
+    assert template["commands"] == 1 and template["xml"].startswith("<VirtualInUdp")
+
+
+def test_inventory_paging_and_type_filter(fake_get):
+    data = json.loads(rpc("tools/call", {"name": "hmip_inventory", "arguments": {"limit": 1}})
+                      ["result"]["content"][0]["text"])
+    assert data["devices_total"] == 2 and len(data["devices"]) == 1
+
+
+def test_force_utf8_reconfigures_streams(monkeypatch):
+    calls = []
+
+    class Stream:
+        def reconfigure(self, **kwargs):
+            calls.append(kwargs)
+    for name in ("stdin", "stdout", "stderr"):
+        monkeypatch.setattr(mcp.sys, name, Stream())
+    mcp._force_utf8()
+    assert calls == [{"encoding": "utf-8"}] * 3
 
 
 def test_only_get_paths_are_used(fake_get):
@@ -83,7 +133,7 @@ def test_only_get_paths_are_used(fake_get):
 
 
 def test_http_errors_become_tool_errors(monkeypatch):
-    def fail(path):
+    def fail(path, params=None):
         raise urllib.error.HTTPError(path, 401, "unauthorized", None, None)
     monkeypatch.setattr(mcp, "_get", fail)
     result = rpc("tools/call", {"name": "hmip_diagnostics"})["result"]

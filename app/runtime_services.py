@@ -11,7 +11,7 @@ import yaml
 import app.state as state
 from app.controls import system_body
 from app.energy import EnergyCollector
-from app.loxone_udp import push_shelly_energy, push_system_state
+from app.loxone_udp import push_heartbeat, push_shelly_energy, push_system_state
 from app.utils import _atomic_write
 
 log = logging.getLogger("bridge-ws")
@@ -26,6 +26,7 @@ class RuntimeServices:
         self._thread = None
         self.last_sync_at = None
         self.last_sync_error = None
+        self.heartbeat_counter = 0
         self.energy = EnergyCollector(config=self.effective_config, on_sample=self.forward_energy)
 
     def effective_config(self):
@@ -105,11 +106,25 @@ class RuntimeServices:
         finally:
             self._sync_lock.release()
 
+    def send_heartbeat(self, config):
+        """bridge_heartbeat zählt hoch (0..999999, dann wieder 1) – auch ohne HCU-Verbindung."""
+        self.heartbeat_counter = self.heartbeat_counter % 999999 + 1
+        push_heartbeat(config.get("miniserver_ip") or "", config.get("udp_port", 7777),
+                       self.heartbeat_counter, state.conn is not None and state.WS_READY)
+
     def _loop(self):
         last_attempt = time.monotonic()
+        last_heartbeat = 0.0
         while not state.stop_event.is_set() and not self._stop.wait(1):
             with state.config_lock:
                 config = dict(state.config.get("loxone") or {})
+            heartbeat = config.get("heartbeat_interval_seconds", 60)
+            if config.get("miniserver_ip") and heartbeat and time.monotonic() - last_heartbeat >= heartbeat:
+                last_heartbeat = time.monotonic()
+                try:
+                    self.send_heartbeat(config)
+                except Exception:
+                    log.warning("Loxone-Heartbeat fehlgeschlagen", exc_info=True)
             interval = config.get("resync_interval_seconds", 300)
             if not config.get("miniserver_ip") or not interval or not state.WS_READY:
                 continue

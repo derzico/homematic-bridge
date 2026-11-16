@@ -103,6 +103,51 @@ def validate_config(config: dict) -> List[str]:
             interval = lox.get("resync_interval_seconds", 300)
             if type(interval) is not int or not (interval == 0 or 30 <= interval <= 86400):
                 errors.append("'loxone.resync_interval_seconds' muss 0 oder 30..86400 sein")
+            heartbeat = lox.get("heartbeat_interval_seconds", 60)
+            if type(heartbeat) is not int or not (heartbeat == 0 or 5 <= heartbeat <= 3600):
+                errors.append("'loxone.heartbeat_interval_seconds' muss 0 oder 5..3600 sein")
+            for key in ("numeric_states", "percent_values", "aggregates", "command_feedback"):
+                _check_type(errors, lox, key, bool, label=f"loxone.{key}")
+            filt = lox.get("filter")
+            if filt is not None:
+                if not isinstance(filt, dict):
+                    errors.append("'loxone.filter' muss ein Dict sein")
+                else:
+                    for key in ("groups", "diagnostics"):
+                        _check_type(errors, filt, key, bool, label=f"loxone.filter.{key}")
+                    for key in ("include_fields", "exclude_fields", "include_rooms",
+                                "exclude_rooms", "include_devices", "exclude_devices"):
+                        values = filt.get(key)
+                        if values is not None and (not isinstance(values, list)
+                                                   or not all(isinstance(v, str) for v in values)):
+                            errors.append(f"'loxone.filter.{key}' muss eine Liste von Strings sein")
+
+    # Sicherheit: Nur-Lese-Key und IP-Freigabe für Steuerbefehle
+    _check_type(errors, config, "api_key_readonly", str)
+    _check_type(errors, config, "api_key_readonly_file", str)
+    allowed = config.get("control_allowed_ips")
+    if allowed is not None:
+        if not isinstance(allowed, list) or not all(isinstance(v, str) for v in allowed):
+            errors.append("'control_allowed_ips' muss eine Liste von IP-Adressen/Netzen sein")
+        else:
+            for value in allowed:
+                try:
+                    ipaddress.ip_network(value, strict=False)
+                except ValueError:
+                    errors.append(f"'control_allowed_ips' enthält ungültige Adresse '{value}'")
+
+    # Schutz vor Funküberlastung
+    guard = config.get("command_guard")
+    if guard is not None:
+        if not isinstance(guard, dict):
+            errors.append("'command_guard' muss ein Dict sein")
+        else:
+            limits = {"dedupe_window_ms": (0, 10000), "min_interval_ms": (0, 5000),
+                      "duty_cycle_limit_percent": (0, 100)}
+            for key, (low, high) in limits.items():
+                value = guard.get(key)
+                if value is not None and (type(value) is not int or not low <= value <= high):
+                    errors.append(f"'command_guard.{key}' muss eine ganze Zahl {low}..{high} sein")
 
     energy = config.get("energy")
     if energy is not None:

@@ -19,8 +19,8 @@ import yaml
 import app.state as state
 from app.adapters.hmip_messages import (send_config_template_response, send_config_update_response,
                                        send_get_system_state, send_plugin_state)
-from app.utils import save_system_state
-from app.loxone_udp import push_event_devices
+from app.utils import _read_snapshot, save_system_state
+from app.loxone_udp import push_aggregates_if_changed, push_event_devices, update_topology
 
 log = logging.getLogger("bridge-ws")
 SNAPSHOT_TIMEOUT = 30.0
@@ -96,6 +96,24 @@ def _send_tracked(
             state.pending.pop(rid, None)
         raise
     return rid
+
+
+_TOPOLOGY_EVENTS = {"DEVICE_ADDED", "DEVICE_REMOVED", "GROUP_ADDED", "GROUP_CHANGED", "GROUP_REMOVED"}
+
+
+def _push_event_aggregates(msg_data: Dict[str, Any]) -> None:
+    """Nach einem Event Sammelwerte (unreach/lowBat/sabotage) bei Änderung an Loxone senden."""
+    try:
+        snapshot = _read_snapshot()
+        if snapshot is None:
+            return
+        events = (((msg_data.get("body") or {}).get("eventTransaction") or {}).get("events") or {})
+        if isinstance(events, dict) and any(isinstance(ev, dict) and ev.get("pushEventType") in _TOPOLOGY_EVENTS
+                                            for ev in events.values()):
+            update_topology(snapshot)
+        push_aggregates_if_changed(state.LOXONE_HOST, state.LOXONE_UDP_PORT, snapshot)
+    except Exception:
+        log.warning("Loxone-Sammelwerte konnten nicht aktualisiert werden", exc_info=True)
 
 
 def _cleanup_pending() -> None:
@@ -273,6 +291,7 @@ def ws_loop() -> None:
                                         and isinstance(response_body.get("devices"), (dict, list))):
                                     if save_system_state(msg_data) is False:
                                         raise OSError("HCU-Snapshot konnte nicht gespeichert werden")
+                                    update_topology(msg_data)
                                     state.WS_READY = True
                                     if not initial_forwarded:
                                         if state.runtime_services is not None and state.LOXONE_HOST:
@@ -325,6 +344,8 @@ def ws_loop() -> None:
                     elif msg_type == "HMIP_SYSTEM_EVENT":
                         save_system_state(msg_data)
                         push_event_devices(state.LOXONE_HOST, state.LOXONE_UDP_PORT, msg_data)
+                        if state.LOXONE_HOST:
+                            _push_event_aggregates(msg_data)
 
                     else:
                         log.debug("Unbehandelter Nachrichtentyp: %r", msg_type)
