@@ -142,9 +142,17 @@ und Laufzeit werden in der HCU-Gruppenkonfiguration festgelegt.
 
 `GET /api/inventory` liefert Räume, Geräte, Kanäle, Gruppen und Shellys inklusive
 der Loxone-UDP-Variablennamen; `GET /api/loxone/mapping` listet jede an Loxone
-gesendete Variable mit Raum, Gerät, Wert und Befehlserkennung (`…@\v`). Beide
-benötigen `X-API-Key`. Mit `ops/mcp_server.py` stehen sie als MCP-Tools bereit,
-z.B. neben einem Loxone-Config-MCP. Details: `docs/releases/1.20.0.md`.
+gesendete Variable mit Raum, Gerät, Wert, Einheit und Befehlserkennung (`…@\v`),
+filter- und blätterbar; `GET /api/loxone/template.xml` erzeugt daraus eine
+Loxone-Config-Vorlage (Virtueller UDP-Eingang). Lesen geht mit dem Nur-Lese-Key
+(`data/api_key_readonly.txt`). Der MCP-Server (`mcp-server/`, Befehl
+`homematic-bridge-mcp`) stellt das als Tools bereit, z.B. neben einem
+Loxone-Config-MCP.
+
+Ab 1.21 zusätzlich: Zahlenwerte für Fenster/Rauchmelder/Heizmodus, Prozentwerte,
+Sammelwerte (nicht erreichbar, Batterie, Sabotage), Heartbeat, Rückmeldung zu
+Befehlen, Funk-Schutz, RGB im Loxone-Format, Steuern über Raum/Label und
+IP-Freigabe. Details: `docs/releases/1.20.0.md`, `docs/releases/1.21.0.md`.
 
 ---
 

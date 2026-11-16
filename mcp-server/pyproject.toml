@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "homematic-bridge-mcp"
+version = "1.21.0"
+description = "Read-only MCP server for the Homematic Bridge (inventory, Loxone mapping, templates)"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+homematic-bridge-mcp = "homematic_bridge_mcp.server:main"
+
+[tool.setuptools]
+packages = ["homematic_bridge_mcp"]

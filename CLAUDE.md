@@ -105,6 +105,15 @@ Version 1.20: read-only `GET /api/inventory` und `GET /api/loxone/mapping`
 sowie stdio-MCP-Server `ops/mcp_server.py` für den Abgleich mit einem
 Loxone-Config-MCP. Details unter `docs/releases/1.20.0.md`.
 
+Version 1.21: Loxone-Zusatzwerte und `loxone.filter` (`app/loxone_udp.py`,
+Modulzustand über `configure()`/`update_topology()`), Funk-Schutz
+(`app/command_guard.py`, greift in `routes._send_hmip_command`), Namensauflösung
+und Loxone-RGB (`app/targets.py`), Nur-Lese-Key `@require_read_key` und
+`control_allowed_ips` (`app/auth.py`), MCP-Paket unter `mcp-server/`,
+Deploy mit `ops/deploy.sh`. Tests in `tests/test_loxone_sync.py` sichern das alte
+UDP-Format (Zusatzwerte dort aus), neue Werte in `tests/test_bridge_extras.py`.
+Details unter `docs/releases/1.21.0.md`.
+
 ## Konventionen
 
 - **Sprache**: Kommentare und Docstrings auf Deutsch
@@ -113,7 +122,7 @@ Loxone-Config-MCP. Details unter `docs/releases/1.20.0.md`.
 - **Type Hints**: Alle Funktionssignaturen typisiert
 - **SPDX-Header**: Jede Quelldatei beginnt mit `# SPDX-License-Identifier: Apache-2.0`
 - **Thread Safety**: Shared State immer unter Lock lesen/schreiben
-- **Auth-Decorators**: `@require_api_key` für API-Routen, `@require_web_auth` für Web-UI, `@require_csrf` für POST-Formulare
+- **Auth-Decorators**: `@require_api_key` für steuernde API-Routen, `@require_read_key` für lesende API-Routen, `@require_web_auth` für Web-UI, `@require_csrf` für POST-Formulare
 - **RGB**: Kein separater `setSwitchState` vor `setHueSaturationDimLevel` – Gerät schaltet implizit ein
 
 ## Wichtige Befehle

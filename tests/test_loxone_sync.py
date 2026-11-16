@@ -13,6 +13,12 @@ PORT = 7777
 
 
 @pytest.fixture(autouse=True)
+def legacy_wire_format():
+    """Diese Datei sichert das bisherige Format; Zusatzwerte prüft test_loxone_extras.py."""
+    udp.configure({"numeric_states": False, "percent_values": False, "aggregates": False})
+
+
+@pytest.fixture(autouse=True)
 def udp_socket(monkeypatch):
     factory = MagicMock()
     sock = factory.return_value.__enter__.return_value

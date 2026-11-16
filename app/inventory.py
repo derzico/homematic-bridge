@@ -176,6 +176,10 @@ def build_inventory(snapshot: Any, shelly_devices: Optional[List[Dict[str, Any]]
 
 
 def _kind(field: str, numeric: Iterable[str], boolean: Iterable[str]) -> str:
+    if field in lox.DERIVED_BOOL_FIELDS:
+        return "bool"
+    if field in lox.DERIVED_NUMERIC_FIELDS:
+        return "number"
     if field == "available" or field in boolean:
         return "bool"
     if field in numeric:
@@ -213,6 +217,7 @@ def build_loxone_mapping(snapshot: Any) -> List[Dict[str, Any]]:
     """
     devices, groups = _system_parts(snapshot)
     _, room_of = _rooms(groups)
+    lox.update_topology(snapshot)
     # Längste IDs zuerst, damit IDs mit Unterstrich eindeutig zugeordnet werden
     device_ids = sorted((d for d in devices if isinstance(d, str)), key=len, reverse=True)
     group_ids = sorted((g for g in groups if isinstance(g, str)), key=len, reverse=True)
@@ -247,6 +252,82 @@ def build_loxone_mapping(snapshot: Any) -> List[Dict[str, Any]]:
                          channel_type=ch_obj.get("functionalChannelType") if isinstance(ch_obj, dict) else None,
                          channel_label=ch_obj.get("label") if isinstance(ch_obj, dict) else None)
         entry["kind"] = _classify(entry["entity"], entry["field"])
+        entry["unit"] = _unit(entry["field"])
         entry["command"] = f"{name}@\\v" if entry["kind"] != "text" else None
+        entry["sent"] = lox.is_sent(name)
         result.append(entry)
     return result
+
+
+_UNITS = {"actualTemperature": "°C", "setPointTemperature": "°C", "temperature": "°C",
+          "minTemperature": "°C", "maxTemperature": "°C", "humidity": "%",
+          "co2Concentration": "ppm", "illumination": "lx", "windSpeed": "km/h",
+          "currentPowerConsumption": "W", "energyCounter": "kWh", "rssiDeviceValue": "dBm",
+          "colorTemperature": "K", "hue": "°", "windDirection": "°", "onTime": "s",
+          "zoneActivationDelay": "s"}
+
+
+def _unit(field: str) -> Optional[str]:
+    leaf = field.rsplit("_", 1)[-1]
+    if leaf.endswith("Pct"):
+        return "%"
+    return _UNITS.get(leaf)
+
+
+def filter_mapping(variables: List[Dict[str, Any]], *, room: str = "", entity: str = "",
+                   field: str = "", target: str = "", kind: str = "",
+                   sent_only: bool = False) -> List[Dict[str, Any]]:
+    """Filter für Mapping/Vorlage: Raum, Entität, Feld, Gerät/Gruppe (ID oder Label), Typ."""
+    room, target = room.strip().lower(), target.strip().lower()
+    fields = {f.strip() for f in field.split(",") if f.strip()}
+    result = []
+    for v in variables:
+        if sent_only and not v.get("sent"):
+            continue
+        if room and str(v.get("room") or "").lower() != room:
+            continue
+        if entity and v.get("entity") != entity:
+            continue
+        if fields and v.get("field") not in fields and str(v.get("field")).rsplit("_", 1)[-1] not in fields:
+            continue
+        if target and target not in {str(v.get("id") or "").lower(), str(v.get("label") or "").lower()}:
+            continue
+        if kind and v.get("kind") != kind:
+            continue
+        result.append(v)
+    return result
+
+
+def build_loxone_template(variables: List[Dict[str, Any]], *, title: str, port: int,
+                          address: str = "") -> str:
+    """Loxone-Config-Vorlage (VirtualInUdp) für alle Zahlen/Ja-Nein-Variablen.
+
+    Textvariablen werden übersprungen (kein Analogwert). Import in Loxone Config:
+    Virtuelle Eingänge → Vorlage importieren / Datei in den Vorlagenordner kopieren.
+    """
+    from xml.etree import ElementTree as ET
+    root = ET.Element("VirtualInUdp", {"Title": title, "Comment": "Homematic Bridge",
+                                         "Address": address, "Port": str(int(port))})
+    ET.SubElement(root, "Info", {"templateType": "1", "minVersion": "10020326"})
+    for v in variables:
+        if v.get("kind") not in ("bool", "number"):
+            continue
+        analog = v["kind"] == "number"
+        unit = v.get("unit") or ""
+        parts = [v.get("label") or v.get("id") or v.get("entity")]
+        if v.get("channel") is not None:
+            parts.append(v.get("channel_label") or f"ch{v['channel']}")
+        parts.append(v.get("field"))
+        cmd_title = " ".join(str(p) for p in parts if p)[:64]
+        ET.SubElement(root, "VirtualInUdpCmd", {
+            "Title": cmd_title,
+            "Comment": " / ".join(str(p) for p in (v.get("room"), v["variable"]) if p),
+            "Address": "", "Check": f"{v['variable']}@\\v",
+            "Signed": "true", "Analog": "true" if analog else "false",
+            "SourceValLow": "0", "DestValLow": "0", "SourceValHigh": "100", "DestValHigh": "100",
+            "DefVal": "0", "MinVal": "-2147483648", "MaxVal": "2147483647",
+            "Unit": (f"<v.1> {unit}".strip() if analog else "<v>"),
+            "HintText": "",
+        })
+    ET.indent(root, space="  ")
+    return '<?xml version="1.0" encoding="utf-8"?>\n' + ET.tostring(root, encoding="unicode") + "\n"

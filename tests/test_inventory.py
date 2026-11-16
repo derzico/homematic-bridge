@@ -81,7 +81,8 @@ def test_mapping_matches_udp_push_exactly(snapshot):
     assert on == {"variable": "hmip_dev-a_ch1_on", "value": "1", "entity": "device", "id": "dev-a",
                   "label": "Licht Küche", "device_type": "PLUGABLE_SWITCH", "room": "Küche",
                   "channel": "1", "field": "on", "channel_type": "SWITCH_CHANNEL",
-                  "channel_label": "Decke", "kind": "bool", "command": "hmip_dev-a_ch1_on@\\v"}
+                  "channel_label": "Decke", "kind": "bool", "unit": None,
+                  "command": "hmip_dev-a_ch1_on@\\v", "sent": True}
     assert by_name["hmip_dev-b_ch1_windowState"]["kind"] == "text"
     assert by_name["hmip_dev-b_ch1_windowState"]["command"] is None
     assert by_name["hmip_dev-b_ch1_windowState"]["channel_type"] == "SHUTTER_CONTACT_CHANNEL"

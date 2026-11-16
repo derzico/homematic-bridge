@@ -16,6 +16,7 @@ from flask import Blueprint, jsonify, redirect, render_template, request, sessio
 from werkzeug.security import check_password_hash
 
 import app.adapters.shelly_adapter as shelly_mod
+import app.loxone_udp as loxone_udp
 import app.shelly_proxy as shelly_proxy
 import app.state as state
 from app.adapters.hmip_messages import (send_hmip_set_dim_level,
@@ -27,7 +28,8 @@ from app.adapters.hmip_messages import send_hmip_set_watering_switch
 from app.adapters.hmip_messages import send_hmip_request
 from app.controls import ControlError, plan_control
 from app.adapters.hmip_websocket import _send_tracked, _wait_for_ack
-from app.auth import _ensure_api_key, generate_csrf_token, require_api_key, require_csrf, require_web_auth
+from app.auth import (_ensure_api_key, _ensure_readonly_key, apply_security_config, generate_csrf_token,
+                      require_api_key, require_csrf, require_read_key, require_web_auth)
 from app.utils import _find_device_in_list, _locate_devices_container
 from app.view_helpers import (prepare_dashboard, prepare_device_detail,
                                prepare_device_overview, prepare_device_status,
@@ -38,21 +40,41 @@ bp = Blueprint("bridge", __name__)
 log = logging.getLogger("bridge-ws")
 
 
+_LEGACY_VALIDATED = {"/hmipSwitch", "/hmipDimmer", "/hmipRGB", "/hmipAlarm", "/hmipThermostat", "/hmipIrrigation"}
+
+
 @bp.before_request
 def validate_control_json():
     """Reject malformed control requests before any network/device operation."""
-    if request.method != "POST" or not (
-        request.path in {"/hmipSwitch", "/hmipDimmer", "/hmipRGB", "/hmipAlarm",
-                         "/hmipThermostat", "/hmipIrrigation"}
-        or (request.path.startswith("/shelly/") and "/relay/" in request.path)
-    ):
+    from app.targets import RESOLVABLE_PATHS, needs_resolution, resolve_targets
+    if request.method != "POST":
+        return None
+    if request.path in RESOLVABLE_PATHS - _LEGACY_VALIDATED:
+        # Planner-Endpunkte validieren selbst streng; hier nur Label/Raum → ID
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return None
+        for field in ("label", "groupLabel", "room"):
+            if field in data and (not isinstance(data[field], str) or not data[field].strip()):
+                return jsonify({"error": f"{field} muss ein nicht-leerer String sein"}), 400
+        if not needs_resolution(request.path, data):
+            return None
+        failure = resolve_targets(request.path, data, _load_snapshot())
+        return (jsonify(failure[0]), failure[1]) if failure else None
+    if not (request.path in _LEGACY_VALIDATED
+            or (request.path.startswith("/shelly/") and "/relay/" in request.path)):
         return None
     data = request.get_json(silent=True, force=True)
     if not isinstance(data, dict):
         return jsonify({"error": "Body muss ein JSON-Objekt sein"}), 400
-    for field in ("device", "group", "groupId", "rgb", "mode"):
+    for field in ("device", "group", "groupId", "mode", "label", "groupLabel", "room"):
         if field in data and (not isinstance(data[field], str) or not data[field].strip()):
             return jsonify({"error": f"{field} muss ein nicht-leerer String sein"}), 400
+    if "rgb" in data and not (
+        (isinstance(data["rgb"], str) and data["rgb"].strip())
+        or (isinstance(data["rgb"], int) and not isinstance(data["rgb"], bool))
+    ):
+        return jsonify({"error": "rgb muss 'R=..,G=..,B=..' oder eine Loxone-Zahl (BBBGGGRRR) sein"}), 400
     if "on" in data and not isinstance(data["on"], bool):
         return jsonify({"error": "on muss ein Boolean sein"}), 400
     if "channelIndex" in data:
@@ -71,6 +93,11 @@ def validate_control_json():
                 raise ValueError
         except (ValueError, TypeError, OverflowError):
             return jsonify({"error": f"{field} muss eine endliche Zahl sein"}), 400
+    if request.path in RESOLVABLE_PATHS and needs_resolution(request.path, data):
+        failure = resolve_targets(request.path, data, _load_snapshot())
+        if failure:
+            body, status = failure
+            return jsonify(body), status
     return None
 
 
@@ -135,11 +162,13 @@ def _apply_runtime_config(parsed: Dict[str, Any]) -> None:
         _lox = parsed.get("loxone") or {}
         state.LOXONE_HOST = _lox.get("miniserver_ip") or ""
         state.LOXONE_UDP_PORT = int(_lox.get("udp_port") or 7777)
+        loxone_udp.configure(_lox)
         state.REQUIRE_API_KEY = bool(
             state.config_internal.get("require_api_key", parsed.get("require_api_key", True))
         )
         state.API_KEY_FILE = resolve_api_key_file(parsed, state.config_internal)
         state.API_KEY = os.getenv("BRIDGE_API_KEY") or state.config_internal.get("api_key") or parsed.get("api_key")
+        apply_security_config(parsed, state.config_internal)
 
     if reconnect:
         with state.send_lock:
@@ -150,6 +179,7 @@ def _apply_runtime_config(parsed: Dict[str, Any]) -> None:
                 connection.close()
 
     _ensure_api_key()
+    _ensure_readonly_key()
 
     shelly_cfg = dict(parsed.get("shelly") or {})
     if state.runtime_services is not None:
@@ -257,7 +287,64 @@ def serve_device_detail(device_id):
 
 # ── API: Switch ───────────────────────────────────────────────────────────────
 
+_duty_cache: Dict[str, Any] = {"mtime": None, "value": None}
+
+
+def _current_duty_cycle() -> Optional[float]:
+    """Home-Duty-Cycle aus dem Snapshot, nach Datei-mtime zwischengespeichert."""
+    from app.command_guard import home_duty_cycle
+    path = state.config_internal.get("system_state_path", "")
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return None
+    if _duty_cache["mtime"] != mtime:
+        _duty_cache["value"] = home_duty_cycle(_load_snapshot())
+        _duty_cache["mtime"] = mtime
+    return _duty_cache["value"]
+
+
+def _command_feedback(target: str, path: str, ok: bool, status: int) -> None:
+    """lastCmdOk/lastCmdCode per UDP an Loxone (wenn konfiguriert)."""
+    from app.command_guard import is_group_command
+    with state.config_lock:
+        host, port = state.LOXONE_HOST, state.LOXONE_UDP_PORT
+        enabled = (state.config.get("loxone") or {}).get("command_feedback", True) is not False
+    if host and enabled and target:
+        loxone_udp.push_command_feedback(host, port, target, is_group_command(path), ok, status)
+
+
 def _send_hmip_command(send_func, path: str, *args):
+    """Sendet einen HmIP-Befehl (über den Funk-Schutz) und wartet auf die HCU-Antwort.
+
+    Rückgabe (request_id, None) bei Erfolg – auch bei verworfenen Duplikaten
+    ("duplicate:<rid>") oder durch neueren Befehl ersetzten ("superseded:") –,
+    sonst (request_id|None, (response, status)).
+    """
+    import app.command_guard as command_guard
+    target = command_guard.target_of(args)
+    with state.config_lock:
+        settings = command_guard.GuardSettings.from_config(state.config.get("command_guard"))
+    duty = _current_duty_cycle() if settings.duty_cycle_limit_percent else None
+    decision = command_guard.guard.admit(settings, target, path, args, duty)
+    if not decision.send:
+        if decision.outcome == "duty_cycle":
+            _command_feedback(target, path, False, 429)
+            return None, (jsonify({
+                "error": "Duty Cycle zu hoch – nur Alarmbefehle werden gesendet",
+                "duty_cycle_percent": duty,
+                "limit_percent": settings.duty_cycle_limit_percent,
+            }), 429, {"Retry-After": "60"})
+        return f"{decision.outcome}:{decision.reference or ''}", None
+
+    rid, error = _send_hmip_command_raw(send_func, path, *args)
+    if error is None:
+        command_guard.guard.record(target, path, args, rid)
+    _command_feedback(target, path, error is None, 200 if error is None else error[1])
+    return rid, error
+
+
+def _send_hmip_command_raw(send_func, path: str, *args):
     """Sendet einen HmIP-Befehl und wartet auf die korrelierte HCU-Antwort."""
     try:
         rid = _send_tracked(send_func, path, *args, wait_for_ack=True)
@@ -289,15 +376,21 @@ def _send_hmip_command(send_func, path: str, *args):
 def _execute_control(kind):
     if state.conn is None or not state.WS_READY:
         return jsonify({"error": "HCU noch nicht bereit"}), 503
+    data = request.get_json(silent=True)
     try:
-        commands = plan_control(kind, request.get_json(silent=True), _load_snapshot())
+        commands = plan_control(kind, data, _load_snapshot())
     except ControlError as error:
+        if isinstance(data, dict):
+            target = data.get("device") or data.get("group")
+            if isinstance(target, str):
+                _command_feedback(target, "/hmip/group/" if data.get("group") else "/hmip/device/",
+                                  False, error.status)
         return jsonify({"error": str(error)}), error.status
     results = []
     for path, payload in commands:
         rid, error = _send_hmip_command(send_hmip_request, path, path, payload)
         if error:
-            response, status = error
+            response, status = error[0], error[1]
             return jsonify({"error": response.get_json()["error"], "completed": results,
                             "failed_target": payload.get("deviceId") or payload.get("groupId"),
                             "failure": response.get_json()}), status
@@ -372,7 +465,7 @@ def energy_settings():
 
 
 @bp.get("/api/energy")
-@require_api_key
+@require_read_key
 def energy_api():
     if state.runtime_services is None:
         return jsonify({"error": "Hintergrunddienste nicht gestartet"}), 503
@@ -403,14 +496,14 @@ def loxone_resync_web():
 
 
 @bp.get("/api/security")
-@require_api_key
+@require_read_key
 def security_api():
     from app.feature_views import security_data
     return jsonify(security_data(_load_snapshot()))
 
 
 @bp.get("/api/inventory")
-@require_api_key
+@require_read_key
 def inventory_api():
     """Read-only Gesamtübersicht (Räume, Geräte, Kanäle, Gruppen, Shelly) inkl. Loxone-Variablen."""
     from app.inventory import build_inventory
@@ -420,23 +513,71 @@ def inventory_api():
     return jsonify(result)
 
 
+def _mapping_query(snapshot):
+    """Gefilterte Mapping-Liste nach Query-Parametern (room, entity, field, target, kind, sent)."""
+    from app.inventory import build_loxone_mapping, filter_mapping
+    args = request.args
+    return filter_mapping(
+        build_loxone_mapping(snapshot),
+        room=args.get("room", ""), entity=args.get("entity", ""), field=args.get("field", ""),
+        target=args.get("target", ""), kind=args.get("kind", ""),
+        sent_only=args.get("sent", "").lower() in ("1", "true", "yes"),
+    )
+
+
+def _int_arg(name: str, default: int, maximum: int) -> int:
+    try:
+        value = int(request.args.get(name, default))
+    except (TypeError, ValueError):
+        return default
+    return max(0, min(value, maximum))
+
+
 @bp.get("/api/loxone/mapping")
-@require_api_key
+@require_read_key
 def loxone_mapping_api():
-    """Alle Loxone-UDP-Variablen mit Herkunft, aktuellem Wert und Befehlserkennung."""
-    from app.inventory import build_loxone_mapping
+    """Loxone-UDP-Variablen mit Herkunft, Wert, Einheit, Befehlserkennung und sent-Flag.
+
+    Filter: room, entity (device/group/home), field (kommagetrennt), target (ID/Label),
+    kind (bool/number/text), sent=1. Seiten: offset, limit (0 = alle).
+    """
     snapshot = _load_snapshot()
     with state.config_lock:
         host, port = state.LOXONE_HOST, state.LOXONE_UDP_PORT
-    variables = build_loxone_mapping(snapshot)
+    variables = _mapping_query(snapshot)
+    offset, limit = _int_arg("offset", 0, 1_000_000), _int_arg("limit", 0, 5000)
+    page = variables[offset:offset + limit] if limit else variables[offset:]
     return jsonify({
         "miniserver_configured": bool(host),
         "udp_port": port,
         "format": "variable@value CRLF, Virtual UDP Input; command = Loxone-Befehlserkennung",
         "snapshot_ready": _snapshot_is_valid(snapshot),
-        "count": len(variables),
-        "variables": variables,
+        "total": len(variables),
+        "offset": offset,
+        "count": len(page),
+        "variables": page,
     })
+
+
+@bp.get("/api/loxone/template.xml")
+@require_read_key
+def loxone_template_api():
+    """Loxone-Config-Vorlage (Virtueller UDP-Eingang) mit denselben Filtern wie das Mapping.
+
+    Standard: nur gesendete Variablen (sent=1). title/address optional.
+    """
+    from app.inventory import build_loxone_template
+    if "sent" not in request.args:
+        request.args = request.args.copy()
+        request.args["sent"] = "1"
+    with state.config_lock:
+        port = state.LOXONE_UDP_PORT
+    title = (request.args.get("title") or "Homematic Bridge").strip()[:64] or "Homematic Bridge"
+    xml = build_loxone_template(_mapping_query(_load_snapshot()), title=title, port=port,
+                                address=(request.args.get("address") or "").strip()[:64])
+    filename = "VIU_" + "".join(c if c.isalnum() else "_" for c in title) + ".xml"
+    return xml, 200, {"Content-Type": "application/xml; charset=utf-8",
+                      "Content-Disposition": f'attachment; filename="{filename}"'}
 
 
 def _diagnostic_data():
@@ -452,13 +593,17 @@ def _diagnostic_data():
                        "shelly_cached": len(shelly_mod.load_cached())},
             "loxone": {"configured": bool(state.LOXONE_HOST),
                        "last_snapshot_sent_at": services.last_sync_at if services else None,
+                       "heartbeat_counter": services.heartbeat_counter if services else None,
+                       "filter_active": loxone_udp.get_options().filtered,
                        "delivery": "UDP, no acknowledgement"},
+            "security": {"readonly_key_configured": bool(state.API_KEY_READONLY),
+                         "control_ip_allowlist": len(state.CONTROL_ALLOWED_NETS)},
             "energy": services.energy.status() if services else {"enabled": False},
             "note": "No configuration, tokens, passwords or raw snapshots included."}
 
 
 @bp.get("/api/diagnostics")
-@require_api_key
+@require_read_key
 def diagnostics_api():
     return jsonify(_diagnostic_data())
 
@@ -538,12 +683,14 @@ def hmip_rgb_post():
     device_id     = data.get("device")
     rgb_str       = data.get("rgb")
     channel_index = data.get("channelIndex", 1)
-    if not device_id or not rgb_str:
-        return jsonify({"error": "Ungültige Parameter: device (str), rgb (str, z.B. 'R=50%,G=30%,B=100%'), optional channelIndex (int, default 1)"}), 400
+    if not device_id or rgb_str is None or rgb_str == "":
+        return jsonify({"error": "Ungültige Parameter: device (str) oder label, rgb ('R=50%,G=30%,B=100%' oder Loxone-Zahl BBBGGGRRR), optional channelIndex (int, default 1)"}), 400
     try:
         channel_index = int(channel_index)
     except (TypeError, ValueError):
         return jsonify({"error": "channelIndex muss eine ganze Zahl sein"}), 400
+    if isinstance(rgb_str, int) or (isinstance(rgb_str, str) and rgb_str.strip().isdigit()):
+        return _loxone_light(device_id, channel_index, rgb_str)
     try:
         parts = {}
         for part in rgb_str.replace(" ", "").split(","):
@@ -558,6 +705,49 @@ def hmip_rgb_post():
         b = max(0.0, min(1.0, parts.get("B", 0.0)))
     except Exception:
         return jsonify({"error": f"Ungültiges RGB-Format. Erwartet: 'R=50%,G=30%,B=100%', erhalten: '{rgb_str}'"}), 400
+    return _send_rgb(device_id, channel_index, r, g, b)
+
+
+def _loxone_light(device_id: str, channel_index: int, value: Any):
+    """Loxone-Lichtsteuerungswert: RGB (BBBGGGRRR) oder Lumitech (20BBBTTTT)."""
+    from app.targets import loxone_rgb
+    decoded = loxone_rgb(value)
+    if decoded is None:
+        return jsonify({"error": "Ungültiger Loxone-Lichtwert: BBBGGGRRR (je 0..100) oder 20BBBTTTT erwartet"}), 400
+    if "rgb" in decoded:
+        return _send_rgb(device_id, channel_index, *decoded["rgb"])
+    if decoded["brightness"] == 0:
+        return _switch_off(device_id, channel_index)
+    try:
+        commands = plan_control("light", {
+            "device": device_id, "channelIndex": channel_index, "action": "temperature",
+            "colorTemperature": decoded["kelvin"], "dimLevel": decoded["brightness"],
+        }, _load_snapshot())
+    except ControlError as error:
+        _command_feedback(device_id, "/hmip/device/", False, error.status)
+        return jsonify({"error": str(error)}), error.status
+    results = []
+    for path, payload in commands:
+        rid, error = _send_hmip_command(send_hmip_request, path, path, payload)
+        if error:
+            return error
+        results.append(rid)
+    return jsonify({"status": f"{device_id}: {decoded['kelvin']}K dim={decoded['brightness']}%",
+                    "request_id": results[0] if results else None}), 200
+
+
+def _switch_off(device_id: str, channel_index: int):
+    rid, error = _send_hmip_command(
+        send_hmip_set_switch, "/hmip/device/control/setSwitchState",
+        device_id, False, channel_index,
+    )
+    if error:
+        return error
+    return jsonify({"status": f"{device_id}: off", "request_id": rid}), 200
+
+
+def _send_rgb(device_id: str, channel_index: int, r: float, g: float, b: float):
+    """RGB-Anteile 0..1 → HSV; Schwarz schaltet aus (kein separates setSwitchState davor)."""
     h, s, v = colorsys.rgb_to_hsv(r, g, b)
     hue, saturation, dim_level = round(h * 360) % 360, round(s, 3), round(v, 3)
     if r == 0.0 and g == 0.0 and b == 0.0:
@@ -749,7 +939,7 @@ def hmip_irrigation_post():
 # ── API: State ────────────────────────────────────────────────────────────────
 
 @bp.get("/hmipState")
-@require_api_key
+@require_read_key
 def hmip_state_get():
     device_id = request.args.get("device")
     if not device_id:

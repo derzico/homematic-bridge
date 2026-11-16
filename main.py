@@ -13,7 +13,8 @@ import app.state as state
 from app.adapters.hmip_adapter import HmIPAdapter
 from app.adapters.registry import AdapterRegistry
 from app.adapters.shelly_adapter import ShellyAdapter
-from app.auth import _ensure_api_key
+import app.loxone_udp as loxone_udp
+from app.auth import _ensure_api_key, _ensure_readonly_key, apply_security_config
 from app.lifecycle import install_shutdown_handlers
 from app.runtime_services import RuntimeServices
 from app.routes import bp as routes_bp
@@ -45,8 +46,11 @@ state.API_KEY         = os.getenv("BRIDGE_API_KEY") or config_internal.get("api_
 _loxone_cfg        = config.get("loxone") or {}
 state.LOXONE_HOST  = _loxone_cfg.get("miniserver_ip") or ""
 state.LOXONE_UDP_PORT = int(_loxone_cfg.get("udp_port") or 7777)
+loxone_udp.configure(_loxone_cfg)
 
+apply_security_config(config, config_internal)
 _ensure_api_key()
+_ensure_readonly_key()
 
 if not config.get("homematic_token"):
     logging.getLogger("bridge-ws").error(
