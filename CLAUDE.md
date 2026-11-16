@@ -100,6 +100,11 @@ session-/CSRF-geschützte Browsersteuerung `/control/<kind>`, Security-Anzeige,
 Loxone-Vollsync und optionale lokale Shelly-Energiehistorie. Details unter
 `docs/releases/1.19.0.md`. Keine echten Gerätebefehle in Tests verwenden.
 
+Version 1.20: read-only `GET /api/inventory` und `GET /api/loxone/mapping`
+(`app/inventory.py`, Allowlist-Felder, Variablennamen aus `loxone_udp._system_lines`)
+sowie stdio-MCP-Server `ops/mcp_server.py` für den Abgleich mit einem
+Loxone-Config-MCP. Details unter `docs/releases/1.20.0.md`.
+
 ## Konventionen
 
 - **Sprache**: Kommentare und Docstrings auf Deutsch

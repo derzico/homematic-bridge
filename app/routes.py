@@ -409,6 +409,36 @@ def security_api():
     return jsonify(security_data(_load_snapshot()))
 
 
+@bp.get("/api/inventory")
+@require_api_key
+def inventory_api():
+    """Read-only Gesamtübersicht (Räume, Geräte, Kanäle, Gruppen, Shelly) inkl. Loxone-Variablen."""
+    from app.inventory import build_inventory
+    snapshot = _load_snapshot()
+    result = build_inventory(snapshot, shelly_mod.load_cached())
+    result["snapshot_ready"] = _snapshot_is_valid(snapshot)
+    return jsonify(result)
+
+
+@bp.get("/api/loxone/mapping")
+@require_api_key
+def loxone_mapping_api():
+    """Alle Loxone-UDP-Variablen mit Herkunft, aktuellem Wert und Befehlserkennung."""
+    from app.inventory import build_loxone_mapping
+    snapshot = _load_snapshot()
+    with state.config_lock:
+        host, port = state.LOXONE_HOST, state.LOXONE_UDP_PORT
+    variables = build_loxone_mapping(snapshot)
+    return jsonify({
+        "miniserver_configured": bool(host),
+        "udp_port": port,
+        "format": "variable@value CRLF, Virtual UDP Input; command = Loxone-Befehlserkennung",
+        "snapshot_ready": _snapshot_is_valid(snapshot),
+        "count": len(variables),
+        "variables": variables,
+    })
+
+
 def _diagnostic_data():
     from app import __version__
     from app.controls import indexed, system_body
