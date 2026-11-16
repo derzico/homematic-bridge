@@ -91,14 +91,18 @@ def resolve_targets(path: str, data: Dict[str, Any], snapshot: Any) -> Optional[
 
     types = GROUP_TYPES[path]
     typed = [(gid, g) for gid, g in groups.items() if isinstance(g, dict) and g.get("type") in types]
+    def members(group: Dict[str, Any]) -> set:
+        return {ref.get("deviceId") for ref in group.get("channels") or [] if isinstance(ref, dict)}
+
     if isinstance(data.get("groupLabel"), str):
         label = _norm(data["groupLabel"])
         candidates = [(gid, g) for gid, g in typed if _norm(g.get("label")) == label]
-        query = data["groupLabel"]
+        if in_room is not None:
+            # Raum angegeben: nur Gruppen, deren Mitglieder alle in diesem Raum liegen
+            candidates = [(gid, g) for gid, g in candidates if members(g) and members(g) <= in_room]
+        query = data["groupLabel"] + (f" im Raum {data['room']}" if room else "")
     else:
         # Heizgruppe eines Raums: alle Mitglieder im Raum, sonst gleichnamige Gruppe
-        def members(group: Dict[str, Any]) -> set:
-            return {ref.get("deviceId") for ref in group.get("channels") or [] if isinstance(ref, dict)}
         candidates = [(gid, g) for gid, g in typed if members(g) and members(g) <= in_room]
         if not candidates:
             candidates = [(gid, g) for gid, g in typed if _norm(g.get("label")) == room]

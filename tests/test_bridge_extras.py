@@ -193,6 +193,30 @@ def test_guard_dedupes_identical_commands():
     assert guard.admit(settings, "LED", "/p", args, None).send is True
 
 
+def test_guard_intervening_command_invalidates_duplicate():
+    guard = CommandGuard(clock=lambda: 0.0, sleep=lambda _s: None)
+    settings = GuardSettings(dedupe_window_ms=500, min_interval_ms=0)
+    on, off = ("SW", True, 1), ("SW", False, 1)
+    path = "/hmip/device/control/setSwitchState"
+    for args, rid in ((on, "r1"), (off, "r2")):
+        assert guard.admit(settings, "SW", path, args, None).send
+        guard.record("SW", path, args, rid)
+    assert guard.admit(settings, "SW", path, on, None).send          # AN → AUS → AN wird gesendet
+    # Anderer Kanal desselben Geräts bleibt unabhängig
+    guard.record("SW", path, ("SW", True, 2), "r3")
+    assert guard.admit(settings, "SW", path, ("SW", True, 2), None).outcome == "duplicate"
+
+
+def test_guard_pending_command_invalidates_before_ack():
+    guard = CommandGuard(clock=lambda: 0.0, sleep=lambda _s: None)
+    settings = GuardSettings(dedupe_window_ms=500, min_interval_ms=0)
+    path = "/hmip/device/control/setSwitchState"
+    guard.admit(settings, "SW", path, ("SW", True, 1), None)
+    guard.record("SW", path, ("SW", True, 1), "r1")
+    assert guard.admit(settings, "SW", path, ("SW", False, 1), None).send   # AUS noch ohne ACK
+    assert guard.admit(settings, "SW", path, ("SW", True, 1), None).send    # AN darf nicht verschluckt werden
+
+
 def test_guard_spaces_commands_per_target():
     clock, slept = [0.0], []
     guard = CommandGuard(clock=lambda: clock[0], sleep=slept.append)
@@ -242,6 +266,18 @@ def test_resolve_device_by_label_room_and_ambiguity(snapshot):
     assert resolve_targets("/hmipSwitch", {"label": "Licht", "room": "Keller"}, snapshot)[1] == 404
     explicit = {"device": "X", "label": "Licht"}
     assert resolve_targets("/hmipSwitch", explicit, snapshot) is None and explicit["device"] == "X"
+
+
+def test_group_label_respects_room(snapshot):
+    groups = snapshot["body"]["body"]["groups"]
+    groups["H-KUE"] = {"id": "H-KUE", "type": "HEATING", "label": "Heizkreis 1",
+                       "channels": [{"deviceId": "LED", "channelIndex": 1}]}
+    assert resolve_targets("/hmipThermostat", {"groupLabel": "Heizkreis 1"}, snapshot)[1] == 409
+    data = {"groupLabel": "Heizkreis 1", "room": "Küche"}
+    assert resolve_targets("/hmipThermostat", data, snapshot) is None and data["group"] == "H-KUE"
+    groups.pop("H-KUE")
+    # Eindeutiger Name, aber anderer Raum → nicht gefunden statt falscher Gruppe
+    assert resolve_targets("/hmipThermostat", {"groupLabel": "Heizkreis 1", "room": "Küche"}, snapshot)[1] == 404
 
 
 def test_resolve_heating_group_by_room_and_label(snapshot):

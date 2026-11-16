@@ -55,7 +55,10 @@ class CommandGuard:
         self._sleep = sleep
         self._lock = threading.Lock()
         self._last_sent: Dict[str, float] = {}                         # target -> Zeitpunkt
-        self._recent: Dict[Tuple[str, str], Tuple[float, str]] = {}   # (target, sig) -> (t, rid)
+        # Zuletzt wirksamer Befehl je (Ziel, Kanal): (Signatur, Zeitpunkt, request_id).
+        # Nur dagegen wird dedupliziert – ein dazwischenliegender anderer Befehl
+        # (z.B. AN → AUS → AN) macht ältere Signaturen ungültig.
+        self._effective: Dict[Tuple[str, str], Tuple[str, float, str]] = {}
         self._latest_seq: Dict[Tuple[str, str, str], int] = {}        # (target, path, kanal) -> seq
         self._seq = 0
 
@@ -72,12 +75,15 @@ class CommandGuard:
                         duty_cycle, settings.duty_cycle_limit_percent, path, target)
             return Decision(False, "duty_cycle")
         sig = self.signature(path, args)
+        state_slot = (target, channel_of(path, args))
         with self._lock:
             now = self._clock()
             self._prune(now, settings)
-            recent = self._recent.get((target, sig))
-            if recent and (now - recent[0]) * 1000 < settings.dedupe_window_ms:
-                return Decision(False, "duplicate", recent[1])
+            effective = self._effective.get(state_slot)
+            if effective and effective[0] == sig and (now - effective[1]) * 1000 < settings.dedupe_window_ms:
+                return Decision(False, "duplicate", effective[2])
+            # Ein anderer Befehl ist unterwegs: bisheriger Zustand gilt nicht mehr als wirksam
+            self._effective.pop(state_slot, None)
             self._seq += 1
             seq = self._seq
             slot = (target, path, channel_of(path, args))
@@ -96,14 +102,15 @@ class CommandGuard:
         return Decision(True)
 
     def record(self, target: str, path: str, args: Tuple[Any, ...], request_id: Optional[str]) -> None:
-        """Nach erfolgreichem Senden: für Duplikaterkennung merken."""
+        """Nach bestätigtem Senden: als wirksamen Befehl für (Ziel, Kanal) merken."""
         with self._lock:
-            self._recent[(target, self.signature(path, args))] = (self._clock(), request_id or "")
+            self._effective[(target, channel_of(path, args))] = (
+                self.signature(path, args), self._clock(), request_id or "")
 
     def _prune(self, now: float, settings: GuardSettings) -> None:
         horizon = max(settings.dedupe_window_ms, settings.min_interval_ms, 1000) / 1000 * 10
-        for key in [k for k, (t, _) in self._recent.items() if now - t > horizon]:
-            del self._recent[key]
+        for key in [k for k, (_, t, _) in self._effective.items() if now - t > horizon]:
+            del self._effective[key]
 
 
 guard = CommandGuard()
