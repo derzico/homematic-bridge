@@ -138,6 +138,14 @@ Content-Type: application/json
 `{"group": "<gruppen-id>", "on": true}` explizit angegeben werden. Signalart
 und Laufzeit werden in der HCU-Gruppenkonfiguration festgelegt.
 
+### Inventar & Loxone-Abgleich (read-only, ab 1.20)
+
+`GET /api/inventory` liefert Räume, Geräte, Kanäle, Gruppen und Shellys inklusive
+der Loxone-UDP-Variablennamen; `GET /api/loxone/mapping` listet jede an Loxone
+gesendete Variable mit Raum, Gerät, Wert und Befehlserkennung (`…@\v`). Beide
+benötigen `X-API-Key`. Mit `ops/mcp_server.py` stehen sie als MCP-Tools bereit,
+z.B. neben einem Loxone-Config-MCP. Details: `docs/releases/1.20.0.md`.
+
 ---
 
 ## Dokumentation
