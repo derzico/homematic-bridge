@@ -11,7 +11,7 @@ import logging
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import app.loxone_udp as lox
-from app.controls import indexed, system_body
+from app.controls import indexed
 
 log = logging.getLogger("bridge-ws")
 
@@ -74,6 +74,31 @@ def _channels(device: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     return result
 
 
+def _system_parts(snapshot: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """(devices, groups) mit denselben Snapshot-Layouts wie loxone_udp._system_lines.
+
+    Unterstützt raw getSystemState, {body: state}, HCU-Response body.body sowie
+    devices/groups unterhalb von home.
+    """
+    if not isinstance(snapshot, dict) or snapshot.get("type") not in (None, "HMIP_SYSTEM_RESPONSE"):
+        return {}, {}
+    current: Any = snapshot
+    for _ in range(3):
+        if not isinstance(current, dict):
+            return {}, {}
+        if "code" in current and current["code"] != 200:
+            return {}, {}
+        if any(key in current for key in ("devices", "groups", "home")):
+            break
+        current = current.get("body")
+    else:
+        return {}, {}
+    home = current.get("home")
+    nested = home if isinstance(home, dict) else {}
+    return (indexed(current.get("devices", nested.get("devices"))),
+            indexed(current.get("groups", nested.get("groups"))))
+
+
 def _variables_by_prefix(snapshot: Any) -> Dict[str, List[str]]:
     """Loxone-Variablennamen aus exakt derselben Logik wie der UDP-Push."""
     by_prefix: Dict[str, List[str]] = {}
@@ -91,9 +116,7 @@ def _entity_prefix(name: str) -> str:
 
 def build_inventory(snapshot: Any, shelly_devices: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Strukturierte Übersicht aller HmIP-Räume, -Geräte, -Kanäle, -Gruppen und Shellys."""
-    system = system_body(snapshot)
-    devices = indexed(system.get("devices"))
-    groups = indexed(system.get("groups"))
+    devices, groups = _system_parts(snapshot)
     rooms, room_of = _rooms(groups)
     variables = _variables_by_prefix(snapshot)
 
@@ -137,8 +160,10 @@ def build_inventory(snapshot: Any, shelly_devices: Optional[List[Dict[str, Any]]
     for dev in shelly_devices or []:
         if not isinstance(dev, dict):
             continue
-        outputs = dev.get("channels") if isinstance(dev.get("channels"), list) else []
-        shelly_list.append({**_pick(dev, _SHELLY_META), "outputs": len(outputs)})
+        # Adapter-Cache speichert channels als {index: status}; Listen ebenfalls zulassen
+        outputs = dev.get("channels")
+        count = len(outputs) if isinstance(outputs, (dict, list)) else 0
+        shelly_list.append({**_pick(dev, _SHELLY_META), "outputs": count})
 
     return {
         "rooms": rooms,
@@ -150,20 +175,33 @@ def build_inventory(snapshot: Any, shelly_devices: Optional[List[Dict[str, Any]]
     }
 
 
-_ALL_BOOL = (lox._GROUP_BOOL_FIELDS | lox._HOME_BOOL_FIELDS | lox._SECURITY_BOOL_FIELDS
-             | {"available", "cooling"})
-_ALL_NUMERIC = (lox._GROUP_NUMERIC_FIELDS | lox._HOME_NUMERIC_FIELDS
-                | lox._SECURITY_NUMERIC_FIELDS | lox._WEATHER_NUMERIC_FIELDS)
-
-
-def _classify(field: str) -> str:
-    """bool/number/text anhand des letzten Namenssegments (z.B. weather_temperature)."""
-    leaf = field.rsplit("_", 1)[-1]
-    if leaf in _ALL_BOOL:
+def _kind(field: str, numeric: Iterable[str], boolean: Iterable[str]) -> str:
+    if field == "available" or field in boolean:
         return "bool"
-    if leaf in _ALL_NUMERIC:
+    if field in numeric:
         return "number"
     return "text"
+
+
+def _classify(entity: str, field: str) -> str:
+    """bool/number/text mit den Feldsätzen der jeweiligen Entität (wie im UDP-Export).
+
+    Gleiche Feldnamen können je Entität verschieden typisiert sein, z.B.
+    dutyCycle: Kanal = bool, Home = Zahl.
+    """
+    if entity == "device":
+        return _kind(field, lox._NUMERIC_FIELDS, lox._BOOL_FIELDS)
+    if entity == "group":
+        return _kind(field, lox._GROUP_NUMERIC_FIELDS, lox._GROUP_BOOL_FIELDS)
+    if field.startswith("weather_"):
+        return _kind(field[8:], lox._WEATHER_NUMERIC_FIELDS, ())
+    if field.startswith("security_zone_"):
+        return "text"
+    if field.startswith("security_"):
+        return _kind(field[9:], lox._SECURITY_NUMERIC_FIELDS, lox._SECURITY_BOOL_FIELDS)
+    if field.startswith("climate_"):
+        return _kind(field[8:], (), {"active", "cooling"})
+    return _kind(field, lox._HOME_NUMERIC_FIELDS, lox._HOME_BOOL_FIELDS)
 
 
 def build_loxone_mapping(snapshot: Any) -> List[Dict[str, Any]]:
@@ -173,9 +211,7 @@ def build_loxone_mapping(snapshot: Any) -> List[Dict[str, Any]]:
     Textfelder lassen sich nur über einen Virtuellen Text-Eingang / Vergleich
     auswerten, daher "command": null.
     """
-    system = system_body(snapshot)
-    devices = indexed(system.get("devices"))
-    groups = indexed(system.get("groups"))
+    devices, groups = _system_parts(snapshot)
     _, room_of = _rooms(groups)
     # Längste IDs zuerst, damit IDs mit Unterstrich eindeutig zugeordnet werden
     device_ids = sorted((d for d in devices if isinstance(d, str)), key=len, reverse=True)
@@ -210,7 +246,7 @@ def build_loxone_mapping(snapshot: Any) -> List[Dict[str, Any]]:
                          channel=channel, field=tail,
                          channel_type=ch_obj.get("functionalChannelType") if isinstance(ch_obj, dict) else None,
                          channel_label=ch_obj.get("label") if isinstance(ch_obj, dict) else None)
-        entry["kind"] = _classify(entry["field"])
+        entry["kind"] = _classify(entry["entity"], entry["field"])
         entry["command"] = f"{name}@\\v" if entry["kind"] != "text" else None
         result.append(entry)
     return result

@@ -48,7 +48,7 @@ def snapshot():
 
 def test_inventory_structure_rooms_and_channels(snapshot):
     result = build_inventory(snapshot, [{"ip": "192.0.2.10", "name": "Shelly", "gen": 2,
-                                         "mac": "AABB", "channels": [{}, {}]}])
+                                         "mac": "AABB", "channels": {"0": {}, "1": {}}}])
     assert result["counts"] == {"rooms": 1, "devices": 2, "groups": 1, "shelly": 1}
     assert result["rooms"] == [{"id": "room-kitchen", "label": "Küche", "devices": ["dev-a"]}]
     dev_a = next(d for d in result["devices"] if d["id"] == "dev-a")
@@ -92,7 +92,41 @@ def test_mapping_matches_udp_push_exactly(snapshot):
     assert by_name["hmip_home_connected"]["kind"] == "bool"
 
 
-@pytest.mark.parametrize("snap", [None, {}, {"body": "x"}])
+def test_shelly_outputs_count_list_and_missing():
+    shelly = build_inventory(None, [{"ip": "a", "channels": [{}]}, {"ip": "b"}])["shelly"]
+    assert [s["outputs"] for s in shelly] == [1, 0]
+
+
+def test_devices_and_groups_nested_under_home(snapshot):
+    system = snapshot["body"]["body"]
+    home = system["home"]
+    home["devices"] = system.pop("devices")
+    home["groups"] = system.pop("groups")
+    inventory = build_inventory(snapshot)
+    assert inventory["counts"]["devices"] == 2 and inventory["counts"]["groups"] == 1
+    assert inventory["rooms"][0]["label"] == "Küche"
+    mapping = build_loxone_mapping(snapshot)
+    assert [m["variable"] for m in mapping] == [l.split("@", 1)[0] for l in _system_lines(snapshot)]
+    assert {m["entity"] for m in mapping} == {"device", "group", "home"}
+
+
+def test_kind_is_entity_specific(snapshot):
+    system = snapshot["body"]["body"]
+    system["home"]["dutyCycle"] = 0.125
+    system["devices"]["dev-a"]["functionalChannels"]["0"]["dutyCycle"] = False
+    system["home"]["functionalHomes"] = {"sec": {
+        "solution": "SECURITY_AND_ALARM", "alarmActive": False, "zoneActivationDelay": 30,
+        "securityZones": {"INTERNAL": "heat-1"}}}
+    by_name = {m["variable"]: m for m in build_loxone_mapping(snapshot)}
+    assert by_name["hmip_home_dutyCycle"]["kind"] == "number"
+    assert by_name["hmip_dev-a_ch0_dutyCycle"]["kind"] == "bool"
+    assert by_name["hmip_home_security_alarmActive"]["kind"] == "bool"
+    assert by_name["hmip_home_security_zoneActivationDelay"]["kind"] == "number"
+    assert by_name["hmip_home_security_zone_INTERNAL_groupId"]["kind"] == "text"
+
+
+@pytest.mark.parametrize("snap", [None, {}, {"body": "x"},
+                                  {"type": "HMIP_SYSTEM_RESPONSE", "body": {"code": 500, "body": {"devices": {"x": {}}}}}])
 def test_empty_snapshot_is_safe(snap):
     assert build_inventory(snap)["counts"] == {"rooms": 0, "devices": 0, "groups": 0, "shelly": 0}
     assert build_loxone_mapping(snap) == []
