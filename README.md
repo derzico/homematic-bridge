@@ -153,6 +153,8 @@ Ab 1.21 zusätzlich: Zahlenwerte für Fenster/Rauchmelder/Heizmodus, Prozentwert
 Sammelwerte (nicht erreichbar, Batterie, Sabotage), Heartbeat, Rückmeldung zu
 Befehlen, Funk-Schutz, RGB im Loxone-Format, Steuern über Raum/Label und
 IP-Freigabe. Details: `docs/releases/1.20.0.md`, `docs/releases/1.21.0.md`.
+Der MCP-Server kann mit separatem Steuer-Key auch Heizung, Licht, Schalter und
+Rollläden steuern (`mcp-server/README.md`).
 
 ---
 
