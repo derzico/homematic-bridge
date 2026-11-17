@@ -163,7 +163,8 @@ def build_inventory(snapshot: Any, shelly_devices: Optional[List[Dict[str, Any]]
         # Adapter-Cache speichert channels als {index: status}; Listen ebenfalls zulassen
         outputs = dev.get("channels")
         count = len(outputs) if isinstance(outputs, (dict, list)) else 0
-        shelly_list.append({**_pick(dev, _SHELLY_META), "outputs": count})
+        variables = [v["variable"] for v in shelly_variables([dev])]
+        shelly_list.append({**_pick(dev, _SHELLY_META), "outputs": count, "loxone_variables": variables})
 
     return {
         "rooms": rooms,
@@ -208,7 +209,41 @@ def _classify(entity: str, field: str) -> str:
     return _kind(field, lox._HOME_NUMERIC_FIELDS, lox._HOME_BOOL_FIELDS)
 
 
-def build_loxone_mapping(snapshot: Any) -> List[Dict[str, Any]]:
+def shelly_variables(devices: Optional[List[Dict[str, Any]]],
+                     states: Optional[Dict[str, Optional[Dict[str, bool]]]] = None) -> List[Dict[str, Any]]:
+    """Shelly-Relais-Variablen (shelly_<ID>_relay<N>_on, _available) für Mapping/Vorlage.
+
+    Werte aus der letzten Statusabfrage, sonst aus dem Shelly-Cache.
+    """
+    from app.shelly_state import relay_variable
+    result = []
+    for dev in devices or []:
+        if not isinstance(dev, dict) or not lox._valid_id(dev.get("id")):
+            continue
+        device_id, label = dev["id"], dev.get("name")
+        known = (states or {}).get(device_id, "unknown")
+        channels = dev.get("channels") if isinstance(dev.get("channels"), dict) else {}
+        relays = known if isinstance(known, dict) else {
+            str(ch): bool(info.get("on")) for ch, info in channels.items() if isinstance(info, dict)}
+        available = None if known == "unknown" else (0 if known is None else 1)
+        base = {"entity": "shelly", "id": device_id, "label": label, "room": None, "ip": dev.get("ip")}
+        name = f"shelly_{device_id}_available"
+        result.append({"variable": name, "value": None if available is None else str(available), **base,
+                       "channel": None, "field": "available", "kind": "bool", "unit": None,
+                       "command": f"{name}@\\v", "sent": lox.is_sent(name)})
+        for channel in sorted(relays, key=lambda c: int(c) if str(c).isdecimal() else 0):
+            if not lox._valid_channel(channel):
+                continue
+            name = relay_variable(device_id, channel)
+            result.append({"variable": name, "value": "1" if relays[channel] else "0", **base,
+                           "channel": str(channel), "field": "on", "kind": "bool", "unit": None,
+                           "command": f"{name}@\\v", "sent": lox.is_sent(name)})
+    return result
+
+
+def build_loxone_mapping(snapshot: Any, shelly_devices: Optional[List[Dict[str, Any]]] = None,
+                         shelly_states: Optional[Dict[str, Optional[Dict[str, bool]]]] = None
+                         ) -> List[Dict[str, Any]]:
     """Jede Loxone-UDP-Variable mit Herkunft (Gerät/Kanal/Gruppe/Home, Raum, Label).
 
     "command" ist die Befehlserkennung für einen Loxone Virtual UDP Eingang.
@@ -256,6 +291,7 @@ def build_loxone_mapping(snapshot: Any) -> List[Dict[str, Any]]:
         entry["command"] = f"{name}@\\v" if entry["kind"] != "text" else None
         entry["sent"] = lox.is_sent(name)
         result.append(entry)
+    result.extend(shelly_variables(shelly_devices, shelly_states))
     return result
 
 

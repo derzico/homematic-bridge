@@ -513,12 +513,18 @@ def inventory_api():
     return jsonify(result)
 
 
+def _shelly_known_states():
+    services = state.runtime_services
+    poller = getattr(services, "shelly_states", None) if services is not None else None
+    return poller.known_states() if poller is not None else None
+
+
 def _mapping_query(snapshot):
     """Gefilterte Mapping-Liste nach Query-Parametern (room, entity, field, target, kind, sent)."""
     from app.inventory import build_loxone_mapping, filter_mapping
     args = request.args
     return filter_mapping(
-        build_loxone_mapping(snapshot),
+        build_loxone_mapping(snapshot, shelly_mod.load_cached(), _shelly_known_states()),
         room=args.get("room", ""), entity=args.get("entity", ""), field=args.get("field", ""),
         target=args.get("target", ""), kind=args.get("kind", ""),
         sent_only=args.get("sent", "").lower() in ("1", "true", "yes"),
@@ -1163,7 +1169,20 @@ def _shelly_relay(ip: str, channel: int):
     ok = shelly_mod.set_relay(ip, gen, channel, on)
     if ok:
         shelly_mod.refresh_device(ip, gen)
+        _push_shelly_state(ip)
     return jsonify({"success": ok, "ip": ip, "channel": channel, "on": on}), 200 if ok else 502
+
+
+def _push_shelly_state(ip: str) -> None:
+    """Nach einem Relais-Befehl den neuen Zustand sofort an Loxone melden."""
+    services = state.runtime_services
+    poller = getattr(services, "shelly_states", None) if services is not None else None
+    if poller is None:
+        return
+    try:
+        poller.poll(only_ip=ip)
+    except Exception:
+        log.warning("Shelly-Zustand nach Befehl nicht gemeldet: %s", ip, exc_info=True)
 
 
 @bp.get("/shelly/<ip>/webui", defaults={"subpath": ""}, strict_slashes=False)

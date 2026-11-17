@@ -28,6 +28,8 @@ class RuntimeServices:
         self.last_sync_error = None
         self.heartbeat_counter = 0
         self.energy = EnergyCollector(config=self.effective_config, on_sample=self.forward_energy)
+        from app.shelly_state import ShellyStatePoller
+        self.shelly_states = ShellyStatePoller()
 
     def effective_config(self):
         with state.config_lock:
@@ -57,6 +59,10 @@ class RuntimeServices:
             self.energy.start()
         except Exception:
             log.warning("Optionaler Energiedienst konnte nicht gestartet werden", exc_info=True)
+        try:
+            self.shelly_states.start()
+        except Exception:
+            log.warning("Shelly-Statusabfrage konnte nicht gestartet werden", exc_info=True)
         with self._lock:
             if self._thread is None or not self._thread.is_alive():
                 self._thread = threading.Thread(target=self._loop, name="bridge-resync", daemon=True)
@@ -138,5 +144,6 @@ class RuntimeServices:
     def stop(self):
         self._stop.set()
         self.energy.stop()
+        self.shelly_states.stop()
         if self._thread is not None and self._thread is not threading.current_thread():
             self._thread.join(timeout=3)

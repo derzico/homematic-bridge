@@ -63,7 +63,8 @@ def test_inventory_structure_rooms_and_channels(snapshot):
     group = result["groups"][0]
     assert group["members"] == [{"deviceId": "dev-a", "channelIndex": 1}]
     assert "hmip_group_heat-1_setPointTemperature" in group["loxone_variables"]
-    assert result["shelly"] == [{"ip": "192.0.2.10", "name": "Shelly", "gen": 2, "outputs": 2}]
+    assert result["shelly"] == [{"ip": "192.0.2.10", "name": "Shelly", "gen": 2, "outputs": 2,
+                                "loxone_variables": []}]
 
 
 def test_inventory_exposes_only_allowlisted_fields(snapshot):
