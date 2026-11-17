@@ -342,7 +342,7 @@ CONTROL_HANDLERS: Dict[str, Callable[[Dict[str, Any]], Any]] = {
 
 _FILTER_PROPS = {
     "room": {"type": "string", "description": "Raum (Label, exakt, ohne Groß/Klein)"},
-    "entity": {"type": "string", "enum": ["device", "group", "home"]},
+    "entity": {"type": "string", "enum": ["device", "group", "home", "shelly"]},
     "field": {"type": "string", "description": "Feld(er), kommagetrennt, z.B. windowOpen,smokeAlarm"},
     "target": {"type": "string", "description": "Gerät/Gruppe: ID oder Label (exakt)"},
     "kind": {"type": "string", "enum": ["bool", "number", "text"]},

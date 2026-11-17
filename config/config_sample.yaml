@@ -66,6 +66,7 @@ shelly:
   password:             # optional: Passwort (leer lassen wenn kein Passwort gesetzt)
   scan_on_startup: false  # Scan automatisch beim Start ausführen
   scan_interval_hours: 0  # Zyklischer Scan (0 = deaktiviert, z.B. 24 für täglich)
+  state_poll_seconds: 10  # Relaiszustände an Loxone (shelly_<ID>_relay<N>_on), 0 = aus
 
 # HTTP-API Auth:
 api_key: # optional: Key hier eintragen (oder leer lassen)

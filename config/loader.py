@@ -182,6 +182,9 @@ def validate_config(config: dict) -> List[str]:
             _check_type(errors, shelly, "password", str, label="shelly.password")
             _check_type(errors, shelly, "scan_on_startup", bool, label="shelly.scan_on_startup")
             _check_type(errors, shelly, "scan_interval_hours", (int, float), label="shelly.scan_interval_hours")
+            poll = shelly.get("state_poll_seconds", 10)
+            if type(poll) is not int or not (poll == 0 or 2 <= poll <= 3600):
+                errors.append("'shelly.state_poll_seconds' muss 0 oder 2..3600 sein")
             subnet = shelly.get("subnet")
             if isinstance(subnet, str) and subnet:
                 subnet_error = validate_shelly_subnet(subnet)

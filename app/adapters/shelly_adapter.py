@@ -107,6 +107,29 @@ def _post(ip: str, path: str, timeout: float, **kwargs) -> Optional[requests.Res
         return None
 
 
+def get_relay_states(ip: str, gen: int, timeout: float = 2.0) -> Optional[Dict[str, bool]]:
+    """Nur Relaiszustände lesen ({kanal: an}); None = nicht erreichbar.
+
+    Eine Anfrage je Gerät, ohne OTA-/Update-Abfrage (für häufiges Polling).
+    """
+    if gen == 2:
+        data = _get(ip, "/rpc/Shelly.GetStatus", timeout)
+        if data is None:
+            return None
+        return {key[7:]: bool(sw.get("output"))
+                for key, sw in data.items()
+                if key.startswith("switch:") and key[7:].isdecimal() and isinstance(sw, dict)
+                and isinstance(sw.get("output"), bool)}
+    data = _get(ip, "/status", timeout)
+    if data is None:
+        return None
+    relays = data.get("relays")
+    if not isinstance(relays, list):
+        return {}
+    return {str(i): bool(rel.get("ison")) for i, rel in enumerate(relays)
+            if isinstance(rel, dict) and isinstance(rel.get("ison"), bool)}
+
+
 # ── Geräteerkennung ───────────────────────────────────────────────────────────
 
 def _detect(ip: str, timeout: float) -> Optional[Dict[str, Any]]:

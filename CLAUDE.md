@@ -118,6 +118,11 @@ MCP 1.22: Steuer-Tools (`hmip_heating`, `hmip_switch`, `hmip_dimmer`, `hmip_shut
 `hmip_light`, `hmip_loxone_resync`) nur mit `BRIDGE_CONTROL_API_KEY`; Lese-Tools
 weiter mit Nur-Lese-Key. Keine Sirene. Einrichtung: `mcp-server/README.md`.
 
+Version 1.22: Shelly-Relaiszustand per UDP (`app/shelly_state.py`,
+`ShellyStatePoller` in `RuntimeServices`, `shelly.state_poll_seconds`),
+`shelly_<ID>_relay<N>_on` / `_available` auch in Mapping und Vorlage.
+Details unter `docs/releases/1.22.0.md`.
+
 ## Konventionen
 
 - **Sprache**: Kommentare und Docstrings auf Deutsch
