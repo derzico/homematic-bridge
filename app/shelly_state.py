@@ -50,6 +50,9 @@ class ShellyStatePoller:
         self._devices = devices
         self._clock = clock
         self._lock = threading.Lock()
+        # Ein Abfragezyklus (Abrufen → Vergleichen → Senden) zur Zeit: sonst könnte ein
+        # älterer Hintergrund-Abruf den neueren Zustand nach einem Befehl überschreiben.
+        self._poll_lock = threading.Lock()
         self._known: Dict[str, Optional[Dict[str, bool]]] = {}   # device_id -> relays | None
         self._last_full = None
         self._stop = threading.Event()
@@ -80,8 +83,18 @@ class ShellyStatePoller:
             return device["id"], None
 
     def poll(self, force_full: bool = False, only_ip: Optional[str] = None) -> int:
-        """Einmal abfragen; Änderungen (oder bei force_full alles) senden. Gibt Zeilenzahl zurück."""
-        host, port, _, _ = self._settings()
+        """Einmal abfragen; Änderungen (oder bei force_full alles) senden. Gibt Zeilenzahl zurück.
+
+        Tut nichts (keine Netzwerkabfrage), wenn kein Miniserver eingetragen,
+        Shelly deaktiviert oder state_poll_seconds = 0 ist – auch nach Befehlen.
+        """
+        host, port, poll_seconds, _ = self._settings()
+        if not host or not poll_seconds:
+            return 0
+        with self._poll_lock:
+            return self._poll_locked(host, port, force_full, only_ip)
+
+    def _poll_locked(self, host: str, port: int, force_full: bool, only_ip: Optional[str]) -> int:
         devices = [d for d in self._devices()
                    if isinstance(d, dict) and loxone_udp._valid_id(d.get("id")) and d.get("ip")
                    and (only_ip is None or d.get("ip") == only_ip)]
@@ -102,7 +115,7 @@ class ShellyStatePoller:
                 for channel, on in (relays or {}).items():
                     if previous is None or previous.get(channel) != on:
                         lines.append(f"{relay_variable(device_id, channel)}@{1 if on else 0}\r\n")
-        if lines and host:
+        if lines:
             self._send(host, port, lines)
         return len(lines)
 

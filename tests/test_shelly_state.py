@@ -98,13 +98,49 @@ def test_force_full_and_single_device(configured):
     assert sent == [("loxone.invalid", 7777, ["shelly_SHSW-1-96866f_relay0_on@1\r\n"])]
 
 
-def test_no_host_or_disabled_sends_nothing(monkeypatch):
-    monkeypatch.setattr(state, "config", {"loxone": {}, "shelly": {"enabled": True}})
-    poller, sent = make_poller({"192.0.2.142": {"0": True}, "192.0.2.135": {"0": True}})
-    poller.poll()
-    assert sent == []
-    monkeypatch.setattr(state, "config", {"loxone": {"miniserver_ip": "x"}, "shelly": {"enabled": False}})
-    assert ShellyStatePoller._settings()[2] == 0       # Polling aus, wenn Shelly deaktiviert
+@pytest.mark.parametrize("config", [
+    {"loxone": {}, "shelly": {"enabled": True}},                                        # kein Miniserver
+    {"loxone": {"miniserver_ip": "x"}, "shelly": {"enabled": False}},                   # Shelly aus
+    {"loxone": {"miniserver_ip": "x"}, "shelly": {"enabled": True, "state_poll_seconds": 0}},
+])
+def test_disabled_poll_makes_no_requests(monkeypatch, config):
+    monkeypatch.setattr(state, "config", config)
+    fetched, sent = [], []
+    poller = ShellyStatePoller(fetch=lambda ip, gen: fetched.append(ip) or {"0": True},
+                               send=lambda h, p, lines: sent.append(lines), devices=lambda: DEVICES)
+    assert poller.poll() == 0 and poller.poll(only_ip="192.0.2.142") == 0
+    assert fetched == [] and sent == []
+
+
+def test_overlapping_polls_cannot_send_stale_state(configured):
+    """Hintergrund-Abruf liest noch AUS; der Befehls-Abruf (AN) läuft erst danach."""
+    import threading
+    entered, release = threading.Event(), threading.Event()
+    reads = {"value": False, "calls": 0}
+
+    def fetch(ip, gen):
+        value = reads["value"]
+        reads["calls"] += 1
+        if reads["calls"] == 1:                    # erster (Hintergrund-)Abruf hängt
+            entered.set()
+            release.wait(2)
+        return {"0": value}
+    sent = []
+    poller = ShellyStatePoller(fetch=fetch, send=lambda h, p, lines: sent.append(list(lines)),
+                               devices=lambda: DEVICES[:1])
+    poller._known["SHSW-1-96866f"] = {"0": False}
+    background = threading.Thread(target=poller.poll, name="bg-poll")
+    background.start()
+    assert entered.wait(2)
+    reads["value"] = True                          # Relais wurde gerade eingeschaltet
+    command = threading.Thread(target=lambda: poller.poll(only_ip="192.0.2.142"), name="cmd")
+    command.start()
+    release.set()
+    background.join(3)
+    command.join(3)
+    # Reihenfolge serialisiert: zuletzt gesendet und bekannt ist AN
+    assert sent[-1] == ["shelly_SHSW-1-96866f_relay0_on@1\r\n"]
+    assert poller.known_states()["SHSW-1-96866f"] == {"0": True}
 
 
 def test_fetch_exception_counts_as_unreachable(configured):
