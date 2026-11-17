@@ -114,6 +114,10 @@ Deploy mit `ops/deploy.sh`. Tests in `tests/test_loxone_sync.py` sichern das alt
 UDP-Format (Zusatzwerte dort aus), neue Werte in `tests/test_bridge_extras.py`.
 Details unter `docs/releases/1.21.0.md`.
 
+MCP 1.22: Steuer-Tools (`hmip_heating`, `hmip_switch`, `hmip_dimmer`, `hmip_shutter`,
+`hmip_light`, `hmip_loxone_resync`) nur mit `BRIDGE_CONTROL_API_KEY`; Lese-Tools
+weiter mit Nur-Lese-Key. Keine Sirene. Einrichtung: `mcp-server/README.md`.
+
 ## Konventionen
 
 - **Sprache**: Kommentare und Docstrings auf Deutsch
